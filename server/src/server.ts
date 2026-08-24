@@ -14,13 +14,18 @@
  */
 import path from 'node:path';
 import fs from 'node:fs';
-import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyCookie from '@fastify/cookie';
+import { z } from 'zod';
 import { config, ssoConfigured } from './config';
 import { makeLog } from './logger';
 import type { Store } from './store';
 import { getBasePath, injectBase, stripBasePath } from './basePath';
+import { COOKIE, MAX_AGE_MS, SSO_SESSION_MS, cookieOptions, hashPassword, makeToken, secureForRequest, tokenUser, verifyPassword, verifyToken } from './auth';
+import { LoginLimiter, makeRateLimiter } from './rateLimit';
+import { clearSessionCache, probePlatform } from './fabric';
+import { parseChangelog, readChangelog } from './changelog';
 
 const log = makeLog('server');
 
@@ -32,6 +37,7 @@ export interface ServerDeps {
 }
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
+  const { store } = deps;
   const publicDir = deps.publicDir ?? config.publicDir;
 
   const app = Fastify({
@@ -72,8 +78,151 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     reply.header('referrer-policy', 'no-referrer');
   });
 
+  // ── Who is asking, and how often ────────────────────────────────────────────
+  // The REAL TCP peer, never req.ip. `trustProxy` is off precisely so a client-supplied
+  // X-Forwarded-For cannot become a limiter key — otherwise every limit below is bypassable
+  // with a request header.
+  const peerOf = (req: FastifyRequest): string => req.socket.remoteAddress ?? 'unknown';
+
+  const loginLimiter = new LoginLimiter();
+  // Unauthenticated AND makes an outbound call to the OpenMasjidOS core on every request. With
+  // no cap, anyone who can reach this box can use it as an unmetered amplifier against the
+  // platform, and each call also holds one of a Pi's sockets for up to 4s. 120/min is far above
+  // any real page load, so it can never get in the way of the thing it protects.
+  const platformCallOk = makeRateLimiter(120);
+
   // ── Health check ────────────────────────────────────────────────────────────
   app.get('/healthz', async () => ({ ok: true }));
+
+  // ── Admin session ───────────────────────────────────────────────────────────
+  // Every protected route is a simple SYNCHRONOUS cookie check. The expensive part — asking
+  // the platform who this is — happens once, in GET /api/session, and is minted into our own
+  // short-lived cookie.
+  const isAuthed = (cookie: string | undefined): boolean => verifyToken(store.secret, cookie, 'admin');
+
+  const requireAdmin = async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!isAuthed(req.cookies[COOKIE])) return reply.code(401).send({ error: 'Please sign in.' });
+  };
+
+  /**
+   * Who am I? — and the SSO upgrade, in the same call.
+   *
+   * If the visitor is not already signed in here but carries a valid OpenMasjidOS session, we
+   * confirm it with the platform (server→server) and mint a short local cookie. So pressing
+   * "Open" in the dashboard lands the admin straight in the panel, and everything after that
+   * is a local check.
+   *
+   * The three states this reports are deliberately separate, because they need three different
+   * screens: signed in; not signed in but the platform is reachable ("press Open in your
+   * dashboard"); and the platform is UNREACHABLE ("use your local password"). Collapsing the
+   * last two is what bricks a panel after a restore.
+   */
+  app.get('/api/session', async (req, reply) => {
+    let authed = isAuthed(req.cookies[COOKIE]);
+    let username = authed ? tokenUser(store.secret, req.cookies[COOKIE]) : '';
+    // True unless we tried to reach the platform and could not.
+    let reachable = true;
+
+    // Only the SSO upgrade costs an outbound call, so the cap guards that branch alone — an
+    // already-signed-in admin can never be rate-limited out of their own panel.
+    if (!authed && ssoConfigured() && !platformCallOk(peerOf(req))) {
+      return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
+    }
+    if (!authed && ssoConfigured()) {
+      const probe = await probePlatform(req.headers.cookie);
+      reachable = probe.reachable;
+      if (probe.username) {
+        reply.setCookie(COOKIE, makeToken(store.secret, SSO_SESSION_MS, 'admin', probe.username), cookieOptions(SSO_SESSION_MS, secureForRequest(req)));
+        authed = true;
+        username = probe.username;
+      }
+    }
+
+    return {
+      data: {
+        authed,
+        username: username || undefined,
+        /** A standalone install with no password yet goes straight to "choose one". Under
+         *  OpenMasjidOS, signing in is the dashboard's job, so this stays false and the panel
+         *  offers SSO first. */
+        needsSetup: !store.hasAdmin() && !ssoConfigured(),
+        hasPassword: store.hasAdmin(),
+        sso: { enabled: ssoConfigured(), reachable },
+      },
+    };
+  });
+
+  /**
+   * First-run setup / local-password recovery.
+   *
+   * THE GUARD: while the platform is reachable and SSO is configured, this REFUSES. The local
+   * password is a recovery path for when OpenMasjidOS is *down* — never a parallel front door.
+   * Without the guard there is a window on every SSO install, lasting until someone sets a
+   * password (i.e. possibly for ever), in which anyone who can reach this box on the LAN can
+   * claim the admin account before the real admin does.
+   *
+   * It must still work when the platform is genuinely unreachable — a restore onto a new
+   * machine, the core briefly down — which is precisely why probePlatform reports reachability
+   * separately from identity.
+   */
+  const SetupBody = z.object({ password: z.string().min(8).max(200) });
+  app.post('/api/setup', async (req, reply) => {
+    if (store.hasAdmin()) return reply.code(409).send({ error: 'A password has already been set.' });
+    // An outbound platform call from an UNAUTHENTICATED route, so it needs the same cap as the
+    // others. Without it this is an unmetered amplifier: `hasAdmin()` is false for the whole
+    // life of every SSO install, so the 409 above never short-circuits and each POST costs one
+    // socket against the core.
+    if (ssoConfigured() && !platformCallOk(peerOf(req))) {
+      return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
+    }
+    if (ssoConfigured() && (await probePlatform(req.headers.cookie)).reachable) {
+      return reply.code(403).send({
+        error: 'Sign in through your OpenMasjidOS dashboard — press Open on the Companion app.',
+      });
+    }
+    const parsed = SetupBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Please choose a password of at least 8 characters.' });
+    store.setAdmin(hashPassword(parsed.data.password));
+    reply.setCookie(COOKIE, makeToken(store.secret, MAX_AGE_MS), cookieOptions(MAX_AGE_MS, secureForRequest(req)));
+    log.info('a local admin password was set (recovery route)');
+    return { data: { ok: true } };
+  });
+
+  /** Password login. Rate-limited with exponential backoff — this is the real defence behind a
+   *  password a volunteer chose, on a box that is published to the internet. */
+  const LoginBody = z.object({ password: z.string().min(1).max(200) });
+  app.post('/api/login', async (req, reply) => {
+    const peer = peerOf(req);
+    const wait = loginLimiter.retryAfterMs(peer);
+    if (wait > 0) return reply.code(429).send({ error: `Too many attempts. Try again in ${Math.ceil(wait / 1000)}s.` });
+    const admin = store.getAdmin();
+    if (!admin) return reply.code(400).send({ error: 'No password has been set for this app.' });
+    const parsed = LoginBody.safeParse(req.body);
+    if (parsed.success && verifyPassword(parsed.data.password, admin)) {
+      loginLimiter.succeed(peer);
+      reply.setCookie(COOKIE, makeToken(store.secret, MAX_AGE_MS), cookieOptions(MAX_AGE_MS, secureForRequest(req)));
+      return { data: { ok: true } };
+    }
+    loginLimiter.fail(peer);
+    return reply.code(401).send({ error: 'Incorrect password.' });
+  });
+
+  app.post('/api/logout', async (_req, reply) => {
+    // Drop the cached platform answer too, or the very next request silently signs the admin
+    // back in from a 45-second-old "yes".
+    clearSessionCache();
+    reply.clearCookie(COOKIE, { path: '/' });
+    return { data: { ok: true } };
+  });
+
+  // ── What's new (the release notes shipped inside this image) ────────────────
+  // Behind auth: it is an admin-panel feature, and there is no reason a musalli's phone should
+  // fetch a developer changelog. Parsed once at boot — the file cannot change under a running
+  // container, since a new build IS a new container.
+  const releases = parseChangelog(readChangelog());
+  app.get('/api/changelog', { preHandler: requireAdmin }, async () => ({
+    data: { version: config.version, releases },
+  }));
 
   // ── Public bootstrap the web app reads on load (no secrets) ─────────────────
   app.get('/api/app', async () => ({
@@ -107,6 +256,15 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // under any tunnel path without being rebuilt.
   const rawIndex = havePublic ? fs.readFileSync(indexPath, 'utf8') : '';
   const sendIndexHtml = (reply: FastifyReply) => reply.type('text/html').send(injectBase(rawIndex, getBasePath()));
+
+  // The admin panel is never cached — not by a browser, not by the service worker that arrives
+  // in a later slice, and not by anything in between. Its shell is the same HTML as the
+  // musalli page today, but the rule has to exist from the moment the route does: a cached
+  // admin shell on a shared phone is a small thing that becomes a bad thing later.
+  app.addHook('onSend', async (req, reply) => {
+    const u = req.raw.url ?? '';
+    if (u.startsWith('/admin') || u.startsWith('/api/admin')) reply.header('cache-control', 'no-store');
+  });
 
   if (havePublic) app.get('/', async (_req, reply) => sendIndexHtml(reply));
 

@@ -93,6 +93,42 @@ configuration amounts to; a real table for anything with rows (push subscription
 Rows are different: they need indexes, constraints and deletion semantics, and a JSON blob would
 make pruning a dead push subscription a read-modify-write of every subscription the masjid has.
 
+### The `/api/setup` guard, and why reachability is a separate answer
+
+*Decision.* `probePlatform()` returns `{ username, reachable }`, not a username. `POST
+/api/setup` refuses with 403 while the platform is **reachable** and SSO is configured, and
+allows a password to be set the moment it is not.
+
+*Why both halves.* `hasAdmin()` is false for the entire life of a normal SSO install — the admin
+never needs a local password — so without the guard there is a window lasting *for ever* in which
+anyone who can reach the box, over the LAN or the tunnel, can claim the admin account before the
+real admin thinks to. And without the exception, a masjid restoring a backup onto a new machine
+is locked out of their own app with on-screen advice ("press Open in your dashboard") that cannot
+possibly work. The two failures pull in opposite directions and only a reachability signal
+separates them.
+
+The `session.test.ts` suite runs a real HTTP server as a stand-in platform rather than stubbing
+the probe, so the routes are asserted against a platform rather than against a mock of our own
+assumptions — including the case where the platform is switched off mid-test.
+
+### An SSO session is capped at an hour; a password session lasts 30 days
+
+*Why the asymmetry.* The platform's answer is a snapshot taken at one moment. An admin who signs
+out of the dashboard should not remain signed in here for a month on the strength of one
+45-second-old "yes". A password session is different in kind: whoever holds the password *is* the
+credential, and someone using it is by definition unable to use the front door, so making them
+retype it hourly buys nothing.
+
+### The admin panel is lazy-loaded, and must stay that way
+
+*Decision.* `const Admin = lazy(() => import('./admin/Admin'))` — its own Vite chunk.
+
+*Why.* The two halves of this app have opposite constraints. The musalli page is opened on a
+phone, on masjid wifi or one bar of mobile data, by someone who wants one number; the panel is
+opened by one volunteer at a desk. Letting the panel into the first load makes every musalli pay
+for it. The relative `base` in the Vite config means the chunk's URL resolves against the injected
+`<base href>`, so it loads correctly under the tunnel prefix too.
+
 ### The licence is a test, not a convention
 
 *Decision.* [`licenseHeaders.test.ts`](../server/src/licenseHeaders.test.ts) walks the whole

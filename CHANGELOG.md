@@ -14,6 +14,19 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **A settings panel, and a way into it.** Press **Open** on the Companion app in your
+  OpenMasjidOS dashboard and you are signed straight in — no second password to remember.
+  The panel shows what still needs doing before anyone can use the app on their phone, and
+  an account menu with the version, **What's new**, and a link to the source code.
+- **A way in when OpenMasjidOS isn't answering.** If the dashboard can't be reached — a
+  backup restored onto a new machine, the box briefly down — the panel says so plainly and
+  lets you use a password for this app instead, setting one then and there if you never
+  had one. It deliberately will *not* let anyone set that password while the dashboard is
+  working: signing in through OpenMasjidOS is the normal way in, and a second front door
+  standing permanently open is not the same thing as a spare key.
+- **What's new, inside the app.** OpenMasjidOS updates apps in the background, so this
+  build's release notes ship inside it and are readable from the account menu with no
+  internet needed.
 - **Installable on the OpenMasjidOS Development channel.** The app is listed in the
   OpenMasjid app catalog's dev channel, so a masjid running Update Channel → Development
   can install it from the App Store like any other app. It is deliberately **not** on the

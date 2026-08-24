@@ -315,3 +315,94 @@ in the same process that draws the masjid's screens at 1 fps.
 - **Structured Hijri.** Available additively (`formatToParts`) if Companion ever needs to
   reformat the date rather than render Display's label. Nothing in v1 needs it, and asking for it
   would mean this app was formatting a Hijri date, which is close to computing one. Leave it.
+
+---
+
+# Work order #2 — OpenMasjidDisplay: add the masjid logo to the `timetable` capability
+
+> **Status: REQUESTED, not built.** Raised by Companion 2026-08-24, after Hasan asked that a
+> musalli's home-screen icon be the masjid's own logo. Companion ships the fallback chain without
+> it and simply skips the first link until this exists — nothing here is blocking.
+
+## Why
+
+When a musalli adds OpenMasjid Companion to their home screen, the icon should be **their masjid's
+logo**, not ours. Companion's own mark is the last resort, not the default: the app on somebody's
+phone belongs to the masjid.
+
+There are two masjid logos on a box and they are not the same thing:
+
+| source | what it is | reachable today |
+| ------ | ---------- | ---------------- |
+| `GET ${OPENMASJID_BASE_URL}/api/public/logo` | the platform-wide logo, set once in OpenMasjidOS → Settings → Customize. Raster only, CORS-open, 404 when unset. | **yes** |
+| Display's per-timetable `logoImage` | the logo actually **on the prayer screens** — the one a masjid uploads when they set their TV up | **no** — not on the `timetable` contract |
+
+The second is the better answer and the one Hasan asked for, because it is the logo a musalli
+already associates with the masjid: it is on the wall in front of them. It is also the more likely
+of the two to be set at all — a masjid configures Display's screens long before anyone visits
+Settings → Customize.
+
+So Companion resolves in this order, and needs the first link built:
+
+```
+Display's timetable logo  →  the platform's /api/public/logo  →  Companion's own mark
+```
+
+## The ask
+
+A **third method** on the same capability, at the same exact unprefixed path shape, under the same
+envelope (`checkBrokerEnvelope`, read-only, no clock):
+
+```
+POST /fabric/timetable/logo      ← { "id": "tt_6e46aea7" }
+```
+
+Response `200`:
+
+```jsonc
+{
+  "v": 1,
+  "id": "tt_6e46aea7",
+  "logo": {
+    "mime": "image/png",          // the raster types Display already accepts
+    "bytes": 48213,               // decoded length, so a consumer can sanity-check before decoding
+    "data": "iVBORw0KGgo…"        // base64, no data: prefix
+  }
+}
+```
+
+…or `{ "v": 1, "id": "…", "logo": null }` when that timetable has no `logoImage` (the built-in
+mark). `null` is a normal answer, not an error.
+
+**A separate method rather than a field on `get`, deliberately.** `get` is polled on a cadence
+(~every 15 minutes) and its whole virtue is that it is small — 18.5 KB at the 45-day cap. A logo
+is 10–200 KB, changes maybe once in the life of an install, and inlining it would multiply the
+steady-state cost of the feed by an order of magnitude for a payload that is identical every time.
+Fetched separately it can be cached until the masjid changes it.
+
+**Requirements:**
+
+- **Raster only.** Refuse SVG even if `logoImage` holds one — an SVG is a script container, and
+  this one ends up rendered as an app icon and re-encoded by the consumer. The platform's own
+  `/api/public/logo` takes exactly this position and says so.
+- **Cap the response.** The broker's ceiling is 256 KB each way and base64 costs 33%, so anything
+  over ~180 KB decoded should answer `413 {error:'logo_too_large'}` rather than a truncated image
+  or a broker-level failure. Companion treats that as "no logo" and falls through.
+- `404 {error:'unknown_timetable'}` for an unknown id, as `get` already does.
+- Read-only, like the rest of the capability.
+
+**Versioning:** additive — a new method does not change `v`. Companion probes it and treats every
+error, including a 404 from an older Display that has no such route, as "no logo, fall through".
+
+## What Companion does with it
+
+Once, at the point the admin picks a timetable and whenever they ask for a refresh: fetch, validate
+it really is a raster of the declared type, re-encode to the 512/192/maskable PWA sizes server-side,
+and store the derived icons on Companion's own volume. The masjid can always override it with an
+upload in Companion's own settings — this only decides the **default**.
+
+## If this is not wanted
+
+Say so and Companion will fall back to the platform's `/api/public/logo` alone, which already works.
+The result is simply that a masjid whose logo is on their screens but not in Settings → Customize
+gets Companion's mark on the home screen instead of their own.

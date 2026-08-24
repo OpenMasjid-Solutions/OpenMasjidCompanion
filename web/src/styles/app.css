@@ -208,3 +208,94 @@ h1, h2, h3, p { margin: 0; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+
+/* ── Admin panel ────────────────────────────────────────────────────────────── */
+/* Denser than the musalli page on purpose: a volunteer at a desk working through a list,
+   rather than one number read one-handed in a dark hall. */
+.admin { width: min(44rem, 100%); margin-inline: auto; padding: 0.25rem 1.15rem 4rem; }
+.page-head { margin-block: 0.5rem 1.25rem; }
+.page-title { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; color: var(--ink-scene); text-shadow: var(--text-shadow-scene); }
+.page-sub { color: var(--ink-scene-muted); margin-block-start: 0.3rem; font-size: 0.94rem; line-height: 1.55; text-shadow: var(--text-shadow-scene); }
+.section-title { font-family: var(--font-display); font-size: 1.02rem; font-weight: 600; }
+.card-head { display: flex; align-items: flex-start; gap: 0.7rem; }
+.card-head__main { min-width: 0; flex: 1; }
+.panel-ico { color: var(--color-primary); flex: none; margin-block-start: 0.15rem; }
+
+.badge {
+  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.18rem 0.5rem; border-radius: 999px; flex: none;
+  background: var(--color-primary-subtle); color: var(--color-primary);
+}
+
+/* ── Forms ──────────────────────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 0.35rem; margin-block-end: 0.9rem; }
+.label { font-size: 0.82rem; font-weight: 600; color: var(--color-ink-muted); }
+.input {
+  width: 100%; padding: 0.65rem 0.8rem; border-radius: var(--radius-button);
+  color: var(--color-ink); font: inherit;
+  background: var(--glass-bg-inset); border: 1px solid var(--color-border);
+}
+.input::placeholder { color: var(--color-ink-faint); }
+.hint { font-size: 0.8rem; color: var(--color-ink-faint); line-height: 1.5; }
+.form-error { color: var(--color-danger); font-size: 0.86rem; margin-block: 0.25rem 0.6rem; }
+
+/* ── Account menu ───────────────────────────────────────────────────────────── */
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; inset-block-start: calc(100% + 0.4rem); inset-inline-end: 0;
+  min-width: 13rem; padding: 0.35rem; z-index: 40;
+  border-radius: var(--radius-card);
+  display: flex; flex-direction: column; gap: 0.1rem;
+}
+.menu-head { padding: 0.55rem 0.65rem 0.5rem; border-block-end: 1px solid var(--color-border); margin-block-end: 0.25rem; }
+.menu-name { font-weight: 600; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-sub { font-size: 0.76rem; color: var(--color-ink-faint); margin-block-start: 0.1rem; }
+.menu-item {
+  display: flex; align-items: center; gap: 0.55rem; width: 100%;
+  padding: 0.55rem 0.65rem; border: 0; border-radius: var(--radius-input);
+  background: transparent; color: var(--color-ink); font-size: 0.9rem; text-align: start;
+  transition: background-color var(--dur-micro) ease;
+}
+.menu-item:hover { background: var(--color-surface-hover); }
+.menu-item svg { color: var(--color-ink-faint); flex: none; }
+.menu-item--danger:hover { color: var(--color-danger); }
+.menu-item--danger:hover svg { color: var(--color-danger); }
+
+/* ── Modal (What's new) ─────────────────────────────────────────────────────── */
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center; padding: 1.15rem;
+  background: rgba(2, 9, 18, 0.55);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.modal {
+  width: min(38rem, 100%); max-height: min(80vh, 44rem);
+  display: flex; flex-direction: column;
+  /* A WINDOW is opaque — glass here would leave the page behind legible through the text
+     you are trying to read. Same reasoning as the platform's own --window-bg token. */
+  background-color: var(--window-bg);
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  padding: 0.9rem 0.7rem 0.9rem 1.15rem;
+  border-block-end: 1px solid var(--color-border);
+}
+.modal-body { padding: 1rem 1.15rem 1.4rem; overflow-y: auto; }
+.release + .release { margin-block-start: 1.4rem; }
+.release-version {
+  font-family: var(--font-display); font-size: 0.98rem; font-weight: 700;
+  color: var(--color-primary); letter-spacing: -0.01em;
+}
+.release-items { margin: 0.5rem 0 0; padding-inline-start: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.release-items li { color: var(--color-ink-muted); font-size: 0.9rem; line-height: 1.6; }
+.release-items b { color: var(--color-ink); }
+.release-items code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.85em; padding: 0.05em 0.3em; border-radius: 4px;
+  background: var(--glass-bg-inset);
+}
+.release-group {
+  font-size: 0.74rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--color-ink-faint); margin-block: 0.9rem 0.1rem;
+}
+.release > div:first-of-type > .release-group:first-child { margin-block-start: 0.6rem; }

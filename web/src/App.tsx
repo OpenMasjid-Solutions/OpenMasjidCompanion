@@ -12,11 +12,21 @@
  * `location.pathname` (which behind the tunnel still carries "/companion") into the route
  * this code reasons about, and every link goes back through `withBase`.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { CalendarClock, Github } from 'lucide-react';
 import { api, type AppInfo } from './api';
 import { stripBase, withBase } from './base';
 import { Scene, BrandMark, Note } from './ui';
+
+/**
+ * The admin panel is LAZY, and this line is the reason the musalli bundle stays small.
+ *
+ * A musalli opens this on a phone to read one number; the panel is used by one volunteer at a
+ * desk. Vite splits it into its own chunk, and because the build uses a relative `base` the
+ * chunk's URL resolves against the injected `<base href>` — so it loads correctly under the
+ * tunnel prefix too, with nothing baked in at build time.
+ */
+const Admin = lazy(() => import('./admin/Admin'));
 
 /** The routes this app answers. Anything else renders the not-found state rather than a
  *  blank page — a mistyped or stale link should say so. */
@@ -62,19 +72,31 @@ export function App(): JSX.Element {
     <>
       <Scene />
       <div className="shell">
-        <header className="topbar">
-          <a className="brand" href={withBase('/')} onClick={go('/')}>
-            <BrandMark />
-            <b>Prayer times</b>
-          </a>
-          <span className="spacer" />
-        </header>
+        {route !== '/admin' && (
+          <header className="topbar">
+            <a className="brand" href={withBase('/')} onClick={go('/')}>
+              <BrandMark />
+              <b>Prayer times</b>
+            </a>
+            <span className="spacer" />
+          </header>
+        )}
 
         {route === '/' && <Home />}
-        {route === '/admin' && <AdminPlaceholder />}
+        {route === '/admin' && (
+          <Suspense
+            fallback={
+              <main className="centre-wrap">
+                <span className="spinner" />
+              </main>
+            }
+          >
+            <Admin info={info} />
+          </Suspense>
+        )}
         {route === 'unknown' && <NotFound onHome={go('/')} />}
 
-        <Foot info={info} />
+        {route !== '/admin' && <Foot info={info} />}
       </div>
     </>
   );
@@ -102,22 +124,6 @@ function Home(): JSX.Element {
           right here &mdash; and you&rsquo;ll be able to add this page to your phone&rsquo;s home screen.
         </p>
         <Note>Nothing is shown here until the masjid connects their own timetable, so no time on this page is ever a guess.</Note>
-      </section>
-    </main>
-  );
-}
-
-/** The admin panel is built in the next slice. Until then this says so plainly rather
- *  than 404ing on a route the app genuinely intends to have. */
-function AdminPlaceholder(): JSX.Element {
-  return (
-    <main className="centre-wrap">
-      <section className="glass centre-card">
-        <h1 className="centre-title">Setup is on its way</h1>
-        <p className="centre-lead">
-          The admin panel isn&rsquo;t in this build yet. Update the app from your OpenMasjidOS dashboard
-          when a newer version is offered.
-        </p>
       </section>
     </main>
   );

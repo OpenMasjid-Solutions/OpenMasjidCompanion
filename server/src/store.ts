@@ -30,6 +30,7 @@ import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
 import { config } from './config';
 import { makeLog } from './logger';
+import type { Cred } from './auth';
 
 const log = makeLog('store');
 
@@ -115,6 +116,38 @@ export class Store {
 
   setJson(key: string, value: unknown): void {
     this.set(key, JSON.stringify(value));
+  }
+
+  // ── the local admin (the RECOVERY route, not the front door) ────────────────
+  //
+  // There is at most ONE. This app has a single administrator — the person who looks after
+  // the masjid's OpenMasjidOS box — and roles, invitations and a user table would all be
+  // machinery for a distinction that does not exist here.
+  //
+  // Under OpenMasjidOS the admin normally never sets one: they press "Open" and SSO signs them
+  // in. This exists for the day the platform is unreachable and somebody still has to get into
+  // the panel. See the guard on POST /api/setup.
+
+  /** Has a local password ever been set? */
+  hasAdmin(): boolean {
+    return this.get('admin_cred') != null;
+  }
+
+  /** The stored credential, or null. Never leaves the server. */
+  getAdmin(): Cred | null {
+    return this.getJson<Cred | null>('admin_cred', null);
+  }
+
+  /** Set (or replace) the local password. The plaintext never reaches this method — hashing
+   *  happens in auth.ts and only the scrypt parameters and digest are stored. */
+  setAdmin(cred: Cred): void {
+    this.setJson('admin_cred', cred);
+  }
+
+  /** Remove the local password. Used when an admin who is signed in via SSO decides they no
+   *  longer want a second way in. */
+  clearAdmin(): void {
+    this.del('admin_cred');
   }
 
   close(): void {
