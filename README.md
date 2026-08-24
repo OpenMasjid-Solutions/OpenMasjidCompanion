@@ -15,10 +15,11 @@
 
 ---
 
-> **Status: early development.** This app is on its `dev` branch and is **not listed in the
-> OpenMasjid app catalog yet**. It is being built one working slice at a time; see
-> [`CHANGELOG.md`](CHANGELOG.md) for what is actually in a build today. Nothing here is ready for
-> a masjid's congregation.
+> **Status: early development, dev channel only.** This app is listed on the OpenMasjid app
+> catalog's **Development** channel and is deliberately **not** on the stable channel. To try it,
+> set **OpenMasjidOS → Settings → Update Channel → Development**, then install it from the App
+> Store. It is being built one working slice at a time; see [`CHANGELOG.md`](CHANGELOG.md) for
+> what is actually in a build today. Nothing here is ready for a masjid's congregation yet.
 
 **OpenMasjid Companion** is an app for
 [OpenMasjidOS](https://github.com/OpenMasjid-Solutions/OpenMasjidOS) that puts the masjid in a

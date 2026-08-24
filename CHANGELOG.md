@@ -14,6 +14,11 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Installable on the OpenMasjidOS Development channel.** The app is listed in the
+  OpenMasjid app catalog's dev channel, so a masjid running Update Channel → Development
+  can install it from the App Store like any other app. It is deliberately **not** on the
+  stable channel and will not be until there is something worth a congregation's time —
+  see the README's status note.
 - **The app exists.** First skeleton: the container builds and runs, serves its themed
   shell, and answers a health check. Nothing musalli-facing works yet — prayer times,
   notifications, appeals and the QR code all arrive in the slices after this one.
