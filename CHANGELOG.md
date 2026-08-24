@@ -14,6 +14,16 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **It's an app now.** Open it on a phone and you can add it to the home screen — your masjid's
+  name under your masjid's icon, opening straight to the prayer times with no browser bar. On an
+  iPhone it explains where the Share button is, because Apple gives no other way.
+- **It works with no signal.** Once someone has opened it, today's times are on their phone. In a
+  basement prayer hall, on the underground, on a dead phone network — the times are still there,
+  with the note of when they were last checked so nobody is misled about how fresh they are.
+- **Your logo becomes the icon, by itself.** It's taken from the logo on your timetable in
+  OpenMasjid Display, or your masjid logo in OpenMasjidOS, whichever you have — nothing to do.
+  You can upload your own in the panel if you'd rather, see exactly which one it picked, and
+  change the name that appears under it.
 - **Prayer times.** The app now shows your masjid's timetable: which prayer is on now, how long
   until the next one, and the whole day's times with the jamāʿah beside each. Shurūq is there,
   Fridays show your Jumuʿah jamāʿāt in place of Dhuhr — each one on its own line, so "44 minutes

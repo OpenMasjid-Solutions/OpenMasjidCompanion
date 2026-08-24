@@ -17,6 +17,8 @@ import { Github } from 'lucide-react';
 import { api, type AppInfo } from './api';
 import { stripBase, withBase } from './base';
 import { useAppearanceSync } from './prefs';
+import { useInstall, useServiceWorker } from './pwa';
+import { InstallStrip, UpdateStrip } from './Install';
 import { Scene } from './ui';
 import { MasjidHeader, Today, type Timetable } from './Today';
 
@@ -67,6 +69,16 @@ export function App(): JSX.Element {
   useAppearanceSync();
 
   const isAdmin = route === '/admin';
+
+  /**
+   * Install and offline both need a SECURE CONTEXT, and the server is what knows whether we
+   * have one — a page reached at http://192.168.1.20:7880 is a perfectly normal way for a
+   * kiosk to open this app, and must not be told it is broken. Over plain HTTP the worker is
+   * never registered and no install strip appears, which is correct rather than a limitation.
+   */
+  const secure = !!info?.remote.secure;
+  const { updateReady, applyUpdate } = useServiceWorker(secure);
+  const install = useInstall(secure);
 
   /**
    * The MUSALLI surface has its own fixed palette (coral on navy, from the reference design),
@@ -131,6 +143,17 @@ export function App(): JSX.Element {
           </Suspense>
         )}
         {route === 'unknown' && <NotFound onHome={go('/')} />}
+
+        {!isAdmin && route === '/' && times?.masjid && (
+          <InstallStrip
+            kind={install.kind}
+            name={info?.installName || times.masjid.name}
+            dismissed={install.dismissed}
+            onInstall={() => void install.install()}
+            onDismiss={install.dismiss}
+          />
+        )}
+        {!isAdmin && updateReady && <UpdateStrip onApply={applyUpdate} />}
 
         {!isAdmin && <Foot info={info} />}
       </div>

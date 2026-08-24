@@ -264,3 +264,53 @@ to `[data-surface="musalli"]`; the admin panel still inherits it. See docs/DESIG
 
 **Contrast is measured, not eyeballed.** A harness samples the rendered pixels behind every text
 element in both themes. It has caught two real AA failures across slices 3 and 4.
+
+## Slice 5 — the PWA (0.1.0-dev.5)
+
+**`png.ts` is a PNG codec with no dependencies.** Deriving an icon needs read → scale → write,
+and nothing else. `sharp` is a native module and a real problem on arm64; the pure-JS libraries
+are large. Node already ships zlib, which is the only hard part of PNG — the rest is chunk
+framing and unfiltering scanlines. CLAUDE.md §10 explicitly allows a plain resizer because this
+runs once at upload, not on a request path. Scope is deliberately narrow: non-interlaced only,
+Adam7 refused by name rather than half-supported.
+
+It is also what makes CLAUDE.md §13's "nothing is served back byte-for-byte from an upload"
+TRUE rather than aspirational: an upload is decoded to pixels and a fresh file written from
+them, so no chunk, comment, colour profile or trailing data survives. There is a test that
+splices a payload into a tEXt chunk and asserts it is gone.
+
+**The icon has four sources, in order:** an upload here → the logo on the chosen timetable in
+Display (work order #2) → the platform's logo → the bundled mark. Each falls through on any
+failure, so it always resolves to something. Derivation is keyed on a sha256 of the SOURCE
+bytes, so the hourly re-check costs one hash unless the masjid actually changed their logo.
+
+Only PNG sources can be derived from, and that is a decision rather than an omission: §10
+specifies a PNG upload, Display's own uploader re-encodes to PNG, and decoding JPEG would mean
+the dependency this file exists to avoid. A source we cannot decode falls through.
+
+**The manifest is generated per request** and every field in it is dynamic — the name is a
+setting, `scope`/`start_url` are the tunnel path the admin can rename, the language follows the
+timetable. A static manifest would be wrong for every masjid but the first. `scope` missing the
+prefix is the failure worth knowing about: the app installs happily and then every navigation
+escapes into whatever else the masjid serves at their domain root.
+
+**The name is never the software's.** `installName` falls back to the masjid's name and then to
+a generic phrase, never "OpenMasjid Companion". A musalli installed their masjid.
+
+**The service worker is served from `<basePath>/sw.js`**, which is what makes its scope correct
+with no `Service-Worker-Allowed` games — the payoff of stripping the prefix before routing. It
+is served `no-cache`, because a worker in the browser's HTTP cache is a worker that cannot be
+replaced, and it holds the app's shell. Cache names carry the app version so a new build never
+reads the previous one's HTML. It never caches `/admin` or `/api/admin`.
+
+**An update never reloads the page on its own.** The new worker waits; the reader presses
+Refresh. Swapping it mid-read reloads what someone was looking at.
+
+**`secure` comes from the SERVER, not `location.protocol`.** A kiosk reaching this app at
+`http://192.168.1.20:7880` is a normal deployment and must not be told it is broken — it simply
+gets no worker and no install strip, which is correct (CLAUDE.md §6.4).
+
+**iOS is detected, not feature-detected.** Safari fires no `beforeinstallprompt` and exposes no
+API, and the absence of an event is indistinguishable from one that has not fired yet. An app
+that waits shows an iPhone user nothing, for ever — so iOS gets the Share-sheet instructions and
+no button.

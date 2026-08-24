@@ -24,10 +24,12 @@ import { Auth } from './Auth';
 import { AccountMenu } from './AccountMenu';
 import { RemoteAccess, type RemoteStatus } from './RemoteAccess';
 import { TimetablePicker, type TimetableStatus } from './Timetable';
+import { Appearance, type PwaStatus } from './Appearance';
 
 interface AdminStatus {
   remote: RemoteStatus;
   timetable: TimetableStatus;
+  pwa: PwaStatus;
 }
 
 export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
@@ -132,6 +134,8 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
             title="Add your appeals"
             body="Paste the share link of any appeal from OpenMasjid Donations and it appears in the app, tapping through to your own donation page to give."
           />
+          {status?.pwa && <Appearance status={status.pwa} onChanged={loadStatus} />}
+
           <Todo
             icon={<Share2 size={18} aria-hidden="true" />}
             title="Print the poster"

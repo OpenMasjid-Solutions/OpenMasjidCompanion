@@ -41,6 +41,12 @@ export const api = {
   get: <T>(p: string) => request<T>(p),
   post: <T>(p: string, body?: unknown) =>
     request<T>(p, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
+  /** Raw bytes, for the icon upload. Sent with its real content type rather than base64 inside
+   *  JSON, which would inflate a few hundred KB by a third for nothing. The server validates
+   *  from the magic numbers regardless, so the type declared here is a courtesy, not a claim it
+   *  acts on. */
+  postBinary: <T>(p: string, body: Blob, contentType: string) =>
+    request<T>(p, { method: 'POST', body, headers: { 'content-type': contentType } }),
 };
 
 /** The public bootstrap every page reads on load. No secrets — this is fetched by every
@@ -56,6 +62,9 @@ export interface AppInfo {
   publicUrl: string;
   /** The prefix the router is actually stripping. Every URL this page builds goes through it. */
   basePath: string;
+  /** What this app is called on a home screen — the masjid's name, not ours. The install
+   *  prompt uses it, so a musalli is told they are adding their masjid. */
+  installName: string;
   /** Whether install and notifications can HONESTLY be offered. Both need a secure context,
    *  which means the tunnel; over plain http on the LAN neither API exists at all. */
   remote: { configured: boolean; enabled: boolean; secure: boolean };

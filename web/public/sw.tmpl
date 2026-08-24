@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
+
+/*
+ * The service worker.
+ *
+ * Served from `<basePath>/sw.js`. The SERVER fills in the two placeholders below and hands
+ * this out from that path, which is what makes the scope right with no `Service-Worker-Allowed`
+ * games. That is the payoff of stripping the prefix before routing: the worker is registered at
+ * the same prefix the app is served under, so it controls exactly this app and nothing else on
+ * the masjid's domain.
+ *
+ * This file is a TEMPLATE, not a module. It is copied verbatim into the image by Vite's public
+ * directory and never bundled, because a service worker has to be a standalone script at a
+ * stable URL.
+ *
+ * What it is for: a musalli standing in a basement prayer hall with no signal should still be
+ * able to see today's times. Not a loading spinner, and not last week's times pretending to be
+ * today's — the page carries its own "last checked" marker for that.
+ */
+
+const VERSION = '__VERSION__';
+const BASE = '__BASE__';
+const SHELL = BASE + '/';
+
+// Versioned by the app's own version, so a new build never reads the previous one's cached
+// HTML — which is how a service worker pins a stale app on someone's phone indefinitely.
+const SHELL_CACHE = 'omc-shell-' + VERSION;
+const ASSET_CACHE = 'omc-assets-' + VERSION;
+const DATA_CACHE = 'omc-data-' + VERSION;
+const OURS = /^omc-(shell|assets|data)-/;
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches
+      .open(SHELL_CACHE)
+      .then((c) => c.add(new Request(SHELL, { cache: 'reload' })))
+      // A failed precache must not leave a broken worker installed. The runtime handlers below
+      // populate the cache on the first successful load anyway.
+      .catch(() => undefined),
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(names.filter((n) => OURS.test(n) && !n.endsWith(VERSION)).map((n) => caches.delete(n)));
+      // Take over open tabs now that the old caches are gone.
+      await self.clients.claim();
+    })(),
+  );
+});
+
+// The page asks for this after the user presses "Refresh" on the update prompt. Never on our
+// own initiative: swapping the worker under someone mid-scroll reloads the page they were
+// reading, which on a prayer times page is worse than being one version behind for a minute.
+self.addEventListener('message', (event) => {
+  if (event.data === 'skip-waiting') self.skipWaiting();
+});
+
+/** Anything the admin touches is NEVER cached — not the panel, not its API. A cached admin
+ *  shell on a shared phone is a small thing that becomes a bad thing later. */
+function isAdmin(url) {
+  const p = url.pathname;
+  return p === BASE + '/admin' || p.startsWith(BASE + '/admin/') || p.startsWith(BASE + '/api/admin');
+}
+
+/** The public timetable: the one thing worth having offline. */
+function isTimetable(url) {
+  return url.pathname === BASE + '/api/public/timetable';
+}
+
+/** Vite's hashed asset filenames are immutable — a change produces a new name — so they can be
+ *  cached hard and served without revalidation. */
+function isAsset(url) {
+  return url.pathname.startsWith(BASE + '/assets/');
+}
+
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  const fresh = fetch(request)
+    .then((res) => {
+      if (res && res.ok) cache.put(request, res.clone());
+      return res;
+    })
+    .catch(() => undefined);
+  // Serve what we have immediately and update behind it. The page's own "last checked" marker
+  // is what keeps this honest — see the server's /api/public/timetable.
+  return cached || fresh || Response.error();
+}
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return; // never touch another origin's traffic
+  if (isAdmin(url)) return; // straight to the network, uncached, always
+
+  // A navigation: try the network so a returning musalli gets the current app, and fall back to
+  // the cached shell when there is no signal. The shell then loads the cached timetable below,
+  // which is the whole point of this file.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      (async () => {
+        try {
+          const res = await fetch(request);
+          if (res && res.ok) {
+            const cache = await caches.open(SHELL_CACHE);
+            cache.put(SHELL, res.clone());
+          }
+          return res;
+        } catch {
+          const cached = await caches.match(SHELL, { cacheName: SHELL_CACHE });
+          return cached || Response.error();
+        }
+      })(),
+    );
+    return;
+  }
+
+  if (isTimetable(url)) {
+    event.respondWith(staleWhileRevalidate(request, DATA_CACHE));
+    return;
+  }
+
+  if (isAsset(url)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(ASSET_CACHE);
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const res = await fetch(request);
+        if (res && res.ok) cache.put(request, res.clone());
+        return res;
+      })(),
+    );
+    return;
+  }
+
+  // Everything else — the icons, the masjid's logo — network first, cache as a fallback.
+  event.respondWith(
+    (async () => {
+      try {
+        const res = await fetch(request);
+        if (res && res.ok && (url.pathname.includes('/api/public/logo') || url.pathname.includes('/api/public/icon'))) {
+          const cache = await caches.open(ASSET_CACHE);
+          cache.put(request, res.clone());
+        }
+        return res;
+      } catch {
+        const cached = await caches.match(request);
+        return cached || Response.error();
+      }
+    })(),
+  );
+});

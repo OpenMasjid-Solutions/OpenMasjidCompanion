@@ -142,3 +142,40 @@ export async function getTimetable(id: string, from: string, days: number): Prom
   const clamped = Math.max(1, Math.min(MAX_DAYS, Math.trunc(days)));
   return brokerCall('display', 'timetable', 'get', { id, from, days: clamped }, parseWith(FeedSchema, 'get'));
 }
+
+/**
+ * The masjid's logo, as attached to a timetable in Display.
+ *
+ * Work order #2, shipped by Display on 2026-08-24. A separate METHOD rather than a field on
+ * `get` because the two have opposite shapes: `get` is polled every fifteen minutes and its
+ * whole virtue is being ~18 KB, while a logo is 10–200 KB and changes once in the life of an
+ * install. Inlining it would multiply the steady-state cost of the feed by an order of
+ * magnitude for a payload that is identical every time.
+ *
+ * Display enforces raster-only from the MAGIC BYTES (not the filename) and caps it at 175 KB
+ * decoded, derived from the broker's 256 KB ceiling with base64's 4:3 overhead.
+ *
+ * `logo: null` is a normal answer — this timetable has no logo, or the file behind it is
+ * missing. Every failure is a fall-through to the next source in the chain; in particular a
+ * 404 here means the ID was wrong, and an older Display with no such route answers 401, so
+ * neither is worth branching on.
+ */
+const LogoSchema = z.object({
+  v: z.number(),
+  id: z.string().max(200),
+  logo: z
+    .object({
+      mime: z.string().max(64),
+      bytes: z.number().int().nonnegative(),
+      /** base64, with no `data:` prefix. */
+      data: z.string().max(400_000),
+    })
+    .nullable(),
+});
+
+export type TimetableLogo = z.infer<typeof LogoSchema>['logo'];
+
+export async function getTimetableLogo(id: string): Promise<BrokerResult<TimetableLogo>> {
+  const res = await brokerCall('display', 'timetable', 'logo', { id }, parseWith(LogoSchema, 'logo'));
+  return res.ok ? { ok: true, data: res.data.logo } : res;
+}

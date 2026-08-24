@@ -624,3 +624,32 @@ h1, h2, h3, p { margin: 0; }
    scans, and one filled row in a stack of five reads as a warning. */
 .picker__item--on { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); color: var(--color-primary); }
 .picker__name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+
+/* ── Install / update strips (musalli) ──────────────────────────────────────── */
+/* A strip at the foot of the page, not a dialog. Someone opened this to find out when
+   Maghrib is; nothing here may stand in front of that. */
+.strip {
+  display: flex; align-items: center; gap: 0.7rem;
+  width: min(30rem, 100%); margin: 1rem auto 0; padding: 0.8rem 0.9rem;
+  border-radius: 0.9rem;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+}
+.strip__body { flex: 1; min-width: 0; }
+.strip__title { font-weight: 700; font-size: 0.95rem; }
+.strip__text { font-size: 0.85rem; line-height: 1.5; color: var(--ink-scene-muted); margin-block-start: 0.15rem; }
+.strip__go { flex: none; }
+.strip__close { flex: none; }
+
+/* ── The home-screen preview (admin) ────────────────────────────────────────── */
+/* Shows the icon and the label together, at roughly the size a launcher draws them, because
+   "512px PNG" tells a volunteer nothing about whether their logo survives being an icon. */
+.home-preview {
+  display: flex; align-items: center; gap: 0.8rem;
+  margin-block-start: 0.9rem; padding: 0.8rem;
+  border-radius: var(--radius-card);
+  background: var(--glass-bg-inset); border: 1px solid var(--color-border);
+}
+.home-preview__icon { border-radius: 0.9rem; flex: none; object-fit: contain; background: #0F2044; }
+.home-preview__label { font-weight: 600; overflow-wrap: anywhere; }

@@ -11,15 +11,31 @@
     <meta name="theme-color" content="#030D1A" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#F0F9FF" media="(prefers-color-scheme: light)" />
     <meta name="description" content="Your masjid's prayer times, on your phone." />
-    <!-- The real, installable manifest is GENERATED per request by the server (it carries
-         the masjid's own name and icon, and a scope that follows the tunnel path), so it
-         is linked at runtime rather than here — see the server's PWA routes. -->
     <title>Prayer times</title>
-    <!-- The pre-install browser tab. Relative hrefs on purpose: the server injects a
-         `<base href>` per request, so these resolve under the tunnel prefix as well as
-         at the root without either path being baked into the build. -->
+    <!-- Every href here is RELATIVE on purpose: the server injects a `<base href>` per
+         request, so they resolve under the tunnel prefix as well as at the root without
+         either path being baked into the build. -->
+
+    <!-- The manifest is GENERATED per request — it carries the masjid's own name, their
+         icon, and a scope that follows the tunnel path. Linked here rather than injected
+         later because a browser reads it while parsing the head to decide whether the app
+         is installable at all. Over plain http on the LAN it is simply ignored, which is
+         the correct outcome rather than a bug (CLAUDE.md §6.4). -->
+    <link rel="manifest" href="manifest.webmanifest" />
+
+    <!-- The browser TAB keeps Companion's own mark: it is shown before anything is
+         installed and costs no work on the server. -->
     <link rel="icon" type="image/png" sizes="128x128" href="favicon.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+    <!-- The HOME SCREEN gets the masjid's, derived from their logo. iOS reads this in
+         preference to the manifest's icons, and it is the icon a musalli actually keeps. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="api/public/icon/192.png" />
+
+    <!-- Ask iOS and Android to run this without browser chrome once it is on a home
+         screen. The manifest's `display` covers Android; iOS still reads these. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Prayer times" />
     <script>
       // Apply the persisted look before first paint, so opening the app in a dark room
       // never flashes a white screen. The full prefs module hydrates immediately after.

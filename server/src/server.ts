@@ -29,6 +29,8 @@ import { type Appearance, type LogoImage, clearSessionCache, fetchAppearance, fe
 import { Cached, KEEP, loaded } from './cache';
 import { getSite, refreshSite } from './site';
 import { TimetableService, type TimetableState } from './timetableService';
+import { Icons, type IconKind, THEME_HEX } from './icons';
+import { buildManifest, installName } from './webmanifest';
 import { parseChangelog, readChangelog } from './changelog';
 
 const log = makeLog('server');
@@ -48,6 +50,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // Built here rather than passed in, so one server owns one timetable. `index.ts` starts its
   // background refresh; a test drives it directly and never starts a timer.
   const timetable = deps.timetable ?? new TimetableService(store);
+  // The icon set needs to know which timetable is chosen, because Display's logo hangs off it.
+  // A getter rather than a value: the admin can change the timetable while the server runs.
+  const icons = new Icons(store, () => timetable.chosenId);
 
   const app = Fastify({
     logger: false, // we log ourselves, and never log a secret
@@ -264,6 +269,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
          * LAN — a kiosk or a hallway screen may be pointed at it — so the answer is to say so
          * plainly rather than to hide the page or to pretend.
          */
+        /** What this app is called on a home screen. The install prompt names it, so a musalli
+         *  is told they are adding their masjid rather than a piece of software. */
+        installName: installName(store.get('app.name') ?? '', timetable.peek().feed?.masjidName ?? ''),
         remote: {
           configured: site.configured,
           enabled: site.enabled,
@@ -344,6 +352,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         // `peek`, not `get`: opening the panel must not block on a broker round trip, and the
         // background refresh keeps this warm anyway.
         timetable: summariseTimetable(timetable.peek()),
+        pwa: {
+          appName: store.get('app.name') ?? '',
+          /** What will actually appear under the icon on a home screen. */
+          effectiveName: installName(store.get('app.name') ?? '', timetable.peek().feed?.masjidName ?? ''),
+          icon: icons.status(),
+        },
         remote: {
           /** Is the Fabric there at all? A standalone install is not misconfigured, and must
            *  not be told to go and switch on something that does not exist for it. */
@@ -458,6 +472,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     const parsed = ChooseBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'Please choose a timetable.' });
     timetable.setChosen(parsed.data.id);
+    // A different timetable may carry a different masjid's logo, so the icon is no longer
+    // necessarily right. Not awaited: the admin should not wait on a re-derive to see the times.
+    void icons.invalidate();
     // Fetch it straight away so the panel can show the admin what they just picked, and so a
     // wrong choice is visible immediately rather than at the next poll.
     const state = await timetable.get();
@@ -468,6 +485,131 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   app.post('/api/admin/timetable/refresh', { preHandler: requireAdmin }, async (req, reply) => {
     if (!platformCallOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
     return { data: summariseTimetable(await timetable.refresh()) };
+  });
+
+  // ── The PWA: manifest, icons, service worker ────────────────────────────────
+
+  /**
+   * The web manifest, generated per request.
+   *
+   * Never a static file: the name is a setting, `start_url`/`scope` are the tunnel path the
+   * admin chose and can rename, and the language follows the masjid's timetable. A static one
+   * would be wrong for every masjid but the first.
+   *
+   * Deliberately NOT cached hard. Renaming the app or changing the icon should reach a phone
+   * that reinstalls, and a manifest is fetched once at install — there is nothing to save here.
+   */
+  app.get('/manifest.webmanifest', async (_req, reply) => {
+    const feed = timetable.peek().feed;
+    const manifest = buildManifest({
+      appName: store.get('app.name') ?? '',
+      masjidName: feed?.masjidName ?? '',
+      basePath: getBasePath(),
+      lang: feed?.language ?? 'en',
+      theme: THEME_HEX,
+      background: THEME_HEX,
+    });
+    reply.header('cache-control', 'no-cache');
+    reply.type('application/manifest+json');
+    return manifest;
+  });
+
+  const ICON_ROUTES: Record<string, IconKind> = {
+    '192.png': 'icon-192',
+    '512.png': 'icon-512',
+    'maskable.png': 'maskable-512',
+  };
+
+  /**
+   * The derived icons.
+   *
+   * Cached by ETag rather than by time: the icon changes when the masjid changes their logo,
+   * which is rare but must not take a day to appear. The bytes are already on disk, so a
+   * revalidation costs a hash and a 304.
+   */
+  app.get<{ Params: { name: string } }>('/api/public/icon/:name', async (req, reply) => {
+    const kind = ICON_ROUTES[req.params.name];
+    if (!kind) return reply.code(404).send({ error: 'Not found.' });
+    const body = await icons.read(kind);
+    if (!body) return reply.code(404).send({ error: 'No icon is available.' });
+
+    const etag = `"${createHash('sha256').update(body).digest('base64url').slice(0, 22)}"`;
+    reply.header('cache-control', 'public, max-age=3600');
+    reply.header('etag', etag);
+    if (req.headers['if-none-match'] === etag) return reply.code(304).send();
+    return reply.type('image/png').send(body);
+  });
+
+  /**
+   * The service worker.
+   *
+   * Served from THIS path — `<basePath>/sw.js` as the browser sees it — which is what makes the
+   * scope correct with no `Service-Worker-Allowed` header games. That is the payoff of
+   * stripping the prefix before routing.
+   *
+   * `no-cache` is not optional: a service worker cached by the browser is a service worker that
+   * cannot be replaced, and this one holds the app's shell. Getting it wrong pins a stale build
+   * on a phone with no way to fix it remotely.
+   */
+  const swTemplate = (() => {
+    for (const p of [path.join(publicDir, 'sw.tmpl'), path.resolve(__dirname, '..', '..', 'web', 'public', 'sw.tmpl')]) {
+      try {
+        return fs.readFileSync(p, 'utf8');
+      } catch {
+        /* try the next */
+      }
+    }
+    log.warn('no sw.tmpl found — the app will not work offline');
+    return '';
+  })();
+
+  app.get('/sw.js', async (_req, reply) => {
+    if (!swTemplate) return reply.code(404).send({ error: 'Not found.' });
+    reply.header('cache-control', 'no-cache');
+    reply.header('service-worker-allowed', getBasePath() + '/');
+    return reply
+      .type('text/javascript')
+      .send(swTemplate.split('__VERSION__').join(config.version).split('__BASE__').join(getBasePath()));
+  });
+
+  // ── Admin: the app's name and icon ──────────────────────────────────────────
+
+  /** PNG only, and larger than the global body limit — a 1024px logo is legitimately a few
+   *  hundred KB. Parsed as a raw buffer: the bytes are validated from their magic numbers and
+   *  re-encoded, so nothing here is trusted because of what it claimed to be. */
+  app.addContentTypeParser('image/png', { parseAs: 'buffer', bodyLimit: 4 * 1024 * 1024 }, (_req, body, done) => done(null, body));
+
+  app.post('/api/admin/icon', { preHandler: requireAdmin, bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length === 0) {
+      return reply.code(400).send({ error: 'Please choose a PNG image.' });
+    }
+    const res = await icons.setUpload(body);
+    if (!res.ok) return reply.code(400).send({ error: res.error });
+    return { data: icons.status() };
+  });
+
+  /** Go back to the automatic chain: the timetable's logo, then the platform's, then ours. */
+  app.post('/api/admin/icon/reset', { preHandler: requireAdmin }, async () => {
+    await icons.clearUpload();
+    return { data: icons.status() };
+  });
+
+  /**
+   * The name under the icon.
+   *
+   * Empty means "follow the masjid name from the timetable", which is the right default and the
+   * reason this is not simply pre-filled with it — a masjid that renames itself in Display
+   * should not have to remember to rename it here too.
+   */
+  const NameBody = z.object({ name: z.string().max(60) });
+  app.post('/api/admin/appname', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = NameBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'That name is too long — 60 characters at most.' });
+    const name = parsed.data.name.trim();
+    if (name) store.set('app.name', name);
+    else store.del('app.name');
+    return { data: { appName: name, effective: installName(name, timetable.peek().feed?.masjidName ?? '') } };
   });
 
   // ── Static web app (built by Vite into ./public) ────────────────────────────
