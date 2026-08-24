@@ -219,7 +219,8 @@ On a real OpenMasjidOS box with both apps installed from the dev channel:
 
 3. **`sunrise` is present per day** — astronomical Shurūq, additive to the ask, free for Display
    to compute. Display offered to drop it if unwanted.
-   → *Open question for Hasan; see the end of this addendum.*
+   → *Kept. Companion shows it. See "Decided" at the end of this addendum — Display should not
+   drop the field.*
 
 4. **Two extra statuses.** `409 {error:'no_location'}` — the timetable exists but the admin
    never set coordinates, so there is nothing to compute times *for*; answering anyway would
@@ -301,10 +302,16 @@ store allows, Arabic labels — measures **18.5 KB**, so the broker's 256 KB cei
 of about 14 in hand. The 45-day cap is really about CPU: every day is a fresh solar computation
 in the same process that draws the masjid's screens at 1 fps.
 
-## Still open, for Hasan
+## Decided
 
-- **Shurūq.** Display ships `sunrise` and will drop it if we say so. `CLAUDE.md` §4 does not list
-  it in the v1 musalli view. It is one row, it is what a printed masjid timetable normally has,
-  and it costs nothing — but it is a scope decision, so it is asked rather than assumed.
+- **Shurūq: keep it, and show it** (Hasan, 2026-08-23). Companion renders `sunrise` as a row on
+  the today, week and month views, visually distinct from the five jamā'āt because it is not one
+  — it is a sun event, with no Iqamah. It is what a printed masjid timetable normally carries and
+  a musalli timetable without it looks incomplete. **Display should NOT drop the field.** This is
+  a small addition to `CLAUDE.md` §4's v1 list, made deliberately.
+
+## Still open
+
 - **Structured Hijri.** Available additively (`formatToParts`) if Companion ever needs to
-  reformat the date rather than render Display's label. Nothing in v1 needs it.
+  reformat the date rather than render Display's label. Nothing in v1 needs it, and asking for it
+  would mean this app was formatting a Hijri date, which is close to computing one. Leave it.

@@ -128,14 +128,28 @@ that is not this commit), and the capability set itself.
 
 ---
 
-## Open questions
+## Decisions taken outside CLAUDE.md
 
-Recorded here rather than guessed at. See the reply that raised them.
+Recorded here because both are small, deliberate departures from the letter of the spec.
 
-1. **Shurūq (sunrise).** Display's shipped feed carries a `sunrise` per day, additive to the agreed
-   contract. `CLAUDE.md` §4 does not list it in the v1 musalli view. Showing it is one row and is
-   what a timetable normally has; it is a scope decision, not a technical one.
-2. **The timezone library.** `CLAUDE.md` §14 asks for "a real IANA-tz date library". The current
-   plan is a small, heavily-tested helper over `Intl.DateTimeFormat`, which *is* the IANA database
-   and adds no dependency to a Pi-friendly image — but it is a deviation from the letter of §14 and
-   is called out rather than assumed.
+### Shurūq is shown, though §4 does not list it
+
+*Decided by Hasan, 2026-08-23.* Display's shipped feed carries a `sunrise` per day — additive to
+the agreed contract, and free for Display to compute. `CLAUDE.md` §4's v1 list does not mention
+it. It is shown: one row on the today, week and month views, styled apart from the five jamā'āt
+because it is a sun event rather than a prayer and has no Iqamah. A masjid timetable without
+Shurūq looks incomplete, and the data is already on the wire.
+
+### The IANA timezone database, without a date library
+
+`CLAUDE.md` §14 asks for "a real IANA-tz date library". This app instead uses a small, heavily
+tested helper over `Intl.DateTimeFormat` with an explicit `timeZone`.
+
+*Why.* `Intl` **is** the IANA database — the same tzdata, shipped with Node and kept current by
+it, with no dependency to add to a Pi-friendly image and nothing to keep patched. Display, which
+owns the far harder version of this problem, does the same thing (`zonedNoon`, `effectiveTimeZone`).
+
+*What it costs.* The conversions this app needs — a date plus "HH:mm" plus an IANA zone, into an
+instant — have to be written and tested rather than called. That is exactly where the DST tests
+§14 requires already have to live, so the tests are not extra work; the arithmetic is. If this
+turns out to be wrong, it is one module to swap for Luxon.
