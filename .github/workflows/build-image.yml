@@ -1,0 +1,235 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 OpenMasjid-Solutions
+name: Build image
+
+# Builds this app's Dockerfile multi-arch (amd64 + arm64) and pushes it to GHCR. The
+# owner is taken from the repo (lowercased), so under the OpenMasjid-Solutions org the
+# image is
+#   ghcr.io/openmasjid-solutions/openmasjidcompanion
+# which is what docker-compose.yml references.
+#
+# TWO CHANNELS, and which tags a build may write is decided ONLY by the ref it ran on:
+#
+#   ref                tags pushed                                installed by
+#   -----------------  -----------------------------------------  --------------------------
+#   refs/heads/dev     :<version> (X.Y.Z-dev.N)  +  :dev          the OpenMasjidOS dev channel
+#   refs/heads/main    :<version> (X.Y.Z)        +  :latest       every masjid (stable)
+#
+# A `v*` TAG PUBLISHES NOTHING, and must not: see the `on:` block below. This table used to
+# list it as a third publisher, which contradicted the trigger 25 lines under it.
+#
+# Both channels publish an IMMUTABLE VERSIONED tag from manifest.yaml, and a moving alias
+# beside it. The catalog pins the versioned tag; the alias is a convenience for humans.
+#
+# The versioned dev tag is not cosmetic — it is what makes a dev update happen at all. The
+# platform detects an update by comparing the catalog's version against the installed one,
+# so a bare :dev tag republishing new content under an unchanged version string is
+# invisible to it: nothing to notify, nothing to update to. A distinct X.Y.Z-dev.N per dev
+# build is what the platform can actually see.
+#
+# The split still guarantees a dev build cannot become what a masjid installs from the
+# stable catalog: dev never moves :latest, the version-format checks below stop a dev build
+# from claiming a release version (or vice versa), and OpenMasjidAPPS fails its stable
+# build outright on any `-dev.` image tag. Stable installs are additionally pinned by
+# @sha256 in docker-compose.yml on main. See CLAUDE.md -> "Branching policy".
+#
+# After the first run, make the GHCR package Public (owner -> Packages -> package
+# settings) so masjid hosts can pull it without authentication.
+
+on:
+  push:
+    branches: [main, dev]
+    # NO `tags:` — a release tag must NOT republish the image, and that is load-bearing.
+    #
+    # The chain is publish → pin → tag (CLAUDE.md §0). The pin can only be written after the
+    # image exists, so the tag necessarily comes after it. If the tag also built, it would
+    # republish `:X.Y.Z` over the digest that had just been pinned — and these builds are not
+    # reproducible (BuildKit stamps `created` into the image config, so a rebuild of an
+    # identical tree yields a different digest; `:0.66.1` was published twice with two
+    # digests, which is how that was learned). The pin would be stale the moment it was made,
+    # every release, and the verify job below would fail every correctly-executed one.
+    #
+    # So `main` is the only publisher of a stable image, and the tag is a marker over a
+    # commit whose image already exists. `verify-tag` re-checks that rather than rebuilding.
+    #
+    # Docs-only changes don't change the image — skip the (slow) multi-arch build.
+    #
+    # Listed one by one rather than as `**/*.md`, because that blanket glob was wrong the
+    # moment CHANGELOG.md started shipping INSIDE the image (the Dockerfile COPYs it, and
+    # the panel serves it as "What's new"). Under the glob, a commit that only edited the
+    # release notes published nothing, so the notes an admin read in the panel could sit a
+    # build behind the notes in the repo — the one file where that is actively misleading.
+    # docker-compose.yml stays here: it is not in the image, and the `channel` job in
+    # checks.yml is what guards it.
+    paths-ignore:
+      - 'docs/**'
+      - 'screenshots/**'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'CLAUDE.md'
+      - 'CLA.md'
+      - 'LICENSE'
+      - 'docker-compose.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned to full commit SHAs, not mutable tags. This job holds
+      # `packages: write` and publishes the image EVERY MASJID INSTALLS, so a moved tag on
+      # any action used here would be a direct supply-chain route into production. Keep the
+      # version in the trailing comment when bumping. Same convention as cla.yml in this
+      # repo and OpenMasjidAPPS/.github/workflows/build-catalog.yml. (DISPLAY-004)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Resolve image name + channel tags
+        id: meta
+        run: |
+          ver=$(grep -E '^version:' manifest.yaml | head -1 | sed -E 's/^version:[[:space:]]*//' | tr -d "\"' \r")
+          [ -n "$ver" ] || ver=latest
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          name=$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/$owner/$name"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+          # The channel gate — ONE decision, made from GITHUB_REF and nothing else. Not an
+          # input, not a repo variable a caller could set. Anything that is not
+          # refs/heads/dev (main, a v* tag, a manual dispatch on either) is stable.
+          #
+          # BOTH channels publish an IMMUTABLE, VERSIONED tag taken from manifest.yaml; they
+          # differ only in the moving alias beside it (:dev vs :latest). The versioned tag is
+          # what the catalog pins, and it is what makes a dev update detectable at all:
+          # OpenMasjidOS spots an update by comparing the catalog's version to the installed
+          # one, so republishing new content under an unchanged version (what a bare :dev tag
+          # does) is invisible to it — nothing to notify, nothing to update to.
+          #
+          # Which makes the version STRING load-bearing, so it is checked before anything is
+          # pushed. A dev build must carry a -dev.N prerelease and a stable build must not:
+          # without the first check, forgetting the suffix on dev would publish
+          # <image>:0.66.1 from the dev branch and OVERWRITE the stable release tag of that
+          # name; without the second, a prerelease would be published as a release and move
+          # :latest onto it. Both are silent in the registry, so they fail here instead.
+          case "$ver" in
+            *-dev.*) is_prerelease=yes ;;
+            *)       is_prerelease=no ;;
+          esac
+
+          if [ "$GITHUB_REF" = 'refs/heads/dev' ]; then
+            channel=dev
+            if [ "$is_prerelease" != 'yes' ]; then
+              echo "::error file=manifest.yaml::the dev branch must declare a prerelease version (X.Y.Z-dev.N), got '$ver'. Publishing it would overwrite the stable :$ver image tag. See CLAUDE.md → Branching policy."
+              exit 1
+            fi
+            tags=$(printf '%s\n%s' "$image:$ver" "$image:dev")
+          else
+            channel=stable
+            if [ "$is_prerelease" = 'yes' ]; then
+              echo "::error file=manifest.yaml::a stable build must not declare a prerelease version, got '$ver'. Set a release version (X.Y.Z) before merging to main."
+              exit 1
+            fi
+            tags=$(printf '%s\n%s' "$image:$ver" "$image:latest")
+          fi
+
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          {
+            echo 'tags<<TAGS_EOF'
+            echo "$tags"
+            echo 'TAGS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          echo "channel=$channel for $GITHUB_REF; pushing:"
+          echo "$tags" | sed 's/^/  /'
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # Resolved by the channel gate above — do NOT hard-code :latest back in here.
+          tags: ${{ steps.meta.outputs.tags }}
+          # Scope the layer cache per CHANNEL (not per ref) so a dev build cannot poison the
+          # cache a stable release restores from, while main and every v* tag still share
+          # one warm cache — scoping per ref_name would give each release tag an empty
+          # cache and make every release a cold multi-arch build.
+          cache-from: type=gha,scope=${{ steps.meta.outputs.channel }}
+          cache-to: type=gha,mode=max,scope=${{ steps.meta.outputs.channel }}
+
+      # Tell OpenMasjidAPPS to rebuild its catalog, now that the image this commit declares
+      # actually exists in GHCR.
+      #
+      # Without this, publishing a dev build reached nobody. The catalog only ever rebuilt on
+      # a push to OpenMasjidAPPS itself, on its hourly schedule, or by hand — across its whole
+      # history, repository_dispatch had fired ZERO times, because this step was commented
+      # out here and in the sibling apps. So the only thing that picked up a dev build was the
+      # cron, and GitHub fires an "hourly" schedule roughly every three hours under load. A
+      # published dev build sat invisible until a tick happened to come round: Students
+      # published v0.46.0-dev.2 and the dev catalog still served -dev.1 hours later, so
+      # OpenMasjidOS correctly reported "up to date" and no masjid could get the build.
+      #
+      # It runs on BOTH publishing paths, not just releases. The commented-out version was
+      # `startsWith(github.ref, 'refs/tags/v')` — stable-only, so it would not have fired for
+      # a dev push at all, which is the case that actually needed it.
+      #
+      # Deliberately NOT blocking (continue-on-error): the image is already pushed by this
+      # point, and a catalog rebuild that fails must not turn a successful publish red. The
+      # hourly cron on the OpenMasjidAPPS side stays as the floor under this — this step makes
+      # the update prompt arrive in minutes instead of hours, it is not the only route.
+      #
+      # Dispatching from here also means the image is in GHCR before the catalog goes looking,
+      # which matters because the catalog pins an EXACT tag: an entry that lands before its
+      # image exists is a pull failure on someone's box. It does not close that window
+      # entirely — an hourly tick landing mid-build can still read the new manifest version
+      # before the image is pushed — which is the reason not to bump the version until the
+      # build that will publish it is the one being pushed.
+      #
+      # Copied from OpenMasjidDisplay's step so every app in the family behaves the same,
+      # including the empty-token skip: a fork or a contributor without the org secret prints
+      # why it skipped and exits 0 rather than failing.
+      #
+      # ONE deliberate difference, and it is the reason a verbatim copy would not have worked.
+      # The org secret is actually named CATLOG_PUSH_TOKEN — missing the "A" — while every app
+      # in the family references CATALOG_PUSH_TOKEN. So the token always resolved to empty and
+      # every notify step silently took the skip path: Kiosk's own runs print "CATALOG_PUSH_TOKEN
+      # not set — skipping catalog dispatch", which is why repository_dispatch has fired ZERO
+      # times org-wide even where this step was already enabled. Enabling it here without
+      # accepting the real name would have changed nothing.
+      #
+      # So take EITHER name: an unset secret is the empty string, which is falsy, so `||`
+      # picks whichever exists. That works today against the misspelt secret and keeps working
+      # after it is renamed, with no follow-up commit needed. Once every repo is on a correctly
+      # spelt secret the fallback can be dropped.
+      # DEV ONLY. The stable catalog does not track a branch — it moves when a catalog
+      # maintainer merges a registry.yaml PR (CLAUDE.md §0c) — so a rebuild dispatched on a
+      # stable release would regenerate the same catalog from the same pinned commit. The
+      # condition used to also test `refs/tags/v*`, which this workflow never runs on at all.
+      - name: Notify catalog to rebuild
+        if: github.ref == 'refs/heads/dev'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.CATALOG_PUSH_TOKEN || secrets.CATLOG_PUSH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "CATALOG_PUSH_TOKEN not set — skipping catalog dispatch (add it as an org/repo secret to auto-publish)."
+            exit 0
+          fi
+          gh api repos/OpenMasjid-Solutions/OpenMasjidAPPS/dispatches -f event_type=rebuild-catalog
+          echo "Requested an OpenMasjidAPPS catalog rebuild."

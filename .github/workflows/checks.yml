@@ -1,0 +1,177 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 OpenMasjid-Solutions
+name: Checks
+
+# Build and TEST both halves of the app.
+#
+# The server compiles inside the Dockerfile too, so a type error would fail an image build —
+# but a compile is not a test run, and `tsx` strips types without checking them, so neither
+# the build nor the runner alone is evidence that a test still means what it says. All three
+# steps below (build, typecheck:tests, test) exist because each catches something the others
+# cannot.
+#
+# Runs on PRs and on pushes to main AND dev, so a merge is verified as well as proposed —
+# all development happens on dev (CLAUDE.md §0), so leaving dev out would mean the branch
+# every change lands on was the one branch nothing tested. Deliberately cheap and hermetic:
+# no Docker, no registry, no secrets, so it finishes in well under a minute and cannot
+# publish anything.
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+# Read-only. This job must never be able to publish an artifact.
+permissions:
+  contents: read
+
+# A new push supersedes an in-flight run for the same ref.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The dev channel's safety catch. Two symmetric mistakes are possible once this repo has
+  # two channels, and both are quiet — the app builds, boots and looks fine either way:
+  #
+  #   1. dev's moving :dev image reaches main. main is what the stable catalog serves, so
+  #      every masjid would install whatever happened to be on dev at the time. This is the
+  #      severe one, and merging dev -> main without repinning is all it takes.
+  #   2. a digest pin is left behind on dev. The dev channel would then keep installing one
+  #      frozen old build while CI happily publishes a :dev image nobody consumes, so dev
+  #      testing silently stops testing anything.
+  #
+  # Docs alone don't stop either (the merge is exactly when someone is in a hurry), so this
+  # asserts it. Runs on both channels: for a PR the target is base_ref, for a push it's the
+  # branch itself.
+  channel:
+    name: channel — compose image matches its branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Assert the version and every compose image match the channel
+        env:
+          TARGET: ${{ github.base_ref || github.ref_name }}
+        run: |
+          ver=$(grep -E '^version:' manifest.yaml | head -1 | sed -E 's/^version:[[:space:]]*//' | tr -d "\"' \r")
+          # EVERY service, not just the first. One un-updated image line in a multi-service
+          # compose is the whole bug class this job exists to stop, and reading only the
+          # primary service would sail straight past it.
+          imgs=$(grep -E '^[[:space:]]*image:' docker-compose.yml \
+                 | sed -E 's/^[[:space:]]*image:[[:space:]]*//' | tr -d "\"'\r")
+          echo "target branch  : $TARGET"
+          echo "manifest ver   : $ver"
+          echo "compose images :"; echo "$imgs" | sed 's/^/  /'
+          [ -n "$imgs" ] || { echo "::error file=docker-compose.yml::no image: found"; exit 1; }
+
+          case "$ver" in *-dev.*) prerelease=yes ;; *) prerelease=no ;; esac
+          fail=0
+
+          case "$TARGET" in
+            main)
+              if [ "$prerelease" = 'yes' ]; then
+                echo "::error file=manifest.yaml::main must declare a release version (X.Y.Z), not the prerelease '$ver'."
+                fail=1
+              fi
+              # Unquoted on purpose: an image reference cannot contain whitespace, so word
+              # splitting iterates the lines without a pipe — a `| while` would run the body
+              # in a subshell and every fail=1 would be lost when it exited.
+              for img in $imgs; do
+                # A digest-pinned ref ends in hex, so match the TAG part: this catches
+                # ":dev", ":0.67.0-dev.1" and ":dev@sha256:…" alike — pinning a dev tag by
+                # digest still ships the dev image.
+                tag=${img##*/}; tag=${tag#*:}; tag=${tag%%@*}
+                case "$tag" in
+                  dev|*-dev.*|*-dev)
+                    echo "::error file=docker-compose.yml::main must never reference a dev image; '$img' has tag '$tag'. Repin to <version>@sha256:<digest> before merging to main."
+                    fail=1 ;;
+                esac
+                if ! echo "$img" | grep -qE '@sha256:[0-9a-f]{64}$'; then
+                  echo "::error file=docker-compose.yml::main requires every image digest-pinned (<version>@sha256:<64 hex>); got '$img'."
+                  fail=1
+                fi
+              done
+              if [ "$fail" -eq 0 ]; then echo "OK — stable channel: release version, every image digest-pinned."; fi ;;
+
+            dev)
+              # The dev channel is only detectable if the catalog can pin an exact, immutable
+              # tag per build, so the compose must name the manifest's own version. A bare
+              # :dev here is the original bug: new content under an unchanged reference, which
+              # the platform cannot see. A STALE version is the mirror image — the dev channel
+              # would keep installing an old build while looking healthy.
+              if [ "$prerelease" != 'yes' ]; then
+                echo "::error file=manifest.yaml::the dev branch must declare a prerelease version (X.Y.Z-dev.N), got '$ver'. Publishing it would overwrite the stable :$ver image tag."
+                fail=1
+              fi
+              for img in $imgs; do
+                tag=${img##*/}; tag=${tag#*:}; tag=${tag%%@*}
+                if [ "$tag" = 'dev' ]; then
+                  echo "::error file=docker-compose.yml::'$img' pins the moving :dev tag. The dev catalog pins an exact tag, so use :$ver — a moving tag republishes new content under an unchanged reference, which the platform cannot detect as an update."
+                  fail=1
+                elif [ "$tag" != "$ver" ]; then
+                  echo "::error file=docker-compose.yml::'$img' has tag '$tag' but manifest.yaml says '$ver'. Every service must reference the version this build publishes, or the dev channel installs something other than this commit."
+                  fail=1
+                fi
+              done
+              if [ "$fail" -eq 0 ]; then echo "OK — dev channel: prerelease version, every image on :$ver."; fi ;;
+
+            *)
+              echo "No channel rule for '$TARGET' — nothing to assert." ;;
+          esac
+          exit $fail
+
+  server:
+    name: server — build, typecheck, test
+    runs-on: ubuntu-latest
+    steps:
+      # SHA-pinned, same convention as build-image.yml and cla.yml. Version in the comment.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22' # match the runtime in the Dockerfile
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      # `npm ci` not `npm install`: install may resolve a newer version inside a semver
+      # range and rewrite the lockfile, so CI would be testing something other than what
+      # the lockfile pins.
+      - run: npm ci
+        working-directory: server
+
+      - run: npm run build
+        working-directory: server
+
+      # tsconfig.json EXCLUDES **/*.test.ts (they must never reach dist/ or the image), so
+      # the build above typechecks none of them — and tsx STRIPS types without checking, so
+      # a test can call a function that no longer exists, with arguments that no longer
+      # typecheck, and still pass. tsconfig.check.json is the same config with the tests
+      # included, and `npm test` is what runs it.
+      - run: npm run typecheck:tests
+        working-directory: server
+
+      - run: npm test
+        working-directory: server
+
+  web:
+    name: web — typecheck, build, audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+        working-directory: web
+
+      # `npm run build` is `tsc --noEmit && vite build`, so this typechecks as well as bundles.
+      - run: npm run build
+        working-directory: web
+
+      # Fail on a new high/critical advisory rather than waiting for someone to run audit by
+      # hand. This half is what a musalli's phone actually loads.
+      - run: npm audit --audit-level=high
+        working-directory: web

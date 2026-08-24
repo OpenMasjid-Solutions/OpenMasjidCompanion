@@ -1,0 +1,33 @@
+{
+  "name": "openmasjid-companion-server",
+  "private": true,
+  "version": "0.1.0-dev.1",
+  "description": "API + push scheduler + storage + static web host for OpenMasjid Companion",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.check.json",
+    "test": "node --import tsx --test src/basePath.test.ts src/ingress.test.ts src/store.test.ts src/manifest.test.ts src/licenseHeaders.test.ts src/testFileCoverage.test.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/static": "^10.1.3",
+    "better-sqlite3": "^12.2.0",
+    "fastify": "^5.2.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "yaml": "^2.7.0"
+  },
+  "allowScripts": {
+    "better-sqlite3": true,
+    "esbuild": true
+  }
+}

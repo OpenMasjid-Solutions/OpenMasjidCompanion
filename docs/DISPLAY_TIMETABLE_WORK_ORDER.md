@@ -187,3 +187,124 @@ On a real OpenMasjidOS box with both apps installed from the dev channel:
 - No write methods of any kind.
 - No change to the public widget, the volunteer page, or `commands`.
 - No new platform work — the broker as shipped in OpenMasjidOS ≥ v0.40.0 carries this as-is.
+
+---
+
+# Addendum — SHIPPED. What Display actually built (2026-08-23)
+
+> **This section, not the ask above, is the contract Companion is written against.** The ask
+> stays as written because it is the history of the request; this records the answer. Display
+> shipped `timetable` on its **dev channel** (`0.70.0-dev.83`), with the `fabric.provides`
+> manifest entry in the same build as the routes, as asked.
+>
+> **The authoritative shape is the `Fabric*` interfaces in Display's
+> `server/src/fabricTimetable.ts`**, written up in its `docs/USING_THE_FABRIC.md` §8. This
+> addendum is Companion's copy of that, kept in step per CLAUDE.md §2. **The Display repo's copy
+> of this work order needs the same addendum** — that is a note for a maintainer, not something
+> this repo may do.
+
+## Six deliberate divergences, and what each means for the client
+
+1. **`jumuah[].adhan` is always `null`.** Not an omission: a Display timetable configures
+   Jumu'ah as **jamā'ah times only** — there is no per-Jumu'ah Adhan field anywhere in its
+   model. The example earlier in this document showed `13:00` and was wrong to. On the wall, the
+   Friday countdown runs to the calculated **Dhuhr** adhan relabelled "Jumu'ah".
+   → *Companion reads that day's `prayers.dhuhr.adhan` when it needs an adhan time for Jumu'ah,
+   and never renders `jumuah[].adhan`.*
+
+2. **`jumuah` is `[]` on every day that is not a Friday** *in the masjid's own timezone* (which
+   is not always UTC's Friday). Display's screens carry a standing Jumu'ah strip on all seven
+   days as a reference; repeating that here would assert a jamā'ah on a Tuesday.
+   → *Companion shows Jumu'ah on the day it is sent, and does not carry it forward.*
+
+3. **`sunrise` is present per day** — astronomical Shurūq, additive to the ask, free for Display
+   to compute. Display offered to drop it if unwanted.
+   → *Open question for Hasan; see the end of this addendum.*
+
+4. **Two extra statuses.** `409 {error:'no_location'}` — the timetable exists but the admin
+   never set coordinates, so there is nothing to compute times *for*; answering anyway would
+   return plausible-looking times for latitude 0, longitude 0. `405 {error:'method_not_allowed'}`
+   on a non-POST. And the envelope refuses with **`403`, not `401`** (a 401 without
+   `WWW-Authenticate` is wrong, and it matches Display's existing inbound route).
+   → *`409` is Companion's "prayer times aren't set up yet" state, named precisely in the admin
+   panel. Retrying it changes nothing, so it must not be treated as a transient failure.*
+
+5. **`hijri` is `{ label }` only**, already localised to the timetable's own language. Structured
+   day/month/year is available additively if asked for.
+   → *Companion renders the label. It does not parse it, and it never computes a Hijri date.*
+
+6. **`name` is the admin's PRIVATE label** ("Name (for you)" — e.g. "Women's section"), never
+   shown on a Display screen.
+   → *Exactly right for Companion's admin timetable picker. It must never be rendered on the
+   musalli page, which shows `masjidName`.*
+
+## The full error set a client has to branch on
+
+| status | body                           | meaning for Companion                                                            |
+| ------ | ------------------------------ | -------------------------------------------------------------------------------- |
+| `400`  | `{error:'bad_request'}`        | our bug — a malformed `id`/`from`, or `days` outside 1–45. Not retryable.          |
+| `403`  | `{error:'forbidden'}`          | the envelope refused, deliberately not saying which part. Not retryable.           |
+| `404`  | `{error:'unknown_timetable'}`  | the admin deleted it in Display → ask them to pick again; serve the stale cache.   |
+| `405`  | `{error:'method_not_allowed'}` | our bug — both methods are POST.                                                   |
+| `409`  | `{error:'no_location'}`        | **not an error to retry.** The admin must set coordinates in Display.              |
+| `429`  | `{error:'too_many_requests'}`  | Display's own 60/min socket-keyed limiter. Back off.                               |
+| `503`  | `{error:'not_ready'}`          | Display has no secret yet (still starting). Retry.                                 |
+| `5xx`  | anything                       | "ask again later".                                                                 |
+
+Plus the **platform's** own `{ "fabric_error": { "code": … } }` — `not_granted`,
+`target_not_installed`, `target_unreachable`, `timeout`, `rate_limited` — which never reaches
+Display at all. Every one of these means *"feature unavailable, app still fine"*.
+
+## Two properties worth relying on
+
+- **`timezone` is the zone the times were actually COMPUTED in**, not the stored config string.
+  Display's stored field is `''` for "this box's zone", and its engine also falls back to the
+  host zone for a name `Intl` does not recognise — so passing the config string through would be
+  silently an hour or more out, on every prayer, for everyone who installed this app. Companion
+  schedules push notifications from this field and must never substitute anything else for it.
+- **The answer contains no clock**, so it is deterministic and Companion may cache it freely.
+
+## LAN-only: implemented differently, and more strictly
+
+This document asked for Display's own commands-route doctrine — *"exact path only… there is no
+header to trust for it"* — and Display kept the **intent** while rejecting the literal form,
+correctly. Its router derives `pathname` with `new URL()`, which **normalises**, so nine
+different request lines all arrive as `pathname === '/fabric/timetable/list'`
+(`/display/../…`, `%2e%2e`, `.%2e`, an absolute-form target, a protocol-relative one, a
+backslash separator, …). Matching the parsed pathname would therefore have let a tunnelled
+request through. The shipped route compares the **raw request line** instead, which is strictly
+stronger: the tunnel does not strip the prefix, so every one of those shapes is a *rewrite* of
+the prefix rather than a way to remove it, and no tunnelled spelling can equal the bare path. A
+query string is tolerated in case the platform ever appends a trace id.
+
+Display also deliberately did **not** copy the commands route's `x-forwarded-*` refusal: the
+broker *is* a proxy, so a route that refused `X-Forwarded-For` would be dead on arrival,
+silently, and only discoverable on real hardware.
+
+Read-only is **asserted, not intended** — a test reads the module and fails if `store.update`
+ever appears in it.
+
+## Acceptance test: steps 1–5 are still outstanding
+
+Display could not run them: they need a real OpenMasjidOS box with **both** apps installed from
+the dev channel, and Companion did not exist. Everything on the Display side is unit-tested, and
+its equivalent of step 3 (tunnelled → 404) is the nine-shape table above, verified against Node's
+URL parser.
+
+**Step 3 is the one to confirm on real hardware**, and it is now Companion's turn to be the other
+half of steps 1, 2 and 5. Those are the acceptance test for this repo's timetable slice.
+
+## Sizing, confirmed
+
+The worst case a masjid can configure — 45 days, eight Jumu'ah jamā'āt, the longest names the
+store allows, Arabic labels — measures **18.5 KB**, so the broker's 256 KB ceiling has a factor
+of about 14 in hand. The 45-day cap is really about CPU: every day is a fresh solar computation
+in the same process that draws the masjid's screens at 1 fps.
+
+## Still open, for Hasan
+
+- **Shurūq.** Display ships `sunrise` and will drop it if we say so. `CLAUDE.md` §4 does not list
+  it in the v1 musalli view. It is one row, it is what a printed masjid timetable normally has,
+  and it costs nothing — but it is a scope decision, so it is asked rather than assumed.
+- **Structured Hijri.** Available additively (`formatToParts`) if Companion ever needs to
+  reformat the date rather than render Display's label. Nothing in v1 needs it.

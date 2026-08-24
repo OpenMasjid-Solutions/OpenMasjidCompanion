@@ -1,0 +1,89 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 OpenMasjid-Solutions -->
+<!--
+  The catalog screenshot. Drawn rather than captured, because at v0.1.0-dev.1 there is
+  nothing honest to photograph yet — this app shows a masjid's own timetable, and a
+  screenshot of invented prayer times would be exactly the thing this app exists not to
+  do. It is replaced with a real capture from a real masjid's box before the first
+  stable listing.
+
+  So the times below are deliberately blanked rather than filled in with plausible
+  numbers. The picture shows the SHAPE of the app: a phone, a countdown, a day's rows.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="OpenMasjid Companion on a phone">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0C3A4D"/>
+      <stop offset="48%" stop-color="#082230"/>
+      <stop offset="100%" stop-color="#020A12"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0F2040" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#0A1828" stop-opacity="0.86"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.3" r="0.7">
+      <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.26"/>
+      <stop offset="100%" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      .h  { font-family: "Segoe UI", system-ui, sans-serif; fill: #F4F7FB; }
+      .m  { font-family: "Segoe UI", system-ui, sans-serif; fill: #AEBACD; }
+      .f  { font-family: "Segoe UI", system-ui, sans-serif; fill: #8593AD; }
+      .c  { font-family: "Segoe UI", system-ui, sans-serif; fill: #22D3EE; }
+      .g  { font-family: "Segoe UI", system-ui, sans-serif; fill: #F59E0B; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <ellipse cx="640" cy="250" rx="620" ry="380" fill="url(#glow)"/>
+
+  <!-- Left: what it is -->
+  <g transform="translate(96 168)">
+    <text class="h" x="0" y="0" font-size="52" font-weight="700" letter-spacing="-1">The masjid, in a pocket</text>
+    <text class="m" x="0" y="58" font-size="24">Scan the QR code on the noticeboard.</text>
+    <text class="m" x="0" y="94" font-size="24">Add it to the home screen. That&#8217;s it.</text>
+
+    <g transform="translate(0 156)" font-size="21">
+      <circle cx="9" cy="-7" r="5" fill="#22D3EE"/><text class="m" x="30" y="0">Your timetable, straight from OpenMasjid Display</text>
+      <circle cx="9" cy="41" r="5" fill="#22D3EE"/><text class="m" x="30" y="48">A countdown to the next jamā&#8216;ah, and Jumu&#8216;ah</text>
+      <circle cx="9" cy="89" r="5" fill="#22D3EE"/><text class="m" x="30" y="96">Works with no signal, and says when it last updated</text>
+      <circle cx="9" cy="137" r="5" fill="#22D3EE"/><text class="m" x="30" y="144">Optional prayer reminders, chosen per phone</text>
+      <circle cx="9" cy="185" r="5" fill="#22D3EE"/><text class="m" x="30" y="192">Your appeals, tapping through to your Donations page</text>
+    </g>
+  </g>
+
+  <!-- Right: the phone -->
+  <g transform="translate(830 60)">
+    <rect x="0" y="0" width="300" height="600" rx="46" fill="#0A1828" stroke="#7DC8E8" stroke-opacity="0.26" stroke-width="5"/>
+    <rect x="16" y="16" width="268" height="568" rx="32" fill="#061626"/>
+    <rect x="126" y="30" width="48" height="7" rx="3.5" fill="#7DC8E8" fill-opacity="0.35"/>
+
+    <!-- masjid name -->
+    <text class="h" x="40" y="82" font-size="20" font-weight="700">Your masjid</text>
+    <text class="f" x="40" y="104" font-size="13">Friday &#183; Hijri date</text>
+
+    <!-- countdown card -->
+    <rect x="34" y="122" width="232" height="122" rx="18" fill="url(#glass)" stroke="#7DC8E8" stroke-opacity="0.14"/>
+    <text class="f" x="52" y="150" font-size="12" letter-spacing="1.4">NEXT JAMĀ&#8216;AH</text>
+    <text class="c" x="52" y="192" font-size="38" font-weight="700">&#8212;:&#8212;&#8212;</text>
+    <text class="m" x="52" y="220" font-size="14">in &#8212;h &#8212;m</text>
+
+    <!-- rows -->
+    <g transform="translate(34 264)">
+      <rect x="0" y="0" width="232" height="230" rx="18" fill="url(#glass)" stroke="#7DC8E8" stroke-opacity="0.14"/>
+      <g font-size="15">
+        <text class="f" x="18" y="28" font-size="11" letter-spacing="1.2">PRAYER</text>
+        <text class="f" x="128" y="28" font-size="11" letter-spacing="1.2">ADHAN</text>
+        <text class="f" x="184" y="28" font-size="11" letter-spacing="1.2">IQAMAH</text>
+
+        <text class="h" x="18" y="60">Fajr</text>     <text class="m" x="128" y="60">&#8212;:&#8212;&#8212;</text><text class="h" x="184" y="60">&#8212;:&#8212;&#8212;</text>
+        <text class="h" x="18" y="94">Dhuhr</text>    <text class="m" x="128" y="94">&#8212;:&#8212;&#8212;</text><text class="h" x="184" y="94">&#8212;:&#8212;&#8212;</text>
+        <text class="g" x="18" y="128">Jumu&#8216;ah</text><text class="m" x="128" y="128">&#8212;:&#8212;&#8212;</text><text class="g" x="184" y="128">&#8212;:&#8212;&#8212;</text>
+        <text class="h" x="18" y="162">Asr</text>      <text class="m" x="128" y="162">&#8212;:&#8212;&#8212;</text><text class="h" x="184" y="162">&#8212;:&#8212;&#8212;</text>
+        <text class="h" x="18" y="196">Maghrib</text>  <text class="m" x="128" y="196">&#8212;:&#8212;&#8212;</text><text class="h" x="184" y="196">&#8212;:&#8212;&#8212;</text>
+      </g>
+    </g>
+
+    <text class="f" x="40" y="530" font-size="12">Times come from your masjid&#8217;s own timetable.</text>
+  </g>
+</svg>

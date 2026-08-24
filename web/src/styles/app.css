@@ -1,0 +1,210 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 OpenMasjid-Solutions */
+
+/*
+ * Base + components for OpenMasjid Companion.
+ *
+ * Two surfaces live in this file and they are not the same kind of thing:
+ *
+ *  - The MUSALLI page. Held in one hand, often in a dark prayer hall before Fajr, by
+ *    someone who wants one number and then wants to put their phone away. Generous type,
+ *    a lot of air, tabular numerals everywhere a time appears, and no motion that draws
+ *    the eye. This is the identity of the app.
+ *  - The ADMIN panel. A volunteer at a desk. Denser, closer to the rest of the
+ *    OpenMasjidOS family.
+ *
+ * Everything is written with LOGICAL properties (inline-start, padding-inline, margin-
+ * block) so the same CSS is correct in Arabic and Urdu without a mirrored stylesheet.
+ * Values come from tokens.css — no raw hex here. Sizes are in rem so a musalli who has
+ * turned their phone's text size up gets a bigger timetable, not a broken one.
+ */
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--scene-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* A prayer time must never be re-selected by a stray long-press while scrolling, but
+     the times themselves stay selectable — someone copying a timetable into a message is
+     a thing people genuinely do. */
+  -webkit-tap-highlight-color: transparent;
+}
+#root { min-height: 100vh; min-height: 100dvh; }
+* { box-sizing: border-box; }
+button { font: inherit; color: inherit; cursor: pointer; }
+a { color: var(--color-primary); text-decoration: none; }
+h1, h2, h3, p { margin: 0; }
+
+/* Focus must be VISIBLE — the admin panel is operated by volunteers who may be on a
+   keyboard, and an invisible focus ring is a WCAG failure and a usability one. */
+:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+
+/* Every number that represents a time. Proportional digits make a column of prayer times
+   jitter as the minutes change, which is exactly the thing the eye is trying to scan. */
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* ── Ambient scene ──────────────────────────────────────────────────────────── */
+.scene { position: fixed; inset: 0; z-index: -1; background: var(--scene-gradient); overflow: hidden; }
+.scene::before {
+  content: ""; position: absolute; inset: -30%;
+  background:
+    radial-gradient(40% 50% at 20% 25%, var(--aurora-cyan), transparent 70%),
+    radial-gradient(45% 55% at 80% 20%, var(--aurora-navy), transparent 70%),
+    radial-gradient(50% 50% at 60% 85%, var(--aurora-gold), transparent 75%);
+  filter: blur(var(--aurora-blur)); will-change: transform;
+  animation: auroraDrift 32s ease-in-out infinite alternate;
+}
+@keyframes auroraDrift {
+  0% { transform: translate3d(0,0,0) scale(1); }
+  50% { transform: translate3d(2.5%,-2%,0) scale(1.08) rotate(1.2deg); }
+  100% { transform: translate3d(-2%,2.5%,0) scale(1.04) rotate(-1deg); }
+}
+/* The geometric texture is ORNAMENT and deliberately abstract. No sacred or Qur'anic text
+   is ever used as decoration in this app; prayer names and dates are content. */
+.scene::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: var(--geometric-pattern); opacity: var(--pattern-opacity);
+  box-shadow: inset 0 0 240px 80px var(--scene-vignette);
+}
+@media (prefers-reduced-motion: reduce) { .scene::before { animation: none; } }
+
+/* A custom wallpaper image replaces the preset scene entirely. */
+.scene-img {
+  position: fixed; inset: 0; z-index: -1;
+  background-color: var(--scene-base);
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+}
+.scene-img::after { content: ""; position: absolute; inset: 0; background: var(--scrim); pointer-events: none; }
+
+/* ── Shell ──────────────────────────────────────────────────────────────────── */
+/* The safe-area padding is why index.html sets viewport-fit=cover: the scene reaches
+   under the notch and the home bar, and the CONTENT is inset back out of them. */
+.shell {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; flex-direction: column;
+  padding-block-start: env(safe-area-inset-top);
+  padding-block-end: env(safe-area-inset-bottom);
+  padding-inline: max(env(safe-area-inset-left), 0px) max(env(safe-area-inset-right), 0px);
+}
+
+.topbar {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.9rem 1.15rem;
+}
+.brand { display: flex; align-items: center; gap: 0.55rem; min-width: 0; color: var(--color-primary); font-weight: 700; }
+.brand-mark {
+  /* The mark is an app TILE with its own white ground — the artwork's lettering is
+     knocked out in white, so a transparent silhouette loses it entirely on a dark
+     background. Rounded to match the PNG's own corner radius, with a hairline so the
+     tile has an edge on the light theme's pale scene too. */
+  border-radius: 22%;
+  box-shadow: 0 0 0 1px var(--glass-border), 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+.brand b {
+  color: var(--ink-scene); font-family: var(--font-display); letter-spacing: -0.01em;
+  text-shadow: var(--text-shadow-scene);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.spacer { flex: 1; }
+
+.icon-btn {
+  width: 2.4rem; height: 2.4rem; border-radius: 0.65rem;
+  display: grid; place-items: center;
+  background: transparent; border: 0; color: var(--ink-scene-muted);
+  transition: color var(--dur-micro) ease, background-color var(--dur-micro) ease, transform var(--dur-micro) var(--ease-settle);
+}
+.icon-btn:hover { background: var(--color-surface-hover); color: var(--ink-scene); }
+.icon-btn:active { transform: scale(0.94); }
+
+/* ── The musalli page ───────────────────────────────────────────────────────── */
+.musalli {
+  flex: 1;
+  width: min(30rem, 100%);
+  margin-inline: auto;
+  padding: 0.25rem 1.15rem 2.5rem;
+  display: flex; flex-direction: column; gap: 1rem;
+}
+
+/* One centred card, for the states where there is nothing else to show yet. */
+.centre-wrap { flex: 1; display: grid; place-items: center; padding: 1.5rem 1.15rem 3rem; }
+.centre-card {
+  width: min(30rem, 100%); padding: 2.2rem 1.6rem;
+  text-align: center; display: flex; flex-direction: column; align-items: center; gap: 0.85rem;
+}
+.centre-emblem {
+  width: 3.9rem; height: 3.9rem; border-radius: 50%;
+  display: grid; place-items: center; color: var(--color-on-primary);
+  background: var(--color-primary); box-shadow: var(--glow-primary);
+}
+.centre-title {
+  font-family: var(--font-display); font-size: 1.55rem; font-weight: 700;
+  letter-spacing: -0.02em; line-height: 1.2;
+  /* Break where a reader would, instead of leaving one word alone on the last line. */
+  text-wrap: balance;
+}
+.centre-lead { color: var(--color-ink-muted); line-height: 1.6; max-width: 26rem; text-wrap: pretty; }
+
+/* A quiet inset strip for the honest states: "last updated", "not set up yet",
+   "remote access is off". Never red — none of these is the musalli's fault or problem. */
+.note {
+  display: flex; align-items: flex-start; gap: 0.55rem; text-align: start;
+  padding: 0.7rem 0.9rem; border-radius: var(--radius-button);
+  background: var(--glass-bg-inset); box-shadow: inset 0 0 0 1px var(--color-border);
+  color: var(--color-ink-muted); font-size: 0.87rem; line-height: 1.5;
+}
+.note svg { color: var(--color-primary); flex: none; margin-block-start: 0.1rem; }
+.note--warn svg { color: var(--color-warning); }
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
+  /* 2.75rem tall: a comfortable thumb target one-handed, and above the 44px floor. */
+  min-height: 2.75rem;
+  padding: 0.55rem 1.05rem; border: 0; border-radius: var(--radius-button); font-weight: 600;
+  background: var(--color-surface-hover); color: var(--color-ink);
+  transition: transform var(--dur-micro) var(--ease-settle), background-color var(--dur-micro) ease, opacity var(--dur-micro) ease;
+}
+.btn:hover { background: var(--color-surface-overlay); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn--primary { background: var(--color-btn); color: var(--color-on-primary); box-shadow: var(--glow-primary); }
+.btn--primary:hover { background: var(--color-btn-hover); }
+.btn--ghost { background: transparent; box-shadow: inset 0 0 0 1px var(--color-border); }
+.btn--ghost:hover { background: var(--color-surface-hover); }
+.btn--block { width: 100%; }
+.btn--sm { min-height: 2.25rem; padding: 0.4rem 0.7rem; font-size: 0.85rem; }
+@media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
+
+/* ── Shared helpers ─────────────────────────────────────────────────────────── */
+.muted { color: var(--color-ink-muted); }
+.faint { color: var(--color-ink-faint); }
+.panel { padding: 1.05rem 1.15rem; }
+.row { display: flex; align-items: center; gap: 0.6rem; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.stack { display: flex; flex-direction: column; gap: 0.85rem; }
+
+.spinner {
+  width: 1.05rem; height: 1.05rem; border-radius: 50%;
+  border: 2px solid var(--color-border); border-top-color: var(--color-primary);
+  animation: spin 0.7s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 1.6s; } }
+
+/* ── Foot ───────────────────────────────────────────────────────────────────── */
+.page-foot {
+  padding: 1.25rem 1.15rem 2rem;
+  text-align: center; font-size: 0.78rem; color: var(--ink-scene-faint);
+  text-shadow: var(--text-shadow-scene);
+}
+.page-foot a { color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }
+.page-foot a:hover { color: var(--color-primary); }
+
+/* ── Screen-reader-only text ────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

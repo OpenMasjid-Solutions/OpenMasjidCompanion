@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 OpenMasjid-Solutions
+
+id: companion
+name: OpenMasjid Companion
+tagline: Prayer times and giving, on every musalli's phone
+category: community
+version: 0.1.0-dev.1
+author: OpenMasjid-Solutions
+license: AGPL-3.0-only
+icon: icon.png
+screenshots:
+  - screenshots/1.svg
+description: |
+  **OpenMasjid Companion** puts your masjid in your congregation's pocket. Put a QR
+  code on the noticeboard; anyone who scans it gets your prayer timetable on their
+  phone — and can add it to their home screen like an app, with no app store and
+  nothing to sign up for.
+
+  - **Your timetable, not a calculated one** — today, this week and this month come
+    straight from **OpenMasjid Display**, so the times on a phone are the same times
+    that are on the wall, including any Iqamah change you have scheduled.
+  - **A countdown to the next jamā'ah**, with Jumu'ah and the Hijri date, in a calm
+    layout that is easy to read one-handed at Fajr.
+  - **Works with no signal** — the last timetable it fetched stays on the phone, and
+    it says plainly when it was last updated rather than guessing.
+  - **Optional prayer reminders** — a musalli can choose which prayers to be
+    notified about, at the Adhan or a few minutes before the Iqamah. It is their
+    phone's choice, per device, and you never see who subscribed — only how many.
+  - **Your appeals, in the app** — paste the share link of any appeal from
+    **OpenMasjid Donations** and it appears as a tile with its progress. Tapping
+    **Donate** opens your Donations page to give; this app never handles money.
+
+  **Before it can reach a phone, turn on Remote access.** This app is only useful
+  over the internet — a QR code pointing at an address inside your building works
+  for nobody outside it. Install it, open it, and it walks you through switching
+  Remote access on in OpenMasjidOS and sharing this app; until then it says so
+  plainly instead of showing a link that cannot work.
+
+  **Nothing to fill in at install.** Open it and set it up inside: pick your
+  timetable, paste your appeals, name the app and choose its icon, then print the
+  poster.
+
+# ── OpenMasjidOS Fabric ───────────────────────────────────────────────────────
+# Single sign-on. The platform issues this app a per-app secret at install
+# (OPENMASJID_APP_SECRET) and answers its identity-bound /api/auth/session calls, so
+# pressing "Open" in the dashboard signs the admin straight into the admin panel. A
+# local password stays available as a RECOVERY route for when the platform itself is
+# down (never as a parallel front door — see the app's CLAUDE.md §6.1). The compose
+# MUST reference the injected vars in `environment:` (it does) or none of this reaches
+# the container and the Fabric silently no-ops.
+sso: true
+# Learn this app's public address (tunnel domain + admin-chosen path) from
+# GET /api/fabric/site. Everything musalli-facing is built from it: the web manifest's
+# start_url and scope, the QR code and printable poster, and the origin a push
+# subscription is bound to. The path is admin-configurable, so it is READ, never
+# assumed to be "companion" — and Cloudflare forwards the FULL path without stripping
+# it, so the server strips the prefix before routing and injects <base href> into the
+# page.
+domain: true
+# REQUEST internet exposure. This is the one capability the whole app depends on: an
+# installable PWA, a push subscription and a QR code all need a public HTTPS origin,
+# and none of the three can be faked from a LAN address. The admin still confirms it —
+# the install dialog shows a pre-ticked "Share this app over the internet" — and until
+# they do, the admin panel blocks on a setup step and the musalli page hides install
+# and notifications rather than offering buttons that cannot work.
+tunnel: true
+# Read the masjid's prayer timetable from OpenMasjid Display through the platform's
+# app-to-app broker (POST ${OPENMASJID_BASE_URL}/api/fabric/app/display/timetable/<method>,
+# server→server with our own secret; LAN-only by construction). Display OWNS prayer-time
+# correctness — the calculation, the Iqamah rules, the CSV overrides, the scheduled
+# changes, the masjid's timezone and its Hijri offset — and this app is forbidden by its
+# own rules from computing any of it. This grant plus Display's matching `provides` are
+# what let the broker route the call; without both, every call is a 403 not_granted.
+# Fail-soft throughout: any broker error serves the cached timetable with an honest
+# "last updated" marker, and a masjid with no Display at all gets a calm "prayer times
+# aren't set up yet" instead of an invented one. See docs/DISPLAY_TIMETABLE_WORK_ORDER.md.
+fabric:
+  consumes:
+    - display/timetable
+# Admin alerts (platform v0.41.0+): each declared id gets its own Email/Webhook on-off in
+# OpenMasjidOS → Settings → Alerts, which the admin owns and this app can neither read nor
+# change — `disabled_by_admin` is a normal answer, not an error. Every alert here goes to
+# the ADMIN. Nothing in this app ever emails or messages a musalli.
+alerts:
+  - id: timetable-unavailable
+    label: Prayer times source unavailable
+    description: The Companion app hasn't been able to read the timetable from OpenMasjid Display for several hours, so phones are showing the last times it managed to fetch. Usually this means Display was updated, stopped, or had its timetable deleted. Raised once per outage, not once per failure.
+  - id: push-failing
+    label: Prayer notifications failing
+    description: Prayer reminders are being rejected in bulk by the phones' push services — not one dead handset, but most of them. Nobody is getting reminders until it is looked at.
+  - id: test
+    label: Test alert
+    description: A test you trigger from the app (Settings → "Send me a test alert") to confirm OpenMasjidOS is reaching you by email or webhook.
+
+# ── Deliberate absences, each load-bearing ────────────────────────────────────
+# NO `settings:` — install is one-click. The only question worth asking at install is
+#   internet exposure, and `tunnel: true` above makes the platform itself ask it. Every
+#   other choice (which timetable, which appeals, the app's name and icon) is made
+#   inside, where the admin can see what they are choosing and change it later.
+# NO `https:` — reserved by the platform for apps that take card payments and need a
+#   browser secure context. This app takes none. Its HTTPS comes from the Cloudflare
+#   tunnel, which is where a musalli reaches it.
+# NO `stripe:` — this app never touches money. Giving happens on the OpenMasjid
+#   Donations page; we read public campaign metadata and link out.
+# NO `email:`, `whatsapp:`, `notifications:` — the only notifications here are web push
+#   from this app to a musalli's own phone, self-hosted with our own VAPID keys, and the
+#   only thing that reaches the admin is an `alerts:` entry above.
+# NO `commands:` — nothing here is worth reading back over WhatsApp in v1.
+# NO `fabric.provides` — this app serves NO inbound /fabric/* surface at all, so no such
+#   route exists in the server to get wrong.
+ports:
+  - container: 8080
+    label: Companion app
