@@ -1,0 +1,14 @@
+# Normalise every text file to LF in the repository, whatever a contributor's editor or
+# git config does locally. Everything here ends up inside a Linux container, and it keeps
+# diffs against the OpenMasjidDisplay / OpenMasjidDonations templates line-ending-clean.
+#
+# `text=auto` DETECTS text vs binary, so the PNGs under assets/ and web/public/ are left
+# untouched. Without this line the attributes below cover only shell/YAML/Dockerfile, and
+# a contributor on Windows with the default `core.autocrlf=true` commits CRLF blobs for
+# everything else — which is exactly how the two files fixed in this commit got that way.
+* text=auto eol=lf
+# Be explicit for the files that must run inside the container.
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
