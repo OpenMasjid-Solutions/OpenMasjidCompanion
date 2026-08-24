@@ -456,10 +456,29 @@ would send an admin to re-pick a timetable that was never the issue.
 
 ---
 
-# Work order #3 — OpenMasjidDisplay: expose the masjid's coordinates on `timetable`
+# Work order #3 — WITHDRAWN, not sent
 
-**Status: proposed. Not yet sent.** Hasan added Qibla to Companion's v1 on 2026-08-24
-(`docs/DESIGN_LANGUAGE.md`); this is what would make it work well.
+> **Decided by Hasan, 2026-08-24: this is not needed. Qibla uses the device's own geolocation.**
+>
+> Kept here rather than deleted so it is not re-proposed. Display is not being asked for
+> coordinates, and the fallback described under "If this is not wanted" at the end **is now the
+> design**: the compass asks the musalli's browser where they are, and shows an honest "we need
+> your location for this" state to anyone who declines.
+>
+> Two consequences that follow from that and are not optional:
+>
+> 1. **Qibla needs a secure context**, so it works over the tunnel and not on the plain-HTTP
+>    LAN — the same rule as install and notifications (CLAUDE.md §6.4). The LAN page must hide
+>    it rather than offer a button that cannot work.
+> 2. **Declining is a normal outcome, not an error.** A good number of people say no to a
+>    location prompt, and the screen has to be worth looking at when they do.
+>
+> The rest of this section is the original ask, left intact for the record.
+
+---
+
+**Original ask (superseded).** Hasan added Qibla to Companion's v1 on 2026-08-24
+(`docs/DESIGN_LANGUAGE.md`); this is what would have made it work without a permission prompt.
 
 ## The ask
 

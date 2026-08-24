@@ -210,11 +210,12 @@ before and during the build; mirror them.**
   from the **Donations app's public campaign API**, each linking out to the Donations donor page
   to actually give. §8.
 - **Qibla (added to v1 by Hasan, 2026-08-24):** a compass pointing to Makkah, from the
-  **masjid's** coordinates by default (no permission prompt, works offline) and from the
-  device's location when the musalli grants it. This is **not** a prayer-time calculation and
-  does not touch the §2 rule: a bearing is self-evidently right or wrong the moment you hold
-  the phone up, where a wrong prayer time is silent. Display holds the coordinates but does not
-  expose them yet — **work order #3**. See `docs/DESIGN_LANGUAGE.md`.
+  **device's own geolocation** — no Display change, and work order #3 was withdrawn on the same
+  day rather than ask for the masjid's coordinates. This is **not** a prayer-time calculation
+  and does not touch the §2 rule: a bearing is self-evidently right or wrong the moment you hold
+  the phone up, where a wrong prayer time is silent. It needs a secure context, so it is a
+  tunnel-only feature like install and push, and "location declined" is a designed screen rather
+  than an error. See `docs/DESIGN_LANGUAGE.md`.
 - **Installability:** a server-generated web manifest + service worker, correct under the
   tunnel's base path, named and iconed for the masjid. §10.
 - **QR + printable poster:** the admin panel renders a QR of the app's public URL and a
@@ -408,9 +409,13 @@ unavailable, app still fine", never a crash. Behaviour:
   cause (Display not installed / capability not available yet / not granted) in plain words.
 - **Never fabricate a time. Never extrapolate a day Display didn't send.**
 
-Until Display ships the capability, develop against a **local stub** clearly gated behind a dev
-flag (`COMPANION_DEV_STUB=1`) that ships disabled and is impossible to enable from the UI — a
-masjid must never see stub times.
+~~Until Display ships the capability, develop against a local stub behind `COMPANION_DEV_STUB=1`.~~
+**Not needed, and deliberately not built** (2026-08-24): Display shipped `timetable` before this
+app's client was written, so the condition never arrived. There is no branch anywhere in this
+server that can produce a prayer time — which is a stronger form of "a masjid must never see stub
+times" than a flag that ships disabled. Development without a Display container drives a fake
+**platform** instead, so the real broker client, the real zod schemas and the real error mapping
+all still run; a stub would have bypassed exactly the code most worth exercising.
 
 ### 6.6 Alerts
 

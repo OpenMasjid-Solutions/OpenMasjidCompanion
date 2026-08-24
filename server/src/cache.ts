@@ -61,7 +61,9 @@ export class Cached<T> {
   private inflight: Promise<Entry<T>> | null = null;
 
   /**
-   * @param loader  Fetches the value: `loaded(v)` on success, `KEEP` when unreachable.
+   * @param loader  Fetches the value: `loaded(v)` on success, `KEEP` when unreachable. It is
+   *                handed the same `now` the caller passed, so a loader that does its own
+   *                time-based bookkeeping stays testable with an injected clock.
    * @param ttlMs   How long a successful value is served without asking again.
    * @param retryMs How long to wait after a FAILURE before trying again. Shorter than the TTL,
    *                because a caller sitting on stale data wants it fixed sooner than a caller
@@ -69,7 +71,7 @@ export class Cached<T> {
    *                that is down turns every single request into a fresh timeout.
    */
   constructor(
-    private readonly loader: () => Promise<Load<T>>,
+    private readonly loader: (now: number) => Promise<Load<T>>,
     private readonly ttlMs: number,
     private readonly retryMs: number = Math.min(ttlMs, 30_000),
   ) {}
@@ -90,6 +92,22 @@ export class Cached<T> {
    *  on a network call — the push scheduler — and for tests. */
   peek(now: number = Date.now()): Entry<T> {
     return this.entry(now);
+  }
+
+  /**
+   * Restore a value from disk at the time it was actually fetched.
+   *
+   * For the timetable across a restart: a container that has just come back up should serve the
+   * masjid's prayer times immediately rather than blank the page while it waits on a broker
+   * round trip. `at` is the ORIGINAL fetch time, not now — so the TTL is measured from when the
+   * data was really obtained, and a feed that went stale while the box was off is refreshed at
+   * once instead of being served for another full TTL as though it were new.
+   */
+  seed(value: T, at: number): void {
+    this.value = value;
+    this.at = at;
+    this.attemptedAt = at;
+    this.lastOk = true;
   }
 
   /** Make the next `get` reload. The admin panel's "check again" button. */
@@ -114,7 +132,7 @@ export class Cached<T> {
 
   private async load(now: number): Promise<Entry<T>> {
     // A loader is not supposed to throw, but one that does must not take a request with it.
-    const result = await this.loader().catch((): Load<T> => KEEP);
+    const result = await this.loader(now).catch((): Load<T> => KEEP);
     this.attemptedAt = now;
     if (!result.ok) {
       this.lastOk = false;

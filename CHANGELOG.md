@@ -14,6 +14,23 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Prayer times.** The app now shows your masjid's timetable: which prayer is on now, how long
+  until the next one, and the whole day's times with the jamāʿah beside each. Shurūq is there,
+  Fridays show your Jumuʿah jamāʿāt in place of Dhuhr — each one on its own line, so "44 minutes
+  until the second Jumuʿah" is something the app can actually say — and you can step forward and
+  back through the days. The Hijri date is the one your Display already shows.
+- **Choose your timetable in the panel.** Pick from the timetables you have in OpenMasjid
+  Display, see when they were last read, and refresh straight away after changing an Iqamah. If
+  something is wrong — Display not installed, no location set on that timetable, the timetable
+  deleted — the panel says which, in words, and what to do about it.
+- **The times keep working when Display doesn't.** They are stored and re-read on start, so a
+  reboot does not blank the page, and if Display stops answering the app keeps showing the last
+  times it received with a clear note of when they were checked. It never fills a gap with a
+  time of its own. If that goes on for more than six hours you get one alert — one, not one per
+  attempt.
+- **A design that stays put.** The page has one look by day and one by night, following your
+  phone's own light/dark setting, rather than shifting through the hours as an earlier build
+  did.
 - **The app knows its own address on the internet, and keeps knowing it.** It asks
   OpenMasjidOS where it is published and follows the answer, so turning on Remote access —
   or renaming the app's web address — is picked up without restarting anything. The setup

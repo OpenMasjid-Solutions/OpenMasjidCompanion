@@ -28,12 +28,15 @@ import { LoginLimiter, makeRateLimiter } from './rateLimit';
 import { type Appearance, type LogoImage, clearSessionCache, fetchAppearance, fetchLogo, probePlatform, raiseAlert } from './fabric';
 import { Cached, KEEP, loaded } from './cache';
 import { getSite, refreshSite } from './site';
+import { TimetableService, type TimetableState } from './timetableService';
 import { parseChangelog, readChangelog } from './changelog';
 
 const log = makeLog('server');
 
 export interface ServerDeps {
   store: Store;
+  /** Overridable so a test can drive the timetable without a broker or a timer. */
+  timetable?: TimetableService;
   /** Where the built web app lives. Overridable so a test can point at a fixture, or at
    *  nowhere at all, without needing Vite to have run. */
   publicDir?: string;
@@ -42,6 +45,9 @@ export interface ServerDeps {
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   const { store } = deps;
   const publicDir = deps.publicDir ?? config.publicDir;
+  // Built here rather than passed in, so one server owns one timetable. `index.ts` starts its
+  // background refresh; a test drives it directly and never starts a timer.
+  const timetable = deps.timetable ?? new TimetableService(store);
 
   const app = Fastify({
     logger: false, // we log ourselves, and never log a secret
@@ -335,6 +341,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     const site = getSite();
     return {
       data: {
+        // `peek`, not `get`: opening the panel must not block on a broker round trip, and the
+        // background refresh keeps this warm anyway.
+        timetable: summariseTimetable(timetable.peek()),
         remote: {
           /** Is the Fabric there at all? A standalone install is not misconfigured, and must
            *  not be told to go and switch on something that does not exist for it. */
@@ -380,6 +389,85 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     if (!platformCallOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
     const result = await raiseAlert('test', 'Test alert from OpenMasjid Companion.');
     return { data: { result } };
+  });
+
+  // ── The timetable ───────────────────────────────────────────────────────────
+
+  /**
+   * What a musalli's phone reads.
+   *
+   * Deliberately NOT the whole feed. `name` is the admin's private label for the timetable
+   * ("Women's section", "Main hall") and is never shown on a Display screen either — putting it
+   * on the public page would leak an internal note onto the noticeboard. `id` is equally not
+   * theirs to know.
+   *
+   * The whole window goes over in one response rather than a day at a time: at Display's own
+   * worst-case measurement the full 45 days is 18.5 KB, so a month of prayer times costs less
+   * than one photograph, and the week and month views then need no further requests — which is
+   * what makes them work offline in the slice that adds the service worker.
+   */
+  app.get('/api/public/timetable', async (req, reply) => {
+    const state = await timetable.get();
+    const feed = state.feed;
+
+    const body = {
+      configured: !!state.id,
+      /** ms epoch of the last successful read from Display; 0 = never. The page turns this
+       *  into "last updated …", and MUST show it when `stale` is true. */
+      at: state.at,
+      /** The times on screen are older than they should be and the last refresh failed. */
+      stale: state.stale,
+      masjid: feed
+        ? {
+            name: feed.masjidName,
+            timezone: feed.timezone,
+            language: feed.language,
+            hourCycle: feed.hourCycle,
+          }
+        : null,
+      days: feed?.days ?? [],
+    };
+
+    // A weak validator over the content, so a phone that reopens the app gets a 304 instead of
+    // the month again. Keyed on the fetch time and the day count rather than hashing the body:
+    // the payload only ever changes when one of those does.
+    const etag = `W/"${state.at.toString(36)}-${body.days.length}-${state.stale ? 's' : 'f'}"`;
+    reply.header('cache-control', 'public, max-age=60');
+    reply.header('etag', etag);
+    if (req.headers['if-none-match'] === etag) return reply.code(304).send();
+    return { data: body };
+  });
+
+  /** The picker's list. Live from Display every time — an admin opening this screen is about to
+   *  choose, and a cached list is how you pick a timetable that was deleted this morning. */
+  app.get('/api/admin/timetables', { preHandler: requireAdmin }, async (req, reply) => {
+    if (!platformCallOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
+    const res = await timetable.list();
+    if (!res.ok) {
+      // 200 with a named reason, not an HTTP error: "Display isn't installed" is an ANSWER the
+      // panel renders as a screen, and turning it into a 502 would make the panel show a
+      // generic failure instead of the one sentence that tells the admin what to do.
+      return { data: { ok: false, reason: res.failure.admin, code: res.failure.code, timetables: [] } };
+    }
+    return { data: { ok: true, reason: '', code: '', timetables: res.data.timetables, chosen: timetable.chosenId } };
+  });
+
+  /** Choose one. The id is a non-secret and is the only thing about the choice we persist. */
+  const ChooseBody = z.object({ id: z.string().min(1).max(200) });
+  app.post('/api/admin/timetable', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = ChooseBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Please choose a timetable.' });
+    timetable.setChosen(parsed.data.id);
+    // Fetch it straight away so the panel can show the admin what they just picked, and so a
+    // wrong choice is visible immediately rather than at the next poll.
+    const state = await timetable.get();
+    return { data: summariseTimetable(state) };
+  });
+
+  /** "Refresh now" — an Iqamah was changed in Display and the admin wants it on phones today. */
+  app.post('/api/admin/timetable/refresh', { preHandler: requireAdmin }, async (req, reply) => {
+    if (!platformCallOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
+    return { data: summariseTimetable(await timetable.refresh()) };
   });
 
   // ── Static web app (built by Vite into ./public) ────────────────────────────
@@ -442,4 +530,25 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   });
 
   return app;
+}
+
+/**
+ * What the ADMIN panel is told about the timetable.
+ *
+ * Carries `name` (the admin's own private label — this is the one place it belongs) and the
+ * failure in plain words. Never the days: the panel shows a preview from the public route like
+ * everyone else, so there is one code path producing prayer times, not two.
+ */
+function summariseTimetable(state: TimetableState) {
+  return {
+    id: state.id,
+    name: state.feed?.name ?? '',
+    masjidName: state.feed?.masjidName ?? '',
+    timezone: state.feed?.timezone ?? '',
+    days: state.feed?.days.length ?? 0,
+    at: state.at,
+    stale: state.stale,
+    /** Present only when the last attempt failed. Already plain English — see fabric.ts. */
+    problem: state.failure ? { code: state.failure.code, message: state.failure.admin, retryable: state.failure.retryable } : null,
+  };
 }

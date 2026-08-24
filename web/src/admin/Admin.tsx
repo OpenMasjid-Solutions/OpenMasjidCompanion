@@ -23,9 +23,11 @@ import { useSession } from './session';
 import { Auth } from './Auth';
 import { AccountMenu } from './AccountMenu';
 import { RemoteAccess, type RemoteStatus } from './RemoteAccess';
+import { TimetablePicker, type TimetableStatus } from './Timetable';
 
 interface AdminStatus {
   remote: RemoteStatus;
+  timetable: TimetableStatus;
 }
 
 export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
@@ -113,11 +115,18 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
             </section>
           )}
 
-          <Todo
-            icon={<CalendarClock size={18} aria-hidden="true" />}
-            title="Choose your prayer timetable"
-            body="Companion reads your times from OpenMasjid Display, so the times on a phone are the same ones on the wall. It never calculates a prayer time of its own."
-          />
+          {/* Live once the app is embedded. Standalone there is no Display to read from, so
+              the honest thing is to say what it would do rather than show a picker that cannot
+              be filled. */}
+          {status?.timetable && remote?.configured ? (
+            <TimetablePicker status={status.timetable} onChanged={loadStatus} />
+          ) : (
+            <Todo
+              icon={<CalendarClock size={18} aria-hidden="true" />}
+              title="Choose your prayer timetable"
+              body="Companion reads your times from OpenMasjid Display, so the times on a phone are the same ones on the wall. It never calculates a prayer time of its own."
+            />
+          )}
           <Todo
             icon={<Gift size={18} aria-hidden="true" />}
             title="Add your appeals"

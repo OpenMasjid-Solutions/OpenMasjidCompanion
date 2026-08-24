@@ -479,3 +479,167 @@ export async function raiseAlert(id: AlertId, message?: string): Promise<AlertRe
     return 'unavailable';
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The app-to-app broker
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Why this exists at all: Display is on the same LAN, but we do not talk to it. We talk to the
+ * PLATFORM, which authenticates us, checks the static grants (our `consumes` against Display's
+ * `provides`), injects Display's own secret, and adds `X-OpenMasjid-Caller-App: companion`.
+ * Display's route then refuses anything that did not arrive that way. So a container that
+ * simply guesses Display's address gets nothing, which is the point.
+ *
+ * The platform's limits are the platform's: JSON only, ≤256 KB each way, 10 s, per-caller rate
+ * limit, LAN-only.
+ */
+
+/** Everything that can go wrong, in one shape, because the CALLER has to branch on all of it.
+ *
+ *  `retryable` is the field that matters. Two of these — a deleted timetable, and a Display
+ *  with no coordinates set — are settled answers: asking again in fifteen minutes produces the
+ *  identical failure for ever, and a masjid sits looking at stale times while the app cheerfully
+ *  retries something that was never going to work. They need an ADMIN, and the panel has to say
+ *  which one and what to do. */
+export interface BrokerFailure {
+  /** A stable machine code. Never rendered raw to anyone. */
+  code: string;
+  /** Would asking again later plausibly succeed? */
+  retryable: boolean;
+  /** Plain words for the admin panel — what happened and what to do next. */
+  admin: string;
+}
+
+export type BrokerResult<T> = { ok: true; data: T } | { ok: false; failure: BrokerFailure };
+
+/** The platform's own refusals: these never reach the target app at all. */
+const PLATFORM_FAILURES: Record<string, BrokerFailure> = {
+  not_granted: {
+    code: 'not_granted',
+    retryable: false,
+    admin:
+      'OpenMasjidOS has not granted Companion access to OpenMasjid Display’s prayer times. ' +
+      'Reinstalling Companion usually fixes this, since the permission is granted at install.',
+  },
+  target_not_installed: {
+    code: 'target_not_installed',
+    retryable: false,
+    admin: 'OpenMasjid Display is not installed on this box. Companion reads your prayer times from it, so it needs to be installed first.',
+  },
+  target_unreachable: {
+    code: 'target_unreachable',
+    retryable: true,
+    admin: 'OpenMasjid Display did not answer. It may be starting up or stopped — check it in your dashboard.',
+  },
+  timeout: { code: 'timeout', retryable: true, admin: 'OpenMasjid Display took too long to answer. We’ll try again shortly.' },
+  rate_limited: { code: 'rate_limited', retryable: true, admin: 'Too many requests to OpenMasjid Display just now. We’ll try again shortly.' },
+};
+
+/** Display's own refusals, from the agreed error table in docs/DISPLAY_TIMETABLE_WORK_ORDER.md. */
+const TARGET_FAILURES: Record<string, BrokerFailure> = {
+  unknown_timetable: {
+    code: 'unknown_timetable',
+    retryable: false,
+    admin: 'That timetable no longer exists in OpenMasjid Display — it looks like it was deleted or renamed. Please choose another one.',
+  },
+  no_location: {
+    code: 'no_location',
+    retryable: false,
+    admin:
+      'OpenMasjid Display has no location set for this timetable, so it cannot work out any prayer times for it. ' +
+      'Set the masjid’s location in Display, then check again here.',
+  },
+  bad_request: { code: 'bad_request', retryable: false, admin: 'Companion asked OpenMasjid Display for prayer times in a way it did not understand. This is a bug in Companion, not something you did.' },
+  method_not_allowed: { code: 'method_not_allowed', retryable: false, admin: 'Companion called OpenMasjid Display incorrectly. This is a bug in Companion, not something you did.' },
+  forbidden: { code: 'forbidden', retryable: false, admin: 'OpenMasjid Display refused the request. Reinstalling Companion usually fixes this, since access is granted at install.' },
+  too_many_requests: { code: 'too_many_requests', retryable: true, admin: 'OpenMasjid Display is busy. We’ll try again shortly.' },
+  not_ready: { code: 'not_ready', retryable: true, admin: 'OpenMasjid Display is still starting up. We’ll try again shortly.' },
+};
+
+const UNREACHABLE: BrokerFailure = {
+  code: 'unreachable',
+  retryable: true,
+  admin: 'Companion could not reach OpenMasjidOS to ask for your prayer times. We’ll try again shortly.',
+};
+
+const NOT_EMBEDDED: BrokerFailure = {
+  code: 'not_embedded',
+  retryable: false,
+  admin: 'This app is not running under OpenMasjidOS, so it has no way to read your prayer times from OpenMasjid Display.',
+};
+
+const BAD_PAYLOAD: BrokerFailure = {
+  code: 'bad_payload',
+  retryable: false,
+  admin: 'OpenMasjid Display sent prayer times in a shape Companion does not recognise. This usually means one of the two apps needs updating.',
+};
+
+/** The failure for an HTTP status with no recognised body — mapped by status class alone. */
+function failureForStatus(status: number): BrokerFailure {
+  if (status >= 500) return { code: `http_${status}`, retryable: true, admin: 'OpenMasjid Display had a problem answering. We’ll try again shortly.' };
+  return { code: `http_${status}`, retryable: false, admin: 'OpenMasjid Display refused the request, and did not say why.' };
+}
+
+/** Exported for its own test: this mapping IS the fail-soft doctrine, and getting `retryable`
+ *  backwards on any row means either a pointless retry loop or an app that gives up on a
+ *  transient blip and shows stale times until someone notices. */
+export function brokerFailure(status: number, body: unknown): BrokerFailure {
+  const b = (body ?? {}) as { fabric_error?: { code?: unknown }; error?: unknown };
+  const platform = typeof b.fabric_error?.code === 'string' ? b.fabric_error.code : '';
+  if (platform) return PLATFORM_FAILURES[platform] ?? { code: platform, retryable: true, admin: 'OpenMasjidOS could not pass the request on. We’ll try again shortly.' };
+  const target = typeof b.error === 'string' ? b.error : '';
+  if (target && TARGET_FAILURES[target]) return TARGET_FAILURES[target];
+  return failureForStatus(status);
+}
+
+/**
+ * Call a capability on another app, through the platform.
+ *
+ * Never throws — like everything else in this file. A broker failure means "this feature is
+ * unavailable right now", never a crash and never an empty timetable presented as fact.
+ */
+export async function brokerCall<T>(
+  target: string,
+  capability: string,
+  method: string,
+  body: unknown,
+  parse: (raw: unknown) => T | null,
+): Promise<BrokerResult<T>> {
+  if (!ssoConfigured()) return { ok: false, failure: NOT_EMBEDDED };
+  warnIfCleartextSecret();
+  try {
+    const ctrl = new AbortController();
+    // The platform's own ceiling is 10s; sit just outside it so a platform-side timeout is
+    // reported as the platform's (with its own code) rather than masked by ours.
+    const t = setTimeout(() => ctrl.abort(), 12_000);
+    const res = await fetch(`${config.omosBaseUrl}/api/fabric/app/${target}/${capability}/${method}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-openmasjid-app-secret': config.omosAppSecret,
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+      redirect: 'error',
+    });
+    clearTimeout(t);
+
+    const raw = await res.json().catch(() => null);
+    if (!res.ok) {
+      const failure = brokerFailure(res.status, raw);
+      log.debug(`broker ${target}/${capability}/${method}: ${failure.code}`);
+      return { ok: false, failure };
+    }
+
+    const parsed = parse(raw);
+    if (parsed === null) {
+      log.warn(`broker ${target}/${capability}/${method}: response did not match the expected shape`);
+      return { ok: false, failure: BAD_PAYLOAD };
+    }
+    return { ok: true, data: parsed };
+  } catch (err) {
+    log.debug(`broker ${target}/${capability}/${method} failed: ${err instanceof Error ? err.message : String(err)}`);
+    return { ok: false, failure: UNREACHABLE };
+  }
+}

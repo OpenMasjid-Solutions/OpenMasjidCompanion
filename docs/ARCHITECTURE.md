@@ -226,3 +226,41 @@ able to break AA — measured across five phases in both themes, and the one ele
 explicit-file-list guard. It exists because the countdown, the current-prayer highlight and the
 push scheduler all rest on the timezone arithmetic that starts in `sky.ts`, and CLAUDE.md §14
 makes DST coverage non-negotiable.
+
+## Slice 4 — the prayer times (0.1.0-dev.4)
+
+**`timetable.ts` is transport and validation; `timetableService.ts` is policy.** The split keeps
+the zod schemas testable without a clock and the caching testable without a network.
+
+**Every failure carries `retryable`.** `BrokerFailure` in fabric.ts maps the platform's codes and
+Display's own onto one shape with a plain-English sentence for the admin. Two of them —
+`unknown_timetable` and `no_location` — are *settled*: retrying produces the identical failure
+for ever, so they are flagged not-retryable and the panel names the action instead. Getting that
+field backwards on any row is either a retry loop against something that cannot succeed, or
+giving up on a blip and serving stale times until a human notices.
+
+**The window starts a day early.** "Today" differs by zone, and before the first feed arrives we
+do not know the masjid's. One extra day guarantees the masjid's real today is in the window from
+any zone on earth. It is also what makes "after Isha, next is tomorrow's Fajr" work at all.
+
+**A feed for the wrong id is refused outright.** Never observed, but rendering it would put
+another hall's jamā'ah times under this masjid's name, which is the worst output this app has.
+
+**The dev stub was never built.** CLAUDE.md §6.5 gated it on "until Display ships the
+capability", and Display shipped first — so there is no branch anywhere in this server that can
+produce a prayer time. Development without a Display container drives a fake *platform*, which
+exercises the real broker client, schemas and error mapping instead of bypassing them.
+
+**`slotTime` is the single source of truth for where a row sits on the timeline**, and Jumu'ah is
+the reason it exists. Display has no per-Jumu'ah Adhan field, so every Jumu'ah on a Friday
+carries that day's one Dhuhr Adhan; placing them by it put two jamā'āt on the same instant —
+both rows highlighted, and the countdown skipped the first to name the last. They are placed by
+their jamā'ah time, and the row renderer calls the same function so the highlight cannot land on
+a different line than the timeline says.
+
+**The sky lost its five phases** (Hasan, 2026-08-24): one design throughout, one look per theme.
+The musalli page also stops inheriting the masjid's accent and uses a fixed coral palette scoped
+to `[data-surface="musalli"]`; the admin panel still inherits it. See docs/DESIGN_LANGUAGE.md.
+
+**Contrast is measured, not eyeballed.** A harness samples the rendered pixels behind every text
+element in both themes. It has caught two real AA failures across slices 3 and 4.

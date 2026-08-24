@@ -13,12 +13,12 @@
  * this code reasons about, and every link goes back through `withBase`.
  */
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { CalendarClock, Github } from 'lucide-react';
+import { Github } from 'lucide-react';
 import { api, type AppInfo } from './api';
 import { stripBase, withBase } from './base';
 import { useAppearanceSync } from './prefs';
-import { useSkyPhase } from './sky';
-import { Scene, MasjidLogo, Note } from './ui';
+import { Scene } from './ui';
+import { MasjidHeader, Today, type Timetable } from './Today';
 
 /**
  * The admin panel is LAZY, and this line is the reason the musalli bundle stays small.
@@ -50,6 +50,7 @@ export function navigate(to: string): void {
 export function App(): JSX.Element {
   const [route, setRoute] = useState<Route>(() => routeOf(location.pathname));
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const [times, setTimes] = useState<Timetable | null>(null);
 
   useEffect(() => {
     const on = () => setRoute(routeOf(location.pathname));
@@ -65,16 +66,36 @@ export function App(): JSX.Element {
 
   useAppearanceSync();
 
+  const isAdmin = route === '/admin';
+
   /**
-   * The time of day, for the musalli page's sky.
-   *
-   * No timezone yet: until a masjid has picked a timetable this app has no idea what zone it
-   * is meant to be in, and inventing one would be the first step down a road this app does not
-   * go down. It follows the device clock, which is right for the person holding it, and
-   * switches to the MASJID's zone in the slice that brings the timetable — the same rule every
-   * other time on this page will follow.
+   * The MUSALLI surface has its own fixed palette (coral on navy, from the reference design),
+   * while the admin panel keeps inheriting the masjid's OpenMasjidOS accent. Set on the root
+   * element so the whole cascade can be scoped to it in one place — see app.css.
    */
-  const sky = useSkyPhase();
+  useEffect(() => {
+    const el = document.documentElement;
+    if (isAdmin) el.removeAttribute('data-surface');
+    else el.setAttribute('data-surface', 'musalli');
+  }, [isAdmin]);
+
+  // The timetable is only needed by the musalli half, so the admin panel does not pay for it.
+  useEffect(() => {
+    if (isAdmin) return;
+    let alive = true;
+    const pull = () =>
+      void api.get<Timetable>('/api/public/timetable').then((r) => {
+        if (alive && r.ok) setTimes(r.data);
+      });
+    pull();
+    // A page left open in the prayer hall should pick up an Iqamah change without being
+    // reloaded. Rare enough to cost nothing; the server's own cache absorbs it.
+    const id = setInterval(pull, 10 * 60_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isAdmin]);
 
   const go = useCallback((to: string) => (e: React.MouseEvent) => {
     // Let a middle-click or a modified click open a new tab, as any link should.
@@ -83,26 +104,21 @@ export function App(): JSX.Element {
     navigate(to);
   }, []);
 
-  const isAdmin = route === '/admin';
-
   return (
     <>
-      {/* The admin keeps the family's aurora; the musalli page gets the sky. See ui.tsx. */}
-      <Scene sky={isAdmin ? undefined : sky} />
+      <Scene sky={!isAdmin} />
       <div className="shell">
-        {!isAdmin && (
-          <header className="topbar">
-            <a className="brand" href={withBase('/')} onClick={go('/')}>
-              {/* The masjid's own logo when they have one, our mark when they do not — the app
-                  on a musalli's phone is theirs, not ours. */}
-              <MasjidLogo />
-              <b>Prayer times</b>
-            </a>
-            <span className="spacer" />
-          </header>
-        )}
+        {!isAdmin && <MasjidHeader name={times?.masjid?.name || 'Prayer times'} />}
 
-        {route === '/' && <Home />}
+        {route === '/' &&
+          (times ? (
+            <Today data={times} />
+          ) : (
+            <main className="centre-wrap">
+              <span className="spinner" />
+            </main>
+          ))}
+
         {isAdmin && (
           <Suspense
             fallback={
@@ -119,33 +135,6 @@ export function App(): JSX.Element {
         {!isAdmin && <Foot info={info} />}
       </div>
     </>
-  );
-}
-
-/**
- * The musalli's home.
- *
- * Right now it has one honest thing to say. The timetable arrives from OpenMasjid Display
- * over the Fabric in a later slice; until a masjid has picked one, this app has NO prayer
- * times, and the single most important rule it has is that it must never invent any. So
- * this state is not a placeholder to be replaced by "loading" — it is the real, permanent
- * answer for a masjid that has not finished setting up, and it stays exactly this calm.
- */
-function Home(): JSX.Element {
-  return (
-    <main className="centre-wrap">
-      <section className="glass centre-card">
-        <span className="centre-emblem">
-          <CalendarClock size={26} strokeWidth={1.75} aria-hidden="true" />
-        </span>
-        <h1 className="centre-title">Prayer times aren&rsquo;t set up yet</h1>
-        <p className="centre-lead">
-          This masjid hasn&rsquo;t finished setting up their app. Once they have, today&rsquo;s times will be
-          right here &mdash; and you&rsquo;ll be able to add this page to your phone&rsquo;s home screen.
-        </p>
-        <Note>Nothing is shown here until the masjid connects their own timetable, so no time on this page is ever a guess.</Note>
-      </section>
-    </main>
   );
 }
 

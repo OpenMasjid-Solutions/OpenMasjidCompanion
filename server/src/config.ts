@@ -62,15 +62,6 @@ export const config = {
    *  not shared the app over the tunnel. GET /api/fabric/site is the LIVE source of
    *  truth; this is what we have before the first successful fetch. Never persisted. */
   omosPublicUrl: env('OPENMASJID_PUBLIC_URL', '').replace(/\/+$/, ''),
-
-  /**
-   * The development stub for Display's `timetable` capability (CLAUDE.md §6.5).
-   *
-   * Ships DISABLED and there is deliberately no way to turn it on from any UI — it is an
-   * environment variable the compose never sets, checked once here. A masjid must never
-   * see a stub prayer time, which is the single worst thing this app could do.
-   */
-  devStub: env('COMPANION_DEV_STUB', '') === '1',
 };
 
 /** True when the app is running embedded under OpenMasjidOS with the Fabric available.

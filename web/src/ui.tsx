@@ -8,32 +8,30 @@
 import { type ReactNode, useState } from 'react';
 import { withBase } from './base';
 import { safeImageUrl, usePrefs } from './prefs';
-import type { SkyPhase } from './sky';
 
 /**
  * The ambient backdrop, in two forms.
  *
- * With a `sky` phase — the MUSALLI page — the background follows the time of day: deep at
- * night, warm at dawn, open at midday. It is the identity of this app, and the reason is in
- * docs/DESIGN_LANGUAGE.md: someone opening this at Fajr in a dark room should be able to tell
- * what part of the day they are in before reading a word.
+ * `sky` — the MUSALLI page — is the sky: a night look and a day look, chosen by the reader's
+ * light/dark setting. One design throughout, which is what docs/DESIGN_LANGUAGE.md settled on:
+ * an earlier build moved it through five phases across the day and that was replaced by this.
  *
- * Without one — the ADMIN panel — it is the family's aurora scene, because a volunteer at a
- * desk should feel like they are still inside OpenMasjidOS.
+ * Without it — the ADMIN panel — it is the family's aurora scene, because a volunteer at a desk
+ * should feel like they are still inside OpenMasjidOS.
  *
- * A custom wallpaper image REPLACES either entirely rather than layering over it: the aurora
- * and the sky are both tuned for their own gradient, and drawing them on someone's photograph
- * looks like a mistake. The URL is sanitised (`safeImageUrl`) before it reaches `url(...)`,
- * because it arrives from the attacker-craftable `#omos=` fragment and lands inside a CSS
- * function where a quote would escape the context.
+ * A custom wallpaper image REPLACES either entirely rather than layering over it: both are
+ * tuned for their own gradient, and drawing them over someone's photograph looks like a
+ * mistake. The URL is sanitised (`safeImageUrl`) before it reaches `url(...)`, because it
+ * arrives from the attacker-craftable `#omos=` fragment and lands inside a CSS function where a
+ * quote would escape the context.
  */
-export function Scene({ sky }: { sky?: SkyPhase }): JSX.Element {
+export function Scene({ sky }: { sky?: boolean }): JSX.Element {
   const { wallpaperImage } = usePrefs();
   const img = safeImageUrl(wallpaperImage);
   if (img) return <div className="scene-img" style={{ backgroundImage: `url(${img})` }} aria-hidden="true" />;
   if (sky) {
     return (
-      <div className="sky" data-sky={sky} aria-hidden="true">
+      <div className="sky" aria-hidden="true">
         <div className="sky__body" />
         <div className="sky__stars" />
       </div>

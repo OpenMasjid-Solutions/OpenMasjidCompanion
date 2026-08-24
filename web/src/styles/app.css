@@ -317,20 +317,57 @@ h1, h2, h3, p { margin: 0; }
 }
 .release > div:first-of-type > .release-group:first-child { margin-block-start: 0.6rem; }
 
-/* ── The sky (musalli page only) ─────────────────────────────────────────────
+/* ── The musalli page ────────────────────────────────────────────────────────
  *
- * The admin panel keeps the family's aurora scene above; the musalli page gets a sky that
- * knows what time it is. See docs/DESIGN_LANGUAGE.md for why, and web/src/sky.ts for how the
- * phase is worked out.
+ * ONE design, not a different one every few hours (Hasan, 2026-08-24). An earlier build moved
+ * the sky through five phases across the day; it was replaced by this, which is what the
+ * reference screenshots actually show: a day look and a night look, chosen by the reader's
+ * light/dark setting, and otherwise identical everywhere.
  *
- * The division of labour matters: `data-theme` owns ink and contrast, `data-sky` owns hue
- * only. That is why every phase below is defined TWICE — deep for the dark theme's near-white
- * ink, pale for the light theme's dark ink — and why the light theme's "night" is a soft dusk
- * blue rather than a black page nobody could read. A sky that could darken the light theme
- * would be a sky that could break AA at 4am, which is exactly when this page gets opened.
+ * The palette is FIXED here and does not follow the masjid's OpenMasjidOS accent. That is a
+ * deliberate departure from CLAUDE.md §6.2/§12 and applies to the musalli half only — the admin
+ * panel still inherits the dashboard's accent, so a volunteer's settings screen still feels like
+ * part of OpenMasjidOS while the page a musalli opens is always the same app.
  *
- * All of it is gradients. No images, no canvas, no per-frame work — this loads on a phone on
- * one bar of signal and runs on a Pi.
+ * `data-surface="musalli"` is set on <html> by the router. Everything below is scoped to it, so
+ * the admin panel is untouched by any of it.
+ */
+[data-surface="musalli"] {
+  /* Coral, from the reference. Two strengths: one that carries text on the sky, one for
+     large/decorative use where a lighter tone reads better. */
+  --color-primary: #F0A07A;
+  --color-primary-hover: #F7B694;
+  --color-primary-subtle: rgba(240, 160, 122, 0.14);
+  --color-btn: #E8734A;
+  --color-btn-hover: #F08A63;
+  --color-on-primary: #2A1206;
+  --coral: #F0A07A;
+  --coral-strong: #F5B895;
+}
+
+/* On the light theme the same coral would sit at about 2:1 against a near-white card, so the
+   text-carrying tone is darkened while the decorative one stays warm. Measured, not guessed —
+   see the contrast harness in the slice 3 notes. */
+[data-theme="light"][data-surface="musalli"] {
+  --color-primary: #A8461C;
+  --color-primary-hover: #8E3A16;
+  --color-primary-subtle: rgba(168, 70, 28, 0.10);
+  --color-btn: #C2551F;
+  --color-btn-hover: #A8461C;
+  --color-on-primary: #FFFFFF;
+  /* Measured at 4.57:1 against the light sky — over the 4.5 line but not by enough to
+     survive a background tweak. Darkened for headroom; re-measure if either moves. */
+  --coral: #8F3914;
+  --coral-strong: #B04A1B;
+}
+
+/* ── The sky ─────────────────────────────────────────────────────────────────
+ *
+ * Two looks, one per theme. `data-theme` still owns ink and contrast; the sky only supplies the
+ * ground behind it, so WCAG AA holds in both without the background being able to break it.
+ *
+ * All of it is gradients — no images, no canvas, nothing per-frame. It loads on a phone with one
+ * bar of signal and costs a Pi nothing.
  */
 .sky {
   position: fixed;
@@ -338,11 +375,22 @@ h1, h2, h3, p { margin: 0; }
   z-index: -1;
   overflow: hidden;
   background: var(--sky-gradient);
-  /* The sky is atmosphere. It must never be read out, tabbed to, or copied with the page. */
 }
 
-/* The sun or the moon, low in the corner. Logical inset so it mirrors in Arabic and Urdu
-   along with everything else, rather than being the one thing that stays put. */
+/* Night, and the default. */
+.sky {
+  --sky-gradient: linear-gradient(180deg, #0a1830 0%, #0f2044 52%, #14294f 100%);
+  --sky-body: radial-gradient(circle, rgba(226, 236, 255, 0.34) 0%, rgba(186, 205, 240, 0.16) 34%, rgba(140, 165, 215, 0.06) 58%, transparent 72%);
+}
+
+/* Day. */
+[data-theme="light"] .sky {
+  --sky-gradient: linear-gradient(180deg, #b7d6f0 0%, #d7e9f8 45%, #eef6fc 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 226, 174, 0.85) 0%, rgba(255, 202, 140, 0.42) 34%, rgba(255, 186, 120, 0.14) 58%, transparent 72%);
+}
+
+/* The sun or the moon, low in the corner. Logical inset, so it mirrors in Arabic and Urdu along
+   with everything else rather than being the one thing that stays put. */
 .sky__body {
   position: absolute;
   inset-block-start: -16%;
@@ -368,15 +416,12 @@ h1, h2, h3, p { margin: 0; }
   box-shadow: inset 0 0 260px 90px var(--scene-vignette);
 }
 
-/* Stars: night only, and dark theme only. On the light theme's pale night sky they would be
-   invisible dots of white on white, so they are simply not drawn. */
+/* Stars: night only. On the light theme's pale sky they would be white dots on white. */
 .sky__stars { display: none; }
-[data-theme="dark"] .sky[data-sky="night"] .sky__stars,
-[data-theme="dark"] .sky[data-sky="dawn"] .sky__stars {
+[data-theme="dark"] .sky__stars {
   display: block;
   position: absolute;
   inset: 0;
-  opacity: var(--sky-stars-opacity, 1);
   background-image:
     radial-gradient(1.4px 1.4px at 24px 38px, rgba(255, 255, 255, 0.85), transparent 60%),
     radial-gradient(1px 1px at 148px 22px, rgba(255, 255, 255, 0.55), transparent 60%),
@@ -391,70 +436,126 @@ h1, h2, h3, p { margin: 0; }
   animation: skyTwinkle 14s ease-in-out infinite alternate;
 }
 @keyframes skyTwinkle {
-  from { opacity: 0.55; }
+  from { opacity: 0.5; }
   to   { opacity: 1; }
 }
 
-/* Dawn keeps a few stars, fading — the sky does not switch from full night to full morning,
-   and neither should this. */
-[data-theme="dark"] .sky[data-sky="dawn"] .sky__stars { --sky-stars-opacity: 0.35; }
-
-/* ── The phases, dark theme ───────────────────────────────────────────────── */
-
-.sky[data-sky="night"] {
-  --sky-gradient: linear-gradient(180deg, #05091a 0%, #0a1430 52%, #0e1d3c 100%);
-  --sky-body: radial-gradient(circle, rgba(226, 236, 255, 0.30) 0%, rgba(180, 200, 240, 0.15) 34%, rgba(140, 165, 215, 0.06) 58%, transparent 72%);
-}
-.sky[data-sky="dawn"] {
-  --sky-gradient: linear-gradient(180deg, #0a1430 0%, #262a50 42%, #5c3d54 76%, #8d5750 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 198, 140, 0.34) 0%, rgba(240, 150, 105, 0.18) 36%, rgba(200, 110, 90, 0.07) 60%, transparent 74%);
-}
-.sky[data-sky="morning"] {
-  --sky-gradient: linear-gradient(180deg, #0c2a48 0%, #14456a 55%, #1d6188 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 214, 150, 0.40) 0%, rgba(255, 180, 100, 0.20) 34%, rgba(255, 160, 80, 0.07) 58%, transparent 72%);
-}
-.sky[data-sky="day"] {
-  --sky-gradient: linear-gradient(180deg, #0a385b 0%, #135a80 50%, #1c759d 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 226, 170, 0.42) 0%, rgba(255, 195, 120, 0.20) 34%, rgba(255, 175, 95, 0.07) 58%, transparent 72%);
-}
-.sky[data-sky="dusk"] {
-  --sky-gradient: linear-gradient(180deg, #0f1936 0%, #3a2547 44%, #7a4450 78%, #a55f47 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 186, 128, 0.38) 0%, rgba(238, 138, 95, 0.19) 35%, rgba(190, 100, 85, 0.07) 60%, transparent 74%);
-}
-
-/* ── The phases, light theme ──────────────────────────────────────────────────
- * Same five moments, kept pale. The hue still tells you the time of day; the page stays a
- * light page throughout, because that is what the reader asked their phone for. */
-
-[data-theme="light"] .sky[data-sky="night"] {
-  --sky-gradient: linear-gradient(180deg, #b4c4e0 0%, #d0daed 55%, #e6ecf7 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 255, 255, 0.75) 0%, rgba(226, 234, 250, 0.40) 36%, transparent 68%);
-}
-[data-theme="light"] .sky[data-sky="dawn"] {
-  --sky-gradient: linear-gradient(180deg, #c6d2ec 0%, #e7d6dd 52%, #fbdfc8 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 224, 186, 0.85) 0%, rgba(255, 205, 160, 0.42) 36%, transparent 68%);
-}
-[data-theme="light"] .sky[data-sky="morning"] {
-  --sky-gradient: linear-gradient(180deg, #cbe4fa 0%, #e5f1fd 60%, #f5fbfe 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 230, 180, 0.80) 0%, rgba(255, 212, 150, 0.38) 36%, transparent 68%);
-}
-[data-theme="light"] .sky[data-sky="day"] {
-  --sky-gradient: linear-gradient(180deg, #bfe0fb 0%, #dcf0fe 55%, #f2fbff 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 236, 190, 0.82) 0%, rgba(255, 216, 150, 0.38) 36%, transparent 68%);
-}
-[data-theme="light"] .sky[data-sky="dusk"] {
-  --sky-gradient: linear-gradient(180deg, #ccd4ee 0%, #f0dcd8 55%, #fde6ce 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 214, 172, 0.85) 0%, rgba(252, 186, 140, 0.40) 36%, transparent 68%);
-}
-
-/* The sky is the one piece of motion a musalli cannot opt out of by not scrolling. */
 @media (prefers-reduced-motion: reduce) {
-  .sky__body,
-  [data-theme="dark"] .sky[data-sky="night"] .sky__stars,
-  [data-theme="dark"] .sky[data-sky="dawn"] .sky__stars {
-    animation: none;
-  }
+  .sky__body, [data-theme="dark"] .sky__stars { animation: none; }
 }
+
+/* ── The hero: which prayer is on, and how long there is ─────────────────── */
+
+.today { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 5.5rem; }
+
+.hero { padding-block: 0.5rem 0.25rem; }
+.hero__now {
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 12vw, 3.6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+}
+/* The countdown sits in a soft pill so it stays readable wherever the sky is lightest. */
+.hero__until {
+  display: inline-block;
+  margin-block-start: 0.55rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 45%, transparent);
+}
+
+/* ── The day arc ─────────────────────────────────────────────────────────────
+ *
+ * The prayers as points along a curve, with a marker at now. It answers "where am I in the day"
+ * before you have read a single number, which a list of times cannot do.
+ *
+ * An inline SVG rather than a canvas: it scales, it costs nothing, and it can be labelled.
+ */
+.arc { display: block; width: 100%; height: auto; overflow: visible; }
+.arc__track { fill: none; stroke: color-mix(in srgb, var(--ink-scene) 22%, transparent); stroke-width: 2.5; stroke-linecap: round; }
+.arc__done  { fill: none; stroke: var(--coral-strong); stroke-width: 3; stroke-linecap: round; }
+.arc__dot   { fill: color-mix(in srgb, var(--ink-scene) 35%, transparent); }
+.arc__dot--past { fill: var(--ink-scene); }
+.arc__now   { fill: var(--sky-dot-core, #0f2044); stroke: var(--ink-scene); stroke-width: 3; }
+[data-theme="light"] .arc__now { --sky-dot-core: #ffffff; }
+
+.arc__chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.25rem 0.7rem; border-radius: 0.5rem;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--ink-scene);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 30%, transparent);
+  background: color-mix(in srgb, var(--scene-base) 40%, transparent);
+}
+
+/* ── The date stepper ────────────────────────────────────────────────────── */
+
+.datebar { display: flex; align-items: center; gap: 0.5rem; margin-block: 0.9rem 0.35rem; }
+.datebar__main { flex: 1; text-align: center; min-width: 0; }
+.datebar__greg {
+  font-family: var(--font-display); font-size: 1.15rem; font-weight: 700;
+  color: var(--ink-scene); text-shadow: var(--text-shadow-scene);
+}
+.datebar__hijri { font-size: 0.92rem; color: var(--coral); margin-block-start: 0.1rem; }
+.datebar__btn {
+  flex: none; display: grid; place-items: center;
+  inline-size: 2.5rem; block-size: 2.5rem; border-radius: 999px;
+  background: transparent; border: 0; color: var(--ink-scene);
+}
+.datebar__btn:hover:not(:disabled) { background: color-mix(in srgb, var(--scene-base) 40%, transparent); }
+.datebar__btn:disabled { opacity: 0.3; cursor: default; }
+
+/* ── The timetable itself ────────────────────────────────────────────────── */
+
+.times { margin-block-start: 0.35rem; }
+.time-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.85rem 0.9rem;
+  border-block-end: 1px solid color-mix(in srgb, var(--ink-scene) 12%, transparent);
+}
+.time-row:last-child { border-block-end: 0; }
+.time-row__name { font-size: 1.12rem; font-weight: 600; color: var(--ink-scene); text-shadow: var(--text-shadow-scene); }
+.time-row__times { display: flex; align-items: baseline; gap: 0.6rem; }
+.time-row__adhan { font-size: 1.12rem; font-weight: 600; color: var(--ink-scene); text-shadow: var(--text-shadow-scene); }
+.time-row__iqamah { font-size: 0.86rem; color: var(--ink-scene-muted); }
+
+/* Passed prayers recede rather than disappear — the day so far is still information. */
+.time-row--past .time-row__name,
+.time-row--past .time-row__adhan { color: var(--ink-scene-muted); font-weight: 500; }
+
+/* The current one is OUTLINED, not filled. A filled row shouts; an outline says "here" and
+   leaves the column of times even. */
+.time-row--now {
+  border: 2px solid var(--ink-scene);
+  border-radius: 0.85rem;
+  margin-block: 0.25rem;
+  padding-block: 0.8rem;
+}
+.time-row--now .time-row__name,
+.time-row--now .time-row__adhan { font-weight: 700; color: var(--ink-scene); }
+
+/* Shurūq is a sun event, not a jamā'ah. Lighter, and it never carries an Iqamah. */
+.time-row--sun .time-row__name { font-weight: 500; }
+
+/* ── Honest states ───────────────────────────────────────────────────────── */
+
+.stale-note {
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  margin-block-start: 1rem; padding: 0.7rem 0.85rem;
+  border-radius: 0.7rem; font-size: 0.85rem; line-height: 1.5;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 15%, transparent);
+}
+.stale-note svg { flex: none; margin-block-start: 0.15rem; color: var(--coral); }
 
 /* ── Status cards (admin) ───────────────────────────────────────────────────── */
 
@@ -508,3 +609,18 @@ h1, h2, h3, p { margin: 0; }
   font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
+
+/* ── The timetable picker (admin) ───────────────────────────────────────────── */
+.picker { list-style: none; margin: 0.8rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.picker__item {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  padding: 0.65rem 0.8rem; border-radius: var(--radius-button);
+  background: var(--glass-bg-inset); border: 1px solid var(--color-border);
+  color: var(--color-ink); text-align: start;
+}
+.picker__item:hover:not(:disabled) { background: var(--color-surface-hover); }
+.picker__item:disabled { opacity: 0.6; cursor: not-allowed; }
+/* The chosen one is outlined in the accent rather than filled: this is a list a volunteer
+   scans, and one filled row in a stack of five reads as a warning. */
+.picker__item--on { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); color: var(--color-primary); }
+.picker__name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
