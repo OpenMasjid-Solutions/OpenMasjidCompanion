@@ -16,7 +16,9 @@ import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { CalendarClock, Github } from 'lucide-react';
 import { api, type AppInfo } from './api';
 import { stripBase, withBase } from './base';
-import { Scene, BrandMark, Note } from './ui';
+import { useAppearanceSync } from './prefs';
+import { useSkyPhase } from './sky';
+import { Scene, MasjidLogo, Note } from './ui';
 
 /**
  * The admin panel is LAZY, and this line is the reason the musalli bundle stays small.
@@ -61,6 +63,19 @@ export function App(): JSX.Element {
     });
   }, []);
 
+  useAppearanceSync();
+
+  /**
+   * The time of day, for the musalli page's sky.
+   *
+   * No timezone yet: until a masjid has picked a timetable this app has no idea what zone it
+   * is meant to be in, and inventing one would be the first step down a road this app does not
+   * go down. It follows the device clock, which is right for the person holding it, and
+   * switches to the MASJID's zone in the slice that brings the timetable — the same rule every
+   * other time on this page will follow.
+   */
+  const sky = useSkyPhase();
+
   const go = useCallback((to: string) => (e: React.MouseEvent) => {
     // Let a middle-click or a modified click open a new tab, as any link should.
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
@@ -68,14 +83,19 @@ export function App(): JSX.Element {
     navigate(to);
   }, []);
 
+  const isAdmin = route === '/admin';
+
   return (
     <>
-      <Scene />
+      {/* The admin keeps the family's aurora; the musalli page gets the sky. See ui.tsx. */}
+      <Scene sky={isAdmin ? undefined : sky} />
       <div className="shell">
-        {route !== '/admin' && (
+        {!isAdmin && (
           <header className="topbar">
             <a className="brand" href={withBase('/')} onClick={go('/')}>
-              <BrandMark />
+              {/* The masjid's own logo when they have one, our mark when they do not — the app
+                  on a musalli's phone is theirs, not ours. */}
+              <MasjidLogo />
               <b>Prayer times</b>
             </a>
             <span className="spacer" />
@@ -83,7 +103,7 @@ export function App(): JSX.Element {
         )}
 
         {route === '/' && <Home />}
-        {route === '/admin' && (
+        {isAdmin && (
           <Suspense
             fallback={
               <main className="centre-wrap">
@@ -96,7 +116,7 @@ export function App(): JSX.Element {
         )}
         {route === 'unknown' && <NotFound onHome={go('/')} />}
 
-        {route !== '/admin' && <Foot info={info} />}
+        {!isAdmin && <Foot info={info} />}
       </div>
     </>
   );

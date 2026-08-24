@@ -9,17 +9,24 @@
  * — and the admin panel is used by one person, at a desk, a handful of times. Letting the panel
  * into the first load would make every musalli pay for it.
  *
- * Slice 2 is the shell and the way in. The screens it will hold — Setup, Timetable, Donations,
- * Notifications, Share, Settings — arrive with the features they configure.
+ * The screens it will hold — Timetable, Donations, Notifications, Share, Settings — arrive with
+ * the features they configure. What is here is the setup checklist, and the first item on it is
+ * real: everything this app does depends on being reachable from outside the building.
  */
-import { useCallback, useState } from 'react';
-import { CalendarClock, Gift, Share2, Wifi } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { BellRing, CalendarClock, Gift, Share2 } from 'lucide-react';
+import { api } from '../api';
 import { withBase } from '../base';
 import { BrandMark, Note } from '../ui';
 import type { AppInfo } from '../api';
 import { useSession } from './session';
 import { Auth } from './Auth';
 import { AccountMenu } from './AccountMenu';
+import { RemoteAccess, type RemoteStatus } from './RemoteAccess';
+
+interface AdminStatus {
+  remote: RemoteStatus;
+}
 
 export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
   const { state, error, reload } = useSession();
@@ -32,6 +39,17 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
   }, [reload]);
 
   const version = info?.version ?? '';
+  const signedIn = state?.kind === 'in';
+
+  // ── The state of everything this app depends on ────────────────────────────
+  const [status, setStatus] = useState<AdminStatus | null>(null);
+  const loadStatus = useCallback(async () => {
+    const r = await api.get<AdminStatus>('/api/admin/status');
+    if (r.ok) setStatus(r.data);
+  }, []);
+  useEffect(() => {
+    if (signedIn) void loadStatus();
+  }, [signedIn, loadStatus]);
 
   // First load, before the session answer. Deliberately quiet — a flash of a login form for
   // someone who is already signed in is worse than a moment of nothing.
@@ -60,30 +78,20 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
   if (state && state.kind !== 'in') {
     return (
       <>
-        <header className="topbar">
-          <a className="brand" href={withBase('/')}>
-            <BrandMark />
-            <b>Companion</b>
-          </a>
-          <span className="spacer" />
-        </header>
+        <Topbar />
         <Auth state={state} onSignedIn={refresh} />
       </>
     );
   }
 
   const session = state!.session;
+  const remote = status?.remote;
 
   return (
     <>
-      <header className="topbar">
-        <a className="brand" href={withBase('/')}>
-          <BrandMark />
-          <b>Companion</b>
-        </a>
-        <span className="spacer" />
+      <Topbar>
         <AccountMenu username={session.username} version={version} onSignedOut={refresh} />
-      </header>
+      </Topbar>
 
       <main className="admin">
         <div className="page-head">
@@ -94,34 +102,35 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
           </p>
         </div>
 
-        {/* The honest state of a build at this version. Each of these becomes a real screen in
-            its own slice; saying so plainly beats showing four dead buttons. */}
         <div className="stack">
-          <Todo
-            icon={<Wifi size={18} aria-hidden="true" />}
-            title="Turn on Remote access"
-            body="This app is only useful over the internet — a QR code pointing inside your building works for nobody outside it. You'll switch this on in OpenMasjidOS and share this app."
-            soon
-          />
+          {/* The one live step. Until this is done the rest cannot work, so it goes first and
+              says why rather than sitting in a list of equals. */}
+          {remote ? (
+            <RemoteAccess status={remote} onChanged={loadStatus} />
+          ) : (
+            <section className="glass panel">
+              <span className="spinner" />
+            </section>
+          )}
+
           <Todo
             icon={<CalendarClock size={18} aria-hidden="true" />}
             title="Choose your prayer timetable"
             body="Companion reads your times from OpenMasjid Display, so the times on a phone are the same ones on the wall. It never calculates a prayer time of its own."
-            soon
           />
           <Todo
             icon={<Gift size={18} aria-hidden="true" />}
             title="Add your appeals"
             body="Paste the share link of any appeal from OpenMasjid Donations and it appears in the app, tapping through to your own donation page to give."
-            soon
           />
           <Todo
             icon={<Share2 size={18} aria-hidden="true" />}
             title="Print the poster"
             body="A QR code and a printable poster for the noticeboard, pointing at your real public address."
-            soon
           />
         </div>
+
+        {remote?.configured && <AlertCheck />}
 
         <div style={{ marginBlockStart: '1.25rem' }}>
           <Note>
@@ -134,7 +143,77 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
   );
 }
 
-function Todo({ icon, title, body, soon }: { icon: React.ReactNode; title: string; body: string; soon?: boolean }): JSX.Element {
+function Topbar({ children }: { children?: React.ReactNode }): JSX.Element {
+  return (
+    <header className="topbar">
+      <a className="brand" href={withBase('/')}>
+        <BrandMark />
+        <b>Companion</b>
+      </a>
+      <span className="spacer" />
+      {children}
+    </header>
+  );
+}
+
+/**
+ * "Will I actually be told when something breaks?"
+ *
+ * An alert channel is otherwise discovered to be misconfigured at the exact moment it was
+ * needed. Where the alert is routed — email, a webhook, nothing at all — is chosen in
+ * OpenMasjidOS and we cannot read it, so a round trip is genuinely the only way either of us
+ * can find out that it works.
+ *
+ * "You've turned this alert off" is reported plainly rather than as a failure. It is the
+ * admin's own setting, and this app has no business second-guessing it.
+ */
+function AlertCheck(): JSX.Element {
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<string>('');
+
+  const send = async () => {
+    setSending(true);
+    setResult('');
+    const r = await api.post<{ result: string }>('/api/admin/alert/test');
+    setResult(
+      !r.ok
+        ? r.error
+        : r.data.result === 'sent'
+          ? 'Sent. It should reach you wherever you route alerts in OpenMasjidOS.'
+          : r.data.result === 'disabled_by_admin'
+            ? 'OpenMasjidOS has this alert switched off, so nothing was sent. That’s a setting on their end, not a problem here.'
+            : 'We couldn’t reach OpenMasjidOS to send it.',
+    );
+    setSending(false);
+  };
+
+  return (
+    <section className="glass panel" style={{ marginBlockStart: '0.75rem' }}>
+      <div className="card-head">
+        <span className="panel-ico">
+          <BellRing size={18} aria-hidden="true" />
+        </span>
+        <div className="card-head__main">
+          <div className="row-between">
+            <h2 className="section-title">Check your alerts reach you</h2>
+          </div>
+          <p className="card-body">
+            If this app ever loses your prayer times, it tells you through OpenMasjidOS. Send a test now so you
+            know that works before it matters.
+          </p>
+          {result && <p className="muted card-body">{result}</p>}
+          <div className="card-actions">
+            <button className="btn" onClick={send} disabled={sending}>
+              {sending ? <span className="spinner" /> : 'Send a test alert'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Todo({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }): JSX.Element {
   return (
     <section className="glass panel">
       <div className="card-head">
@@ -142,11 +221,9 @@ function Todo({ icon, title, body, soon }: { icon: React.ReactNode; title: strin
         <div className="card-head__main">
           <div className="row-between">
             <h2 className="section-title">{title}</h2>
-            {soon && <span className="badge">Coming soon</span>}
+            <span className="badge">Coming soon</span>
           </div>
-          <p className="muted" style={{ marginBlockStart: '0.3rem', fontSize: '0.9rem', lineHeight: 1.55 }}>
-            {body}
-          </p>
+          <p className="card-body">{body}</p>
         </div>
       </div>
     </section>

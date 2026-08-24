@@ -13,6 +13,7 @@
  * the hook is actually wired to it.
  */
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
@@ -24,7 +25,9 @@ import type { Store } from './store';
 import { getBasePath, injectBase, stripBasePath } from './basePath';
 import { COOKIE, MAX_AGE_MS, SSO_SESSION_MS, cookieOptions, hashPassword, makeToken, secureForRequest, tokenUser, verifyPassword, verifyToken } from './auth';
 import { LoginLimiter, makeRateLimiter } from './rateLimit';
-import { clearSessionCache, probePlatform } from './fabric';
+import { type Appearance, type LogoImage, clearSessionCache, fetchAppearance, fetchLogo, probePlatform, raiseAlert } from './fabric';
+import { Cached, KEEP, loaded } from './cache';
+import { getSite, refreshSite } from './site';
 import { parseChangelog, readChangelog } from './changelog';
 
 const log = makeLog('server');
@@ -225,22 +228,159 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   }));
 
   // ── Public bootstrap the web app reads on load (no secrets) ─────────────────
-  app.get('/api/app', async () => ({
-    data: {
-      name: 'OpenMasjid Companion',
-      version: config.version,
-      /** Running under OpenMasjidOS with the Fabric available. NOT "signed in" — the
-       *  admin panel asks that separately, because conflating the two is what locks an
-       *  admin out after a restore. */
-      embedded: ssoConfigured(),
-      /** This app's public address, or '' when the admin has not shared it over the
-       *  tunnel yet. The musalli page uses it to decide whether install and
-       *  notifications can honestly be offered — neither works over plain HTTP, so
-       *  offering them on a LAN address would be a button that cannot work. */
-      publicUrl: config.omosPublicUrl,
-      basePath: getBasePath(),
-    },
-  }));
+  app.get('/api/app', async () => {
+    const site = getSite();
+    return {
+      data: {
+        name: 'OpenMasjid Companion',
+        version: config.version,
+        /** Running under OpenMasjidOS with the Fabric available. NOT "signed in" — the admin
+         *  panel asks that separately, because conflating the two is what locks an admin out
+         *  after a restore. */
+        embedded: ssoConfigured(),
+        /** This app's public address, or '' when it has not been shared over the tunnel. Live
+         *  from the platform, not from the boot-time environment variable — the admin can turn
+         *  sharing on without restarting anything. */
+        publicUrl: site.publicUrl,
+        /**
+         * The base path the ROUTER is actually stripping, not the one the platform last
+         * mentioned. They are the same in practice — adopting a new one is what sets it — but
+         * the page builds every URL it fetches from this value, so it has to be told what will
+         * actually route rather than what we intend to route next.
+         */
+        basePath: getBasePath(),
+        /**
+         * Can this app honestly offer to be installed and to send notifications?
+         *
+         * Both need a secure context, which means the tunnel. Over plain HTTP on the LAN the
+         * service worker and the Push API do not exist at all, so a page that offered either
+         * would be showing a button that cannot work. And the page IS still reachable on the
+         * LAN — a kiosk or a hallway screen may be pointed at it — so the answer is to say so
+         * plainly rather than to hide the page or to pretend.
+         */
+        remote: {
+          configured: site.configured,
+          enabled: site.enabled,
+          /** A tunnel URL is https by construction. Computed here so the page keys off one
+           *  boolean instead of re-deriving the rule in the browser. */
+          secure: site.enabled && site.publicUrl.startsWith('https://'),
+        },
+      },
+    };
+  });
+
+  // ── Appearance + logo, relayed from the platform ────────────────────────────
+  // These go through us rather than being fetched by the page. See fabric.ts: our page is
+  // HTTPS behind the tunnel and the platform is plain HTTP on the LAN, so a direct browser
+  // fetch is mixed content and is blocked in the one place a musalli ever opens the app.
+  //
+  // Neither needs a rate limiter, and that is a property of the cache rather than an
+  // oversight: the TTL and the in-flight dedupe together bound the OUTBOUND rate at one call
+  // per TTL no matter how many phones ask, and serving the cached copy is a memory read. A
+  // per-peer limiter here could only ever 429 a musalli's own logo.
+
+  const appearanceCache = new Cached<Appearance>(async () => {
+    const a = await fetchAppearance();
+    return a ? loaded(a) : KEEP;
+  }, 20_000);
+
+  app.get('/api/public/appearance', async (_req, reply) => {
+    const entry = await appearanceCache.get();
+    if (!entry.value) return reply.code(503).send({ error: 'The dashboard is not reachable right now.' });
+    reply.header('cache-control', 'public, max-age=15');
+    return { data: entry.value };
+  });
+
+  const logoCache = new Cached<LogoImage | null>(async () => {
+    const r = await fetchLogo();
+    if (r === 'unavailable') return KEEP; // an outage is not an answer — keep what we had
+    return loaded(r === 'none' ? null : r);
+  }, 5 * 60_000);
+
+  /**
+   * The masjid's logo, re-served from our origin.
+   *
+   * A 404 here is a normal answer that the page is built to handle — most masjids will not
+   * have set a logo, and the app falls back to its own mark. It is not an error state.
+   *
+   * The ETag is the point of this route rather than a nicety: this image is fetched by every
+   * phone that opens the app, and a masjid logo is the largest single asset on the page. With
+   * one, a returning musalli gets a 304 of a few dozen bytes.
+   */
+  app.get('/api/public/logo', async (req, reply) => {
+    const entry = await logoCache.get();
+    const logo = entry.value;
+    if (!logo) return reply.code(404).send({ error: 'This masjid has not set a logo.' });
+
+    const etag = `"${createHash('sha256').update(logo.body).digest('base64url').slice(0, 22)}"`;
+    // max-age is short but the ETag does the real work: the logo can change the moment the
+    // admin uploads a new one in OpenMasjidOS, and a long max-age would leave the old one on
+    // every phone that had already loaded it, for as long as it lasted.
+    reply.header('cache-control', 'public, max-age=300');
+    reply.header('etag', etag);
+    if (req.headers['if-none-match'] === etag) return reply.code(304).send();
+    return reply.type(logo.mime).send(logo.body);
+  });
+
+  // ── Admin: the state of the things this app depends on ──────────────────────
+
+  /**
+   * Everything the panel's Home screen reports. One call, because the alternative is a panel
+   * that renders in four stages as four requests land.
+   *
+   * `remote` is the only section with anything in it at this version. Timetable freshness,
+   * campaign health and the subscriber count join it as those features arrive.
+   */
+  app.get('/api/admin/status', { preHandler: requireAdmin }, async () => {
+    const site = getSite();
+    return {
+      data: {
+        remote: {
+          /** Is the Fabric there at all? A standalone install is not misconfigured, and must
+           *  not be told to go and switch on something that does not exist for it. */
+          configured: site.configured,
+          /** Remote access is on AND this app is shared. The gate on everything musalli-facing
+           *  that needs HTTPS: install, notifications, the QR code. */
+          enabled: site.enabled,
+          publicUrl: site.publicUrl,
+          domain: site.domain,
+          /** As in /api/app: the value in effect, so a panel showing it cannot disagree with
+           *  the router about where this app answers. */
+          basePath: getBasePath(),
+          /** Did the last lookup reach the platform? Separate from `enabled`, because "remote
+           *  access is off" and "we could not ask" are different problems with different
+           *  fixes, and telling an admin the first when it is the second sends them to change
+           *  a setting that was already correct. */
+          reachable: site.ok,
+          checkedAt: site.checkedAt,
+        },
+      },
+    };
+  });
+
+  /** "Check again" — the admin has just turned Remote access on in another tab and is looking
+   *  at this page waiting for it to notice. Without this they wait out the 5-minute poll and
+   *  reasonably conclude it is broken. */
+  app.post('/api/admin/site/refresh', { preHandler: requireAdmin }, async (req, reply) => {
+    if (!platformCallOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
+    const site = await refreshSite();
+    return { data: { configured: site.configured, enabled: site.enabled, publicUrl: site.publicUrl, reachable: site.ok } };
+  });
+
+  /**
+   * Send the declared `test` alert.
+   *
+   * This exists so an admin can find out that their alert routing works BEFORE the first real
+   * alert needs it. An alert channel is only discovered to be misconfigured at the moment it
+   * was needed, which is the worst possible moment — and the admin's routing choice lives in
+   * OpenMasjidOS where we cannot read it, so this round trip is the only way either of us can
+   * tell.
+   */
+  app.post('/api/admin/alert/test', { preHandler: requireAdmin }, async (req, reply) => {
+    if (!platformCallOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
+    const result = await raiseAlert('test', 'Test alert from OpenMasjid Companion.');
+    return { data: { result } };
+  });
 
   // ── Static web app (built by Vite into ./public) ────────────────────────────
   const indexPath = path.join(publicDir, 'index.html');

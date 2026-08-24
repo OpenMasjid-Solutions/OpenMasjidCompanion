@@ -51,7 +51,12 @@ export interface AppInfo {
   /** Running under OpenMasjidOS with the Fabric available. Not "signed in". */
   embedded: boolean;
   /** This app's public address, or '' when the admin has not shared it over the tunnel.
-   *  Everything musalli-facing that needs HTTPS keys off this being non-empty. */
+   *  Live from the platform, not the boot-time environment — the admin can turn sharing on
+   *  without restarting anything. */
   publicUrl: string;
+  /** The prefix the router is actually stripping. Every URL this page builds goes through it. */
   basePath: string;
+  /** Whether install and notifications can HONESTLY be offered. Both need a secure context,
+   *  which means the tunnel; over plain http on the LAN neither API exists at all. */
+  remote: { configured: boolean; enabled: boolean; secure: boolean };
 }

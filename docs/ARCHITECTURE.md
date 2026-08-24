@@ -189,3 +189,40 @@ owns the far harder version of this problem, does the same thing (`zonedNoon`, `
 instant — have to be written and tested rather than called. That is exactly where the DST tests
 §14 requires already have to live, so the tests are not extra work; the arithmetic is. If this
 turns out to be wrong, it is one module to swap for Luxon.
+
+## Slice 3 — the app knows where it lives (0.1.0-dev.3)
+
+**`site.ts` is the only module allowed to decide the base path.** `GET /api/fabric/site` is the
+live source of truth for our public URL and path prefix; `OPENMASJID_PUBLIC_URL` is only the
+value we had at boot. Its pathname *is* the base path, so it is applied at import — that closes
+the window between process start and the first successful lookup, during which every tunnelled
+request would otherwise 404.
+
+**A failed site lookup changes nothing.** Not the base path, not the public URL, not `enabled`.
+The tunnel is Cloudflare's and this container is ours; both keep working while the OpenMasjidOS
+core restarts, so treating "cannot reach the core" as "no remote access" would take the app off
+the internet for the duration of a platform hiccup. `site.ts` reports `ok: false` separately
+instead, and the admin panel renders that as its own state.
+
+**Appearance and logo are relayed, not fetched by the browser.** Our page is HTTPS behind the
+tunnel; the platform is plain HTTP on the LAN. A direct fetch is mixed content — it would work
+in dev, work on the LAN, and be blocked in the only place a musalli ever opens the app.
+
+**`cache.ts` is the shape every upstream gets.** TTL + in-flight dedupe + serve-stale-on-error,
+with the loader signalling failure by returning `KEEP` rather than throwing (every fetch here is
+written not to throw). `at` is the age of the *data*, never of the last attempt, because that is
+what a staleness marker has to report. The timetable and campaign caches will use it unchanged.
+
+**`fetchLogo` distinguishes `'none'` from `'unavailable'`.** Both render as "no logo", but only
+one should be cached for five minutes: a core that was restarting when the first phone opened
+the app must not pin the fallback mark on everyone for the rest of the TTL.
+
+**The sky is two layers, not one.** `data-theme` owns ink and contrast; `data-sky` owns hue and
+the celestial glow. That is what lets the background follow the time of day without ever being
+able to break AA — measured across five phases in both themes, and the one element that failed
+(the footer's AGPL source link, at 2.8:1 against the midday sky) was given its own ground.
+
+**The web half has tests now.** `node --test` via tsx, mirroring the server, with the same
+explicit-file-list guard. It exists because the countdown, the current-prayer highlight and the
+push scheduler all rest on the timezone arithmetic that starts in `sky.ts`, and CLAUDE.md §14
+makes DST coverage non-negotiable.

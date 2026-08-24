@@ -391,8 +391,9 @@ Fetched separately it can be cached until the masjid changes it.
 - `404 {error:'unknown_timetable'}` for an unknown id, as `get` already does.
 - Read-only, like the rest of the capability.
 
-**Versioning:** additive — a new method does not change `v`. Companion probes it and treats every
-error, including a 404 from an older Display that has no such route, as "no logo, fall through".
+**Versioning:** additive — a new method does not change `v`. Companion probes it and treats EVERY
+error as "no logo, fall through". (This paragraph originally said an older Display would answer
+404. It answers 401 — see the correction under "Work order #2 — SHIPPED" below.)
 
 ## What Companion does with it
 
@@ -406,3 +407,111 @@ upload in Companion's own settings — this only decides the **default**.
 Say so and Companion will fall back to the platform's `/api/public/logo` alone, which already works.
 The result is simply that a masjid whose logo is on their screens but not in Settings → Customize
 gets Companion's mark on the home screen instead of their own.
+
+---
+
+## Work order #2 — SHIPPED (2026-08-24), with one correction to the ask
+
+Display built `POST /fabric/timetable/logo` as specified: `{v:1, id, logo:{mime, bytes, data}}`
+with `data` base64 and no `data:` prefix, or `{v:1, id, logo:null}`. Raster enforced by an
+**allowlist read from the magic bytes** (`image/png`, `image/jpeg`, `image/gif`) rather than by
+refusing SVG by extension — which is stronger than what was asked for, and correctly so: a
+`.png` that is really an SVG is a file Display's own upload route cannot produce but a restored
+backup can. `415 {error:'logo_not_raster'}`. WebP is absent because Display's uploader already
+refuses it (resvg cannot decode it), so no such logo exists on a screen either.
+
+The cap landed at **175 KB decoded**, derived rather than guessed: base64 is 4:3, so the encoded
+answer is ~239 KB against the broker's 256 KB ceiling, 8.8 % spare. A Display-side test
+recomputes that arithmetic, so raising the cap without re-deriving it fails.
+
+Two divergences from the ask, both right:
+
+1. **`logo` needs no location**, unlike `get`. A masjid can upload a logo before setting
+   coordinates, and the icon is still theirs — gating it on a location would borrow an unrelated
+   failure.
+2. **A `logoImage` naming a missing file answers `logo: null`**, not an error. Companion falls
+   back to its own mark in exactly that case, so null is the honest answer.
+
+### The correction — worth keeping, because it is a trap
+
+This document told Display that Companion "treats every error, including a 404 from an older
+Display that has no such route, as no logo, fall through". **The 404 part was wrong.** Display
+booted a server and measured it:
+
+```
+POST /fabric/timetable/list   -> 200
+POST /fabric/timetable/logo   -> 404 unknown_timetable   (bad id)
+POST /fabric/timetable/bogus  -> 401 Please sign in.     (i.e. an older Display)
+GET  /fabric/timetable/logo   -> 405 method_not_allowed
+```
+
+An unmatched non-GET path falls past every branch to Display's session gate, and a Fabric call
+carries no cookie — so there is no route that can 404 for "this method does not exist". An older
+Display answers **401**.
+
+Companion's fall-through-on-any-error posture makes this harmless, which is why it stays exactly
+as it is. **It must not be tightened to branch on 404**: from these methods a 404 means *the id
+was wrong*, which is a different problem from *this Display is too old*, and conflating them
+would send an admin to re-pick a timetable that was never the issue.
+
+---
+
+# Work order #3 — OpenMasjidDisplay: expose the masjid's coordinates on `timetable`
+
+**Status: proposed. Not yet sent.** Hasan added Qibla to Companion's v1 on 2026-08-24
+(`docs/DESIGN_LANGUAGE.md`); this is what would make it work well.
+
+## The ask
+
+Add `location` to the existing `get` response — a **field, not a method**, because unlike the
+logo it is ~40 bytes and never worth a second round trip:
+
+```jsonc
+{
+  "v": 1,
+  "id": "tt_6e46aea7",
+  "timezone": "America/New_York",
+  "location": { "latitude": 40.2415, "longitude": -75.2838 },   // NEW — or null
+  "days": [ /* … */ ]
+}
+```
+
+- `null` when the admin has not set coordinates. Note this can only be observed on a timetable
+  that *has* them, since `get` already answers `409 no_location` otherwise — so in practice the
+  field is present whenever the call succeeds. It is typed nullable anyway, so that a future
+  Display which computes times some other way is not forced to lie.
+- Additive, so **`v` stays 1**. Companion treats an absent field as `null`.
+
+## Why Companion wants it
+
+Qibla is a bearing to Makkah from a position. There are only two positions available:
+
+1. **The masjid's own**, which needs no permission prompt, no HTTPS, no signal, and no
+   geolocation API — and is the *right* default for a masjid's own app.
+2. **The musalli's device**, which needs an explicit permission a lot of people decline, and a
+   secure context they only have over the tunnel.
+
+Without (1), declining a location prompt leaves a dead screen. With it, the compass works for
+everyone immediately and the device's location becomes a refinement for someone using the app
+away from the masjid.
+
+Display already holds these coordinates — that is what `409 no_location` is about — so this is
+exposing a value that exists, not computing anything new.
+
+**This is not a prayer-time calculation** and does not touch Companion's §2 rule. A Qibla
+bearing is a great-circle heading, self-evidently right or wrong on screen the moment you hold
+the phone up. A wrong prayer time is silent and unfalsifiable; a compass pointing at the wrong
+wall is neither.
+
+## Requirements
+
+- **Read-only**, like the rest of the capability.
+- **The coordinates the times were actually computed FOR**, matching the `timezone` field's own
+  rule — not a stored config string that may differ.
+- Ordinary WGS-84 decimal degrees. Rounding to ~4 decimal places (≈11 m) is welcome: this is a
+  masjid's location, it is on their public website already, and a bearing does not need more.
+
+## If this is not wanted
+
+Say so and Companion will use the device's geolocation alone, and show an honest "we need your
+location for this" state to anyone who declines. That is a worse screen, not a broken app.

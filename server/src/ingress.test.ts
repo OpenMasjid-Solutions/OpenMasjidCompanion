@@ -177,7 +177,10 @@ test('/api/app carries nothing secret', async () => {
   const data = JSON.parse(body).data as Record<string, unknown>;
   assert.deepEqual(
     Object.keys(data).sort(),
-    ['basePath', 'embedded', 'name', 'publicUrl', 'version'],
+    ['basePath', 'embedded', 'name', 'publicUrl', 'remote', 'version'],
     'the public bootstrap is an explicit, reviewed list — a new key here reaches every musalli',
   );
+  // `remote` decides whether the page offers to be installed and to send notifications. It is
+  // three booleans about this app's own address; nothing in it is about a person.
+  assert.deepEqual(Object.keys(data.remote as object).sort(), ['configured', 'enabled', 'secure']);
 });

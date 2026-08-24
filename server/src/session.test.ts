@@ -94,7 +94,7 @@ async function scenario(env: Record<string, string | undefined>): Promise<{
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
   }
-  for (const m of ['./config', './fabric', './server', './store', './auth', './basePath', './changelog', './rateLimit']) {
+  for (const m of ['./config', './fabric', './site', './cache', './server', './store', './auth', './basePath', './changelog', './rateLimit']) {
     delete require.cache[require.resolve(m)];
   }
   const { Store: S } = require('./store') as typeof import('./store');
@@ -111,7 +111,7 @@ async function scenario(env: Record<string, string | undefined>): Promise<{
       store.close();
       fs.rmSync(dir, { recursive: true, force: true });
       process.env = saved;
-      for (const m of ['./config', './fabric', './server', './store', './auth', './basePath', './changelog', './rateLimit']) {
+      for (const m of ['./config', './fabric', './site', './cache', './server', './store', './auth', './basePath', './changelog', './rateLimit']) {
         delete require.cache[require.resolve(m)];
       }
     },

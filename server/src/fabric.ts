@@ -26,6 +26,7 @@
  * explaining why. `docs/RESTORE_SSO_FIX.md` in the sibling repos is the write-up.
  */
 import { config, ssoConfigured } from './config';
+import { normBasePath } from './basePath';
 import { makeLog } from './logger';
 
 const log = makeLog('fabric');
@@ -36,11 +37,22 @@ export { ssoConfigured };
  * Is `host` a loopback / private / LAN address, where sending our app secret over plain HTTP
  * is acceptable? The normal deployment (the platform on the same box, or a 192.168.x.x
  * machine) is exactly this, and warning about it would be noise.
+ *
+ * Exported for its own test: the ranges below are the kind of thing that is easy to get
+ * subtly wrong, and both directions of error are bad. Too strict and a masjid's log carries a
+ * scary security warning about a perfectly normal LAN install, which trains them to ignore
+ * warnings; too loose and a genuinely public plain-HTTP deployment says nothing at all.
  */
-function isPrivateHost(host: string): boolean {
+export function isPrivateHost(host: string): boolean {
   const h = host.toLowerCase().replace(/^\[/, '').replace(/\]$/, ''); // strip IPv6 brackets
   if (h === 'localhost' || h === '::1' || h === '0.0.0.0') return true;
-  if (h.endsWith('.local') || h.endsWith('.lan')) return true;
+  // Names that cannot be public by construction. `.internal` is ICANN-reserved for private
+  // use, and is what Docker hands containers ("host.docker.internal") — the single most
+  // common way this app reaches a platform that is not on its own loopback.
+  if (h.endsWith('.local') || h.endsWith('.lan') || h.endsWith('.internal') || h.endsWith('.home.arpa')) return true;
+  // A single-label name has no public DNS meaning at all: it is a container name on a Docker
+  // network, or a hostname from the LAN's own resolver. Either way it never left the building.
+  if (!h.includes('.') && !h.includes(':')) return true;
   if (h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd')) return true; // IPv6 link-local + ULA
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
   if (m) {
@@ -203,4 +215,267 @@ export async function platformReachable(): Promise<boolean> {
  *  a 45-second window in which the next request silently signs you back in. */
 export function clearSessionCache(): void {
   positiveCache.clear();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Where this app actually lives on the internet (`domain: true`)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** What `GET /api/fabric/site` tells us, normalised. Never persisted — see the file header. */
+export interface FabricSite {
+  /** Remote access is on AND this app is shared through the tunnel. */
+  enabled: boolean;
+  /** The masjid's tunnel domain, e.g. "omos.example.org". Display only. */
+  domain: string;
+  /** Our full public address with no trailing slash, or '' when not shared. */
+  publicUrl: string;
+  /** The path prefix the front door forwards to us: '' or '/companion'. */
+  basePath: string;
+}
+
+/** Accept only a real absolute http(s) URL. A malformed or exotic-scheme value here would end
+ *  up on a printed QR code and as a push notification's origin, so '' is the safer answer. */
+function safeAbsoluteUrl(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw) return '';
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+    return u.toString().replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Ask the platform for our public address and base path.
+ *
+ * This is the LIVE source of truth for both. `OPENMASJID_PUBLIC_URL` is only the value we had
+ * at boot: the admin can turn Remote access on, share this app, or rename its path at any
+ * moment, and none of those restart the container.
+ *
+ * Returns null on any failure — the caller keeps whatever it last knew, which matters more
+ * here than anywhere else in this file. See site.ts.
+ */
+export async function fetchSite(): Promise<FabricSite | null> {
+  if (!ssoConfigured()) return null;
+  warnIfCleartextSecret();
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch(`${config.omosBaseUrl}/api/fabric/site`, {
+      headers: { 'x-openmasjid-app-secret': config.omosAppSecret },
+      signal: ctrl.signal,
+      redirect: 'error',
+    });
+    clearTimeout(t);
+    if (!res.ok) {
+      log.debug(`site lookup refused: HTTP ${res.status}`);
+      return null;
+    }
+    const j = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!j || typeof j !== 'object') return null;
+    return normaliseSite(j);
+  } catch (err) {
+    log.debug(`site lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
+/**
+ * Turn whatever the platform sent into the shape the rest of this app relies on.
+ *
+ * Exported for its own test. The platform is not hostile, but this value decides what gets
+ * printed on a poster and how every absolute URL in the app is built, so it is validated like
+ * anything else that crosses a process boundary.
+ */
+export function normaliseSite(j: Record<string, unknown>): FabricSite {
+  const publicUrl = safeAbsoluteUrl(j.publicUrl);
+  return {
+    // `enabled` alone is not enough. It reports that Remote access is on; an app the admin
+    // never ticked "share" for still has no public address. Both, or neither.
+    enabled: j.enabled === true && !!publicUrl,
+    domain: typeof j.domain === 'string' ? j.domain.slice(0, 253) : '',
+    publicUrl,
+    basePath: normBasePath(j.basePath),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Appearance + logo, relayed through our own server
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Why these are RELAYED rather than fetched by the browser (CLAUDE.md §6.2):
+ *
+ * Our page is HTTPS behind the tunnel. The platform's endpoint is plain HTTP on the LAN. A
+ * direct fetch from the page is mixed content and the browser blocks it — so the appearance
+ * would work in dev, work on the LAN, and fail in the one place a musalli ever opens the app.
+ * Going through our own server means one origin and one scheme, with no exceptions to reason
+ * about.
+ */
+
+/** The only appearance keys we pass on. An allowlist rather than a pass-through: this feeds a
+ *  page's CSS variables, and a field we do not understand has no business reaching them. */
+export interface Appearance {
+  theme?: string;
+  wallpaper?: string;
+  wallpaperImage?: string;
+  accent?: string;
+  lang?: string;
+}
+
+const APPEARANCE_KEYS = ['theme', 'wallpaper', 'wallpaperImage', 'accent', 'lang'] as const;
+
+/** Keep only known keys, only strings, each length-capped. Exported for its own test. */
+export function pickAppearance(raw: unknown): Appearance {
+  const out: Appearance = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const src = raw as Record<string, unknown>;
+  for (const k of APPEARANCE_KEYS) {
+    const v = src[k];
+    // wallpaperImage can legitimately be a data: URI, so it gets the larger cap. The web
+    // sanitises it again before it reaches a CSS url() — see prefs.ts safeImageUrl.
+    if (typeof v === 'string') out[k] = v.slice(0, k === 'wallpaperImage' ? 4096 : 64);
+  }
+  return out;
+}
+
+/** The dashboard's current look, or null if we could not reach it. Public on the platform, so
+ *  no secret is presented — this asks nothing about us. */
+export async function fetchAppearance(): Promise<Appearance | null> {
+  if (!config.omosBaseUrl) return null;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    const res = await fetch(`${config.omosBaseUrl}/api/public/appearance`, { signal: ctrl.signal, redirect: 'error' });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    return pickAppearance(await res.json().catch(() => null));
+  } catch {
+    return null;
+  }
+}
+
+/** A logo big enough to derive a 512px app icon from, and nowhere near big enough to be a
+ *  problem on a Pi. The platform re-encodes on upload, so a real one is far under this. */
+const LOGO_MAX_BYTES = 1_500_000;
+
+/**
+ * Raster types only. SVG is refused DELIBERATELY.
+ *
+ * We re-serve these bytes from OUR origin, and an SVG is a script container: an `<svg>` with an
+ * `onload`, fetched from our own path, is same-origin script in the admin's browser. The
+ * platform is not hostile — but "the upstream would never" is not a security property, and the
+ * whole cost of the rule is a masjid saving their logo as a PNG.
+ *
+ * Display reached the same conclusion independently for the timetable logo it now serves us.
+ */
+const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+export interface LogoImage {
+  mime: string;
+  body: Buffer;
+}
+
+/**
+ * Three outcomes, kept apart on purpose.
+ *
+ * 'none' is a settled answer — this masjid has not set a logo, or set one we will not re-serve
+ * — and caching it for a good while is right. 'unavailable' means we could not ask, and caching
+ * THAT would show the fallback mark for the rest of the TTL because the core happened to be
+ * restarting when the first phone opened the app.
+ */
+export type LogoResult = LogoImage | 'none' | 'unavailable';
+
+/** The masjid's logo from the platform. Seeds the default PWA icon and brands the poster —
+ *  the app on a musalli's home screen is named and iconed for the MASJID, not for us. */
+export async function fetchLogo(): Promise<LogoResult> {
+  if (!config.omosBaseUrl) return 'none';
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 6000);
+    const res = await fetch(`${config.omosBaseUrl}/api/public/logo`, { signal: ctrl.signal, redirect: 'error' });
+    clearTimeout(t);
+    // 404 = this masjid has not set a logo. Entirely normal, and a settled answer. Any other
+    // refusal is the platform having a problem, which is not settled and should be retried.
+    if (!res.ok) return res.status === 404 ? 'none' : 'unavailable';
+
+    const mime = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+    if (!LOGO_TYPES.has(mime)) {
+      log.debug(`platform logo ignored: type ${mime || 'none'}`);
+      return 'none'; // asking again will get the same file
+    }
+    // Refuse on the declared length first, so an absurd Content-Length costs us nothing. The
+    // check is then repeated on the real bytes, because a header is a claim.
+    const declared = Number.parseInt(res.headers.get('content-length') ?? '', 10);
+    if (Number.isFinite(declared) && declared > LOGO_MAX_BYTES) return 'none';
+
+    const body = Buffer.from(await res.arrayBuffer());
+    if (body.byteLength === 0 || body.byteLength > LOGO_MAX_BYTES) return 'none';
+    return { mime, body };
+  } catch {
+    return 'unavailable'; // timeout, refused connection, core restarting
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alerts
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The alert ids this app may raise.
+ *
+ * This list is a CONTRACT WITH manifest.yaml, not a convenience. The platform refuses an id the
+ * manifest does not declare, and from the admin's side it refuses it invisibly — the alert they
+ * were relying on simply never arrives. `manifest.test.ts` fails the build when the two drift,
+ * in either direction.
+ */
+export const ALERT_IDS = ['timetable-unavailable', 'push-failing', 'test'] as const;
+export type AlertId = (typeof ALERT_IDS)[number];
+
+export type AlertResult = 'sent' | 'disabled_by_admin' | 'unavailable';
+
+/**
+ * Tell the admin something needs their attention.
+ *
+ * `disabled_by_admin` is a NORMAL answer, not a failure: the admin chose, in OpenMasjidOS, not
+ * to be told about this, and we cannot read that choice. The only correct response is to carry
+ * on quietly. Treating it as an error is how an app ends up retrying — or worse, logging a
+ * warning every time about the admin's own preference.
+ *
+ * Alerts reach the ADMIN. Nothing in this app ever messages a musalli (CLAUDE.md §6.6).
+ */
+export async function raiseAlert(id: AlertId, message?: string): Promise<AlertResult> {
+  if (!ssoConfigured()) return 'unavailable';
+  // Compile-time typing does not survive a value that arrived from a route handler.
+  if (!(ALERT_IDS as readonly string[]).includes(id)) {
+    log.warn(`refusing to raise undeclared alert id "${id}"`);
+    return 'unavailable';
+  }
+  warnIfCleartextSecret();
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 6000);
+    const res = await fetch(`${config.omosBaseUrl}/api/fabric/alert`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-openmasjid-app-secret': config.omosAppSecret,
+      },
+      body: JSON.stringify(message ? { id, message: message.slice(0, 500) } : { id }),
+      signal: ctrl.signal,
+      redirect: 'error',
+    });
+    clearTimeout(t);
+    if (!res.ok) {
+      log.debug(`alert "${id}" refused: HTTP ${res.status}`);
+      return 'unavailable';
+    }
+    const j = (await res.json().catch(() => ({}))) as { delivered?: unknown; reason?: unknown };
+    if (j.reason === 'disabled_by_admin' || j.delivered === false) return 'disabled_by_admin';
+    return 'sent';
+  } catch (err) {
+    log.debug(`alert "${id}" failed: ${err instanceof Error ? err.message : String(err)}`);
+    return 'unavailable';
+  }
 }

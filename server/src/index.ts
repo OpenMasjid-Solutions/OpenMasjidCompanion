@@ -10,12 +10,18 @@ import { config, ssoConfigured } from './config';
 import { makeLog } from './logger';
 import { Store } from './store';
 import { buildServer } from './server';
+import { startSitePolling } from './site';
 
 const log = makeLog('main');
 
 async function main(): Promise<void> {
   const store = new Store();
   const app = await buildServer({ store });
+
+  // Find out where we live, and keep finding out. The admin can turn Remote access on, share
+  // this app, or rename its path at any moment, and none of those restart the container. Started
+  // BEFORE listen so the first request already has the boot-time base path applied — see site.ts.
+  startSitePolling();
 
   await app.listen({ port: config.port, host: config.host });
   log.info(`OpenMasjid Companion ${config.version} listening on http://${config.host}:${config.port}`);

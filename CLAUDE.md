@@ -209,6 +209,12 @@ before and during the build; mirror them.**
 - **Donation appeals:** admin-curated tiles (title, cover image, goal/raised progress) fetched
   from the **Donations app's public campaign API**, each linking out to the Donations donor page
   to actually give. §8.
+- **Qibla (added to v1 by Hasan, 2026-08-24):** a compass pointing to Makkah, from the
+  **masjid's** coordinates by default (no permission prompt, works offline) and from the
+  device's location when the musalli grants it. This is **not** a prayer-time calculation and
+  does not touch the §2 rule: a bearing is self-evidently right or wrong the moment you hold
+  the phone up, where a wrong prayer time is silent. Display holds the coordinates but does not
+  expose them yet — **work order #3**. See `docs/DESIGN_LANGUAGE.md`.
 - **Installability:** a server-generated web manifest + service worker, correct under the
   tunnel's base path, named and iconed for the masjid. §10.
 - **QR + printable poster:** the admin panel renders a QR of the app's public URL and a
@@ -239,7 +245,8 @@ before and during the build; mirror them.**
 
 - **Announcements / Iqamah-change notices** pushed to musallis — an additive method on the
   Display capability (`v` bump), plus admin-authored notices.
-- Qibla, nearby-masjid handoff, events, multiple timetables (e.g. men's/women's halls).
+- Nearby-masjid handoff, events, multiple timetables (e.g. men's/women's halls). *(Qibla was
+  here until 2026-08-24 and is now in v1, above.)*
 - Admin WhatsApp `commands:` (e.g. subscriber counts).
 - Full translations beyond the English strings (the scaffolding ships in v1).
 
@@ -546,6 +553,13 @@ optional details expander).
 ## 12. Design & theming
 
 Match the family — the polish bar is Display, Donations, and the dashboard.
+
+**The musalli page's visual direction lives in [`docs/DESIGN_LANGUAGE.md`](docs/DESIGN_LANGUAGE.md)**
+(set by Hasan on 2026-08-24 from a reference app he uses): the time-of-day sky, the day arc with
+the prayers along it, the big current-prayer header, the dimmed-past/outlined-present list, and
+what was deliberately *not* taken from it — chiefly the accent colour, which comes from the
+masjid's own OpenMasjidOS appearance, not from a palette of ours. Read it before touching the
+musalli half; it refines this section rather than replacing it.
 
 - **Tokens via CSS variables**, copied verbatim from Display (`tokens.css`, `glass.css`) with
   Tailwind utilities only (preflight off) mapped onto them. Dark default; light and

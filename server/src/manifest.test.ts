@@ -27,6 +27,7 @@ import test from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
+import { ALERT_IDS } from './fabric';
 
 const REPO = path.resolve(__dirname, '..', '..');
 const read = (rel: string) => fs.readFileSync(path.join(REPO, rel), 'utf8');
@@ -136,6 +137,16 @@ test('the deliberate ABSENCES are still absent — each one is load-bearing', ()
   assert.equal('commands' in manifest, false);
   assert.equal('email' in manifest, false);
   assert.equal('whatsapp' in manifest, false);
+});
+
+test('the alert ids the CODE can raise are exactly the ones the manifest declares', () => {
+  // The failure this prevents is invisible from inside the app. The platform accepts only a
+  // declared id and drops anything else — so an alert the code raises but the manifest omits
+  // simply never arrives, and the first anyone knows is that the warning a masjid was relying
+  // on did not come. Checked in BOTH directions: a declared id nothing can raise is dead
+  // wording in an install dialog, which is its own smaller lie.
+  const declared = (manifest.alerts as { id: string }[]).map((a) => a.id).sort();
+  assert.deepEqual([...ALERT_IDS].sort(), declared, 'fabric.ts ALERT_IDS and manifest.yaml alerts: have drifted');
 });
 
 test('every alert id is declared, kebab-case, and carries wording an admin can act on', () => {

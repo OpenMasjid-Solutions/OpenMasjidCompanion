@@ -154,7 +154,7 @@ jobs:
         working-directory: server
 
   web:
-    name: web — typecheck, build, audit
+    name: web — typecheck, build, test, audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -168,7 +168,16 @@ jobs:
         working-directory: web
 
       # `npm run build` is `tsc --noEmit && vite build`, so this typechecks as well as bundles.
+      # Unlike the server, web's tsconfig INCLUDES its *.test.ts files, so they are typechecked
+      # here and need no separate typecheck:tests step of their own.
       - run: npm run build
+        working-directory: web
+
+      # The web half owns the timezone arithmetic behind the countdown, the current-prayer
+      # highlight and the sky — and `tsx` strips types without checking them, so a green build
+      # is not evidence that a test still means what it says. CLAUDE.md §14 makes DST coverage
+      # non-negotiable; this is the step that runs it.
+      - run: npm test
         working-directory: web
 
       # Fail on a new high/critical advisory rather than waiting for someone to run audit by

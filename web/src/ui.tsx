@@ -5,25 +5,40 @@
  * Small shared pieces of the interface. Anything used on more than one screen lives here
  * so the musalli page and the admin panel cannot drift into looking like two apps.
  */
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { withBase } from './base';
 import { safeImageUrl, usePrefs } from './prefs';
+import type { SkyPhase } from './sky';
 
 /**
- * The ambient backdrop.
+ * The ambient backdrop, in two forms.
  *
- * A custom wallpaper image REPLACES the preset scene entirely rather than layering over
- * it — the aurora and the geometric texture are tuned for the gradient, and drawing them
- * on top of somebody's photograph looks like a mistake.
+ * With a `sky` phase — the MUSALLI page — the background follows the time of day: deep at
+ * night, warm at dawn, open at midday. It is the identity of this app, and the reason is in
+ * docs/DESIGN_LANGUAGE.md: someone opening this at Fajr in a dark room should be able to tell
+ * what part of the day they are in before reading a word.
  *
- * The URL is sanitised (`safeImageUrl`) before it reaches `url(...)`, because it arrives
- * from the attacker-craftable `#omos=` fragment and lands inside a CSS function where a
- * quote would escape the context.
+ * Without one — the ADMIN panel — it is the family's aurora scene, because a volunteer at a
+ * desk should feel like they are still inside OpenMasjidOS.
+ *
+ * A custom wallpaper image REPLACES either entirely rather than layering over it: the aurora
+ * and the sky are both tuned for their own gradient, and drawing them on someone's photograph
+ * looks like a mistake. The URL is sanitised (`safeImageUrl`) before it reaches `url(...)`,
+ * because it arrives from the attacker-craftable `#omos=` fragment and lands inside a CSS
+ * function where a quote would escape the context.
  */
-export function Scene(): JSX.Element {
+export function Scene({ sky }: { sky?: SkyPhase }): JSX.Element {
   const { wallpaperImage } = usePrefs();
   const img = safeImageUrl(wallpaperImage);
   if (img) return <div className="scene-img" style={{ backgroundImage: `url(${img})` }} aria-hidden="true" />;
+  if (sky) {
+    return (
+      <div className="sky" data-sky={sky} aria-hidden="true">
+        <div className="sky__body" />
+        <div className="sky__stars" />
+      </div>
+    );
+  }
   return <div className="scene" aria-hidden="true" />;
 }
 
@@ -53,6 +68,35 @@ export function BrandMark({ size = 30 }: { size?: number }): JSX.Element {
       aria-hidden="true"
       decoding="async"
       style={{ display: 'block', flex: 'none' }}
+    />
+  );
+}
+
+/**
+ * The masjid's own logo, relayed from OpenMasjidOS by our server.
+ *
+ * The fallback is the whole design here. Most masjids will not have set a logo, and the route
+ * answers a plain 404 for them — a normal state, not an error — so `onError` quietly puts our
+ * own mark in its place. That means the header is never empty and never broken, whether the
+ * masjid has a logo, has not set one, or has one the platform cannot serve this second.
+ *
+ * The image is decorative: the masjid's NAME sits next to it as text, so a screen reader that
+ * announced the logo too would just say the same thing twice.
+ */
+export function MasjidLogo({ size = 30 }: { size?: number }): JSX.Element {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <BrandMark size={size} />;
+  return (
+    <img
+      className="brand-mark"
+      src={withBase('/api/public/logo')}
+      width={size}
+      height={size}
+      alt=""
+      aria-hidden="true"
+      decoding="async"
+      onError={() => setFailed(true)}
+      style={{ display: 'block', flex: 'none', objectFit: 'contain', borderRadius: '0.4rem' }}
     />
   );
 }

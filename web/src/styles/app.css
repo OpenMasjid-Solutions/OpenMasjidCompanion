@@ -200,7 +200,24 @@ h1, h2, h3, p { margin: 0; }
   text-align: center; font-size: 0.78rem; color: var(--ink-scene-faint);
   text-shadow: var(--text-shadow-scene);
 }
-.page-foot a { color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }
+/*
+ * The source link sits on the SKY, which changes colour through the day — so it cannot rely on
+ * a fixed ink being readable. Measured across all five phases in both themes, plain on-scene
+ * ink came out at 2.8:1 against the bright midday and dusk skies: a WCAG AA failure, and on the
+ * one element that has a licence obligation to be reachable (AGPL §13).
+ *
+ * So the link carries its own ground. `color-mix` against --scene-base is doing real work here:
+ * it resolves to near-black on the dark theme and near-white on the light one, so a single rule
+ * gives the right backing in both without a second token or a media query.
+ */
+.page-foot a {
+  color: var(--ink-scene);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--scene-base) 62%, transparent);
+}
 .page-foot a:hover { color: var(--color-primary); }
 
 /* ── Screen-reader-only text ────────────────────────────────────────────────── */
@@ -299,3 +316,195 @@ h1, h2, h3, p { margin: 0; }
   color: var(--color-ink-faint); margin-block: 0.9rem 0.1rem;
 }
 .release > div:first-of-type > .release-group:first-child { margin-block-start: 0.6rem; }
+
+/* ── The sky (musalli page only) ─────────────────────────────────────────────
+ *
+ * The admin panel keeps the family's aurora scene above; the musalli page gets a sky that
+ * knows what time it is. See docs/DESIGN_LANGUAGE.md for why, and web/src/sky.ts for how the
+ * phase is worked out.
+ *
+ * The division of labour matters: `data-theme` owns ink and contrast, `data-sky` owns hue
+ * only. That is why every phase below is defined TWICE — deep for the dark theme's near-white
+ * ink, pale for the light theme's dark ink — and why the light theme's "night" is a soft dusk
+ * blue rather than a black page nobody could read. A sky that could darken the light theme
+ * would be a sky that could break AA at 4am, which is exactly when this page gets opened.
+ *
+ * All of it is gradients. No images, no canvas, no per-frame work — this loads on a phone on
+ * one bar of signal and runs on a Pi.
+ */
+.sky {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: var(--sky-gradient);
+  /* The sky is atmosphere. It must never be read out, tabbed to, or copied with the page. */
+}
+
+/* The sun or the moon, low in the corner. Logical inset so it mirrors in Arabic and Urdu
+   along with everything else, rather than being the one thing that stays put. */
+.sky__body {
+  position: absolute;
+  inset-block-start: -16%;
+  inset-inline-end: -14%;
+  inline-size: min(62vw, 30rem);
+  aspect-ratio: 1;
+  background: var(--sky-body);
+  border-radius: 50%;
+  will-change: transform;
+  animation: skyBreathe 48s ease-in-out infinite alternate;
+}
+@keyframes skyBreathe {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-1.5%, 2.5%, 0) scale(1.05); }
+}
+
+/* A vignette, so the corners settle and on-sky text keeps its contrast at the edges. */
+.sky::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 260px 90px var(--scene-vignette);
+}
+
+/* Stars: night only, and dark theme only. On the light theme's pale night sky they would be
+   invisible dots of white on white, so they are simply not drawn. */
+.sky__stars { display: none; }
+[data-theme="dark"] .sky[data-sky="night"] .sky__stars,
+[data-theme="dark"] .sky[data-sky="dawn"] .sky__stars {
+  display: block;
+  position: absolute;
+  inset: 0;
+  opacity: var(--sky-stars-opacity, 1);
+  background-image:
+    radial-gradient(1.4px 1.4px at 24px 38px, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1px 1px at 148px 22px, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(1.2px 1.2px at 268px 96px, rgba(255, 255, 255, 0.70), transparent 60%),
+    radial-gradient(1px 1px at 62px 142px, rgba(214, 232, 255, 0.50), transparent 60%),
+    radial-gradient(1.6px 1.6px at 196px 178px, rgba(255, 255, 255, 0.80), transparent 60%),
+    radial-gradient(1px 1px at 318px 210px, rgba(255, 255, 255, 0.45), transparent 60%),
+    radial-gradient(1.1px 1.1px at 108px 246px, rgba(226, 238, 255, 0.60), transparent 60%),
+    radial-gradient(1px 1px at 246px 44px, rgba(255, 255, 255, 0.40), transparent 60%);
+  background-size: 340px 268px;
+  background-repeat: repeat;
+  animation: skyTwinkle 14s ease-in-out infinite alternate;
+}
+@keyframes skyTwinkle {
+  from { opacity: 0.55; }
+  to   { opacity: 1; }
+}
+
+/* Dawn keeps a few stars, fading — the sky does not switch from full night to full morning,
+   and neither should this. */
+[data-theme="dark"] .sky[data-sky="dawn"] .sky__stars { --sky-stars-opacity: 0.35; }
+
+/* ── The phases, dark theme ───────────────────────────────────────────────── */
+
+.sky[data-sky="night"] {
+  --sky-gradient: linear-gradient(180deg, #05091a 0%, #0a1430 52%, #0e1d3c 100%);
+  --sky-body: radial-gradient(circle, rgba(226, 236, 255, 0.30) 0%, rgba(180, 200, 240, 0.15) 34%, rgba(140, 165, 215, 0.06) 58%, transparent 72%);
+}
+.sky[data-sky="dawn"] {
+  --sky-gradient: linear-gradient(180deg, #0a1430 0%, #262a50 42%, #5c3d54 76%, #8d5750 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 198, 140, 0.34) 0%, rgba(240, 150, 105, 0.18) 36%, rgba(200, 110, 90, 0.07) 60%, transparent 74%);
+}
+.sky[data-sky="morning"] {
+  --sky-gradient: linear-gradient(180deg, #0c2a48 0%, #14456a 55%, #1d6188 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 214, 150, 0.40) 0%, rgba(255, 180, 100, 0.20) 34%, rgba(255, 160, 80, 0.07) 58%, transparent 72%);
+}
+.sky[data-sky="day"] {
+  --sky-gradient: linear-gradient(180deg, #0a385b 0%, #135a80 50%, #1c759d 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 226, 170, 0.42) 0%, rgba(255, 195, 120, 0.20) 34%, rgba(255, 175, 95, 0.07) 58%, transparent 72%);
+}
+.sky[data-sky="dusk"] {
+  --sky-gradient: linear-gradient(180deg, #0f1936 0%, #3a2547 44%, #7a4450 78%, #a55f47 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 186, 128, 0.38) 0%, rgba(238, 138, 95, 0.19) 35%, rgba(190, 100, 85, 0.07) 60%, transparent 74%);
+}
+
+/* ── The phases, light theme ──────────────────────────────────────────────────
+ * Same five moments, kept pale. The hue still tells you the time of day; the page stays a
+ * light page throughout, because that is what the reader asked their phone for. */
+
+[data-theme="light"] .sky[data-sky="night"] {
+  --sky-gradient: linear-gradient(180deg, #b4c4e0 0%, #d0daed 55%, #e6ecf7 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 255, 255, 0.75) 0%, rgba(226, 234, 250, 0.40) 36%, transparent 68%);
+}
+[data-theme="light"] .sky[data-sky="dawn"] {
+  --sky-gradient: linear-gradient(180deg, #c6d2ec 0%, #e7d6dd 52%, #fbdfc8 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 224, 186, 0.85) 0%, rgba(255, 205, 160, 0.42) 36%, transparent 68%);
+}
+[data-theme="light"] .sky[data-sky="morning"] {
+  --sky-gradient: linear-gradient(180deg, #cbe4fa 0%, #e5f1fd 60%, #f5fbfe 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 230, 180, 0.80) 0%, rgba(255, 212, 150, 0.38) 36%, transparent 68%);
+}
+[data-theme="light"] .sky[data-sky="day"] {
+  --sky-gradient: linear-gradient(180deg, #bfe0fb 0%, #dcf0fe 55%, #f2fbff 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 236, 190, 0.82) 0%, rgba(255, 216, 150, 0.38) 36%, transparent 68%);
+}
+[data-theme="light"] .sky[data-sky="dusk"] {
+  --sky-gradient: linear-gradient(180deg, #ccd4ee 0%, #f0dcd8 55%, #fde6ce 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 214, 172, 0.85) 0%, rgba(252, 186, 140, 0.40) 36%, transparent 68%);
+}
+
+/* The sky is the one piece of motion a musalli cannot opt out of by not scrolling. */
+@media (prefers-reduced-motion: reduce) {
+  .sky__body,
+  [data-theme="dark"] .sky[data-sky="night"] .sky__stars,
+  [data-theme="dark"] .sky[data-sky="dawn"] .sky__stars {
+    animation: none;
+  }
+}
+
+/* ── Status cards (admin) ───────────────────────────────────────────────────── */
+
+/* The prose inside a panel. Slightly smaller and looser than body text: these are
+   explanations a volunteer reads once, not text they scan. */
+.card-body {
+  color: var(--color-ink-muted);
+  margin-block-start: 0.35rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.8rem;
+}
+
+/* A badge that carries a STATE rather than a label. Colour is never the only signal — each
+   one sits beside wording that says the same thing, because "amber means needed" is not
+   something a reader can be assumed to know, or to be able to see. */
+.badge--ok {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success);
+}
+.badge--warn {
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--color-warning);
+}
+
+/* The numbered instructions for a step done in another app. */
+.steps {
+  margin: 0.7rem 0 0;
+  padding-inline-start: 1.15rem;
+  color: var(--color-ink-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.steps li { margin-block-end: 0.3rem; }
+.steps li::marker { color: var(--color-primary); font-weight: 700; }
+
+/* The app's real public address. Monospaced-ish and allowed to break anywhere, because it is
+   a URL a volunteer may need to read aloud or copy, and a tunnel hostname is long. */
+.url-chip {
+  margin-block-start: 0.7rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-input);
+  background: var(--glass-bg-inset);
+  border: 1px solid var(--color-border);
+  color: var(--color-ink);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}

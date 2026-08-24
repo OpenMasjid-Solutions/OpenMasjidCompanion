@@ -20,6 +20,7 @@
  * room at Fajr" actually means in practice.
  */
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { api } from './api';
 
 export interface Prefs {
   theme: 'system' | 'dark' | 'light';
@@ -220,4 +221,39 @@ export function useReducedMotion(): boolean {
     return () => mq.removeEventListener('change', on);
   }, []);
   return reduced;
+}
+
+/**
+ * Follow OpenMasjidOS's appearance live, through our own server's relay.
+ *
+ * The relay is not an indirection for its own sake (CLAUDE.md §6.2): our page is HTTPS behind
+ * the tunnel and the platform is plain HTTP on the LAN, so a direct fetch from here is mixed
+ * content and the browser blocks it.
+ *
+ * Only ever active after an `#omos=` hand-off, which in practice means the admin who opened
+ * this from their dashboard. A musalli never opened a dashboard and should not inherit the
+ * masjid's wallpaper onto their own phone.
+ */
+export function useAppearanceSync(): void {
+  const { followOmos } = usePrefs();
+  useEffect(() => {
+    if (!followOmos) return;
+    let alive = true;
+    const pull = async () => {
+      const r = await api.get<OmosAppearance>('/api/public/appearance');
+      if (!alive || !r.ok) return; // the core being down is not an error worth showing anyone
+      const patch = appearancePatch(r.data);
+      // Only write when something actually moved. Without this the store notifies every
+      // subscriber twice a minute for ever, re-rendering a panel that has not changed.
+      const now = prefsStore.get();
+      const changed = (Object.keys(patch) as (keyof Prefs)[]).some((k) => patch[k] !== now[k]);
+      if (changed) prefsStore.patch(patch);
+    };
+    void pull();
+    const id = setInterval(pull, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [followOmos]);
 }
