@@ -14,9 +14,10 @@
  * real: everything this app does depends on being reachable from outside the building.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { BellRing, CalendarClock, Gift, Share2 } from 'lucide-react';
+import { BellRing, CalendarClock, Gift } from 'lucide-react';
 import { api } from '../api';
-import { withBase } from '../base';
+import { stripBase, withBase } from '../base';
+import { navigate } from '../App';
 import { BrandMark, Note } from '../ui';
 import type { AppInfo } from '../api';
 import { useSession } from './session';
@@ -25,6 +26,7 @@ import { AccountMenu } from './AccountMenu';
 import { RemoteAccess, type RemoteStatus } from './RemoteAccess';
 import { TimetablePicker, type TimetableStatus } from './Timetable';
 import { Appearance, type PwaStatus } from './Appearance';
+import { Poster, Share } from './Share';
 
 interface AdminStatus {
   remote: RemoteStatus;
@@ -44,6 +46,20 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
 
   const version = info?.version ?? '';
   const signedIn = state?.kind === 'in';
+
+  /**
+   * The panel's own sub-route.
+   *
+   * App collapses every `/admin/*` path to one route, so moving between the panel and the
+   * poster does not change App's state and nothing there re-renders. Reading `location` during
+   * render would therefore go stale the moment it mattered — so this listens for itself.
+   */
+  const [subRoute, setSubRoute] = useState(() => stripBase(location.pathname).replace(/\/+$/, ''));
+  useEffect(() => {
+    const on = () => setSubRoute(stripBase(location.pathname).replace(/\/+$/, ''));
+    window.addEventListener('popstate', on);
+    return () => window.removeEventListener('popstate', on);
+  }, []);
 
   // ── The state of everything this app depends on ────────────────────────────
   const [status, setStatus] = useState<AdminStatus | null>(null);
@@ -91,6 +107,20 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
   const session = state!.session;
   const remote = status?.remote;
 
+  // A sub-route rather than a card: the poster is laid out for a sheet of A4 and the print
+  // stylesheet hides everything else on the page. Kept under /admin so it stays behind the
+  // login — the public URL is not a secret, but the panel is not a place to wander into.
+  if (subRoute === '/admin/poster') {
+    return (
+      <Poster
+        publicUrl={remote?.publicUrl ?? ''}
+        masjidName={status?.timetable.masjidName ?? ''}
+        appName={status?.pwa.effectiveName ?? ''}
+        onBack={() => navigate('/admin')}
+      />
+    );
+  }
+
   return (
     <>
       <Topbar>
@@ -136,11 +166,14 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
           />
           {status?.pwa && <Appearance status={status.pwa} onChanged={loadStatus} />}
 
-          <Todo
-            icon={<Share2 size={18} aria-hidden="true" />}
-            title="Print the poster"
-            body="A QR code and a printable poster for the noticeboard, pointing at your real public address."
-          />
+          {remote && (
+            <Share
+              publicUrl={remote.publicUrl}
+              enabled={remote.enabled}
+              masjidName={status?.timetable.masjidName ?? ''}
+              onPoster={() => navigate('/admin/poster')}
+            />
+          )}
         </div>
 
         {remote?.configured && <AlertCheck />}

@@ -653,3 +653,66 @@ h1, h2, h3, p { margin: 0; }
 }
 .home-preview__icon { border-radius: 0.9rem; flex: none; object-fit: contain; background: #0F2044; }
 .home-preview__label { font-weight: 600; overflow-wrap: anywhere; }
+
+/* ── Share: QR + poster (admin) ─────────────────────────────────────────────── */
+.share { display: flex; align-items: flex-start; gap: 1rem; margin-block-start: 0.9rem; flex-wrap: wrap; }
+/* The QR itself is always black on WHITE, whatever the theme. A code rendered in theme colours
+   is a code a phone camera struggles with, and this one ends up printed. */
+.share__qr { flex: none; background: #fff; padding: 0.5rem; border-radius: 0.6rem; line-height: 0; }
+.share__side { flex: 1; min-width: 12rem; }
+
+.poster-bar {
+  display: flex; gap: 0.5rem; justify-content: flex-end;
+  width: min(44rem, 100%); margin-inline: auto; padding: 0.75rem 1.15rem 0;
+}
+
+/* ── The poster ─────────────────────────────────────────────────────────────
+ * Always light, whatever the admin's theme: it is going through a printer, and a dark poster
+ * is a cartridge of ink and an unreadable QR code. */
+.poster {
+  width: min(44rem, 100%);
+  margin: 0.5rem auto 3rem;
+  padding: 2.5rem 2rem 2rem;
+  background: #fff;
+  color: #111;
+  border-radius: var(--radius-card);
+  text-align: center;
+}
+.poster__head { margin-block-end: 1.5rem; }
+.poster__masjid {
+  font-size: 1.05rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: #444;
+}
+.poster__title {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 800; line-height: 1.15;
+  margin-block-start: 0.5rem; color: #111;
+}
+.poster__qr { display: flex; justify-content: center; margin-block: 1.5rem; line-height: 0; }
+.poster__steps {
+  text-align: start; max-width: 26rem; margin: 1.5rem auto 0; padding-inline-start: 1.4rem;
+  font-size: 1.05rem; line-height: 1.7; color: #222;
+}
+.poster__steps li { margin-block-end: 0.6rem; }
+.poster__steps li::marker { font-weight: 800; color: #666; }
+.poster__hints {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  margin-block-start: 0.4rem; font-size: 0.9rem; color: #555;
+}
+.poster__url {
+  margin-block-start: 1.6rem; font-size: 0.85rem; color: #666; overflow-wrap: anywhere;
+}
+
+/* Printing: the poster alone, on white, edge to edge of the margin. */
+@media print {
+  .no-print, .topbar, .page-foot, .sky, .scene, .scene-img { display: none !important; }
+  html, body { background: #fff !important; }
+  .poster {
+    width: auto; margin: 0; padding: 0; border-radius: 0;
+    background: #fff; color: #000;
+  }
+  /* Keep a step and its hints together rather than breaking across the fold. */
+  .poster__steps li { break-inside: avoid; }
+  .poster__qr { break-inside: avoid; }
+}
+@page { size: auto; margin: 16mm; }

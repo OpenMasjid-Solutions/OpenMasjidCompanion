@@ -33,6 +33,23 @@ export interface Prefs {
   followOmos: boolean;
 }
 
+/**
+ * Did OpenMasjidOS itself open this app?
+ *
+ * The dashboard's "Open" appends `#omos=…` — and only for apps that declared the Fabric, which
+ * this one does. So the fragment is a reliable signal that the person arriving is the ADMIN
+ * coming from their dashboard, rather than a musalli who scanned a QR code. It is what lets the
+ * app land them on the panel instead of the prayer times.
+ *
+ * Captured at module load and not a moment later: `hydrate()` deliberately strips the fragment
+ * off the URL once it has read the appearance out of it, so anything asking afterwards would
+ * always see a clean URL and conclude nobody came from the dashboard.
+ *
+ * The platform cannot be asked to open a different path — its `openApp` always opens the app's
+ * root — so noticing this ourselves is the only way to do it.
+ */
+export const OPENED_FROM_DASHBOARD = typeof location !== 'undefined' && /(?:^|[#&])omos=/.test(location.hash);
+
 const KEY = 'omc-prefs';
 const DEFAULTS: Prefs = { theme: 'system', wallpaper: 'aurora', wallpaperImage: '', accent: 'cyan', followOmos: false };
 

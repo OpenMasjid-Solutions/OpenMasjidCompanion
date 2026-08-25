@@ -314,3 +314,41 @@ gets no worker and no install strip, which is correct (CLAUDE.md §6.4).
 API, and the absence of an event is indistinguishable from one that has not fired yet. An app
 that waits shows an iPhone user nothing, for ever — so iOS gets the Share-sheet instructions and
 no button.
+
+## Slice 6 — the noticeboard (0.1.0-dev.6)
+
+**Opening from the dashboard lands on `/admin`.** The platform's `openApp` always opens an app at
+its ROOT and there is no manifest field for a path, so the app decides for itself: the dashboard
+appends `#omos=…`, and only for apps that declared the Fabric. That makes the fragment a
+reliable "the admin arrived from their dashboard" signal.
+
+It is captured in `prefs.ts` at MODULE LOAD, not later — `hydrate()` strips the fragment off the
+URL once it has read the appearance out of it, so anything asking afterwards always sees a clean
+URL and concludes nobody came from the dashboard. Applied in `main.tsx` before the first render,
+with `replaceState` so Back does not bounce them straight back in.
+
+The rule is narrow in both directions: only from the root (a deep link already said where it
+wanted to go) and only with the fragment (a musalli who scanned the QR must never be thrown into
+an admin login).
+
+**The panel keeps its own sub-route.** `routeOf` collapses every `/admin/*` path to one route, so
+navigating from the panel to the poster leaves App's state identical, React bails out of the
+no-op setState, and nothing re-renders — reading `location` during render goes stale exactly when
+it matters. The panel listens for `popstate` itself.
+
+**The QR encodes the platform's public URL and nothing else.** Never the address the volunteer
+is looking at: a poster carrying `http://192.168.1.20:7880` works for everyone standing inside
+on the masjid's wifi and for nobody outside, and posters do not get reprinted. When remote
+access is off, the card refuses to draw one and says why.
+
+Rendered as SVG rather than canvas, black on white whatever the theme, with a wide quiet zone —
+the three things that decide whether a phone reads it off a wall in bad light.
+
+**`qrcode.react` is the one new dependency**, pre-approved in CLAUDE.md §14. It lands in the
+LAZY admin chunk (49.7 kB), so the musalli bundle is unchanged — which is the whole reason the
+panel is code-split.
+
+**The poster is a print target, not a card.** Always light whatever the admin's theme: a dark
+poster is a cartridge of ink and an unreadable QR code. The print stylesheet hides the toolbar,
+the sky and the chrome, and `break-inside: avoid` keeps a step and its hints off the fold.
+Verified under `emulateMedia({ media: 'print' })` rather than by eye.

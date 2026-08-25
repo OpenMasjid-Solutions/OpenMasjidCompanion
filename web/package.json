@@ -1,18 +1,19 @@
 {
   "name": "openmasjid-companion-web",
   "private": true,
-  "version": "0.1.0-dev.5",
+  "version": "0.1.0-dev.6",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "node --import tsx --test src/prayerTimes.test.ts src/base.test.ts src/testFileCoverage.test.ts",
+    "test": "node --import tsx --test src/prayerTimes.test.ts src/base.test.ts src/landing.test.ts src/testFileCoverage.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
     "motion": "^11.15.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

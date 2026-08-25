@@ -34,13 +34,31 @@ const Admin = lazy(() => import('./admin/Admin'));
 
 /** The routes this app answers. Anything else renders the not-found state rather than a
  *  blank page — a mistyped or stale link should say so. */
-type Route = '/' | '/admin' | 'unknown';
+export type Route = '/' | '/admin' | 'unknown';
 
-function routeOf(pathname: string): Route {
+export function routeOf(pathname: string): Route {
   const p = stripBase(pathname).replace(/\/+$/, '') || '/';
   if (p === '/') return '/';
   if (p === '/admin' || p.startsWith('/admin/')) return '/admin';
   return 'unknown';
+}
+
+/**
+ * Where to land someone who has just arrived, or null to leave them where they are.
+ *
+ * Pressing "Open" on Companion in the OpenMasjidOS dashboard is an ADMIN action — they want the
+ * settings, not the page a musalli sees. The platform always opens an app at its root and has no
+ * manifest field for a path, so the app makes the decision itself from the `#omos=` fragment the
+ * dashboard attaches (see prefs.ts).
+ *
+ * Only ever from the ROOT. Someone opening a deep link already said where they wanted to go, and
+ * redirecting them away from it would be worse than landing them on the wrong page once.
+ *
+ * Pure, so the rule can be tested without a browser.
+ */
+export function dashboardLanding(route: Route, openedFromDashboard: boolean): string | null {
+  if (!openedFromDashboard) return null;
+  return route === '/' ? '/admin' : null;
 }
 
 /** Client-side navigation that keeps the base path on the URL bar. */

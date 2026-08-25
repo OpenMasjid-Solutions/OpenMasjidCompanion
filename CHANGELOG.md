@@ -14,6 +14,15 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **A QR code and a poster for the noticeboard.** Print it, put it up, and anyone who scans it
+  gets your prayer times and can keep them on their phone. The poster carries your masjid's name,
+  the code, and three short lines — with the iPhone and Android steps spelled out, because those
+  two are different and nobody remembers which. The code always points at your real public
+  address, and if Remote access isn't on yet the app refuses to draw one rather than give you a
+  poster that only works on your own wifi.
+- **Pressing Open in your dashboard now takes you straight to the settings.** It used to land on
+  the prayer times, which is the page everyone else sees, not the one you came for. Anyone
+  arriving from a QR code still goes to the prayer times, as they should.
 - **It's an app now.** Open it on a phone and you can add it to the home screen — your masjid's
   name under your masjid's icon, opening straight to the prayer times with no browser bar. On an
   iPhone it explains where the Share button is, because Apple gives no other way.
