@@ -299,3 +299,168 @@ export function formatDate(date: string, language = 'en'): string {
     return date;
   }
 }
+
+// ── Which part of the day we are in ──────────────────────────────────────────
+
+/**
+ * The six periods the page themes itself by.
+ *
+ * A PERIOD is not a prayer: it is the stretch of day that a prayer opens. `sunrise` is the
+ * stretch between Shurūq and Zawāl, which the page calls Duha, and `isha` runs through the night
+ * to Fajr. Jumu'ah sits inside the dhuhr period rather than being one of its own — the sky at
+ * one o'clock on a Friday is the sky at one o'clock.
+ */
+export type PeriodKey = 'fajr' | 'sunrise' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
+
+const PERIOD_OF: Record<SlotKey, PeriodKey> = {
+  fajr: 'fajr',
+  sunrise: 'sunrise',
+  dhuhr: 'dhuhr',
+  jumuah: 'dhuhr',
+  asr: 'asr',
+  maghrib: 'maghrib',
+  isha: 'isha',
+};
+
+/**
+ * The period a moment belongs to, or `isha` when nothing has come in yet.
+ *
+ * The fallback matters more than it looks. Before the first prayer in the window there is no
+ * "current" moment at all — which happens on a fresh install between midnight and Fajr, and any
+ * time the window's first day is today. Night is the truthful answer then, and it is also the
+ * one that does not flash a bright white page at somebody at four in the morning.
+ */
+export function periodOf(position: Position): PeriodKey {
+  return position.current ? PERIOD_OF[position.current.key] : 'isha';
+}
+
+// ── Iqamah changes ───────────────────────────────────────────────────────────
+
+/**
+ * Only the five daily jamā'āt, deliberately.
+ *
+ * Jumu'ah is sent on Fridays and only on Fridays, so folding it in would make every Friday a
+ * change (it appeared) and every Saturday a change (it went away) — fifty-two false marks a
+ * year, which would make the whole feature worthless.
+ */
+function iqamahSignature(day: Day): string {
+  return (['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const).map((k) => day.prayers[k].iqamah ?? '').join('|');
+}
+
+/**
+ * The days on which the masjid's jamā'ah times change.
+ *
+ * Adhan times move a minute or two every single day because they are astronomical; jamā'ah times
+ * do not. A committee sets them, they hold for a week or two, and then they are revised — and
+ * the day they are revised is the one thing on a month of prayer times that somebody actually
+ * needs to spot, because it is the day they will otherwise turn up at the wrong time.
+ *
+ * The first day of the window is never marked: there is nothing before it to have changed from.
+ */
+export function iqamahChanges(days: Day[]): Set<string> {
+  const out = new Set<string>();
+  let previous: string | null = null;
+  for (const day of days) {
+    const signature = iqamahSignature(day);
+    if (previous !== null && signature !== previous) out.add(day.date);
+    previous = signature;
+  }
+  return out;
+}
+
+/** Which prayers changed on a given day, for the tooltip on a marked date. */
+export function changedPrayers(days: Day[], date: string, hourCycle: '12' | '24', language = 'en'): string[] {
+  const i = days.findIndex((d) => d.date === date);
+  if (i <= 0) return [];
+  const before = days[i - 1].prayers;
+  const after = days[i].prayers;
+  const names: Record<string, string> = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
+  return (['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const)
+    .filter((k) => (before[k].iqamah ?? '') !== (after[k].iqamah ?? ''))
+    .map((k) => `${names[k]} ${formatTime(before[k].iqamah, hourCycle, language)} → ${formatTime(after[k].iqamah, hourCycle, language)}`);
+}
+
+// ── The month grid ───────────────────────────────────────────────────────────
+
+/** One cell of the calendar. `date` is null for the padding before the 1st and after the last. */
+export interface MonthCell {
+  date: string | null;
+  dayOfMonth: number;
+}
+
+/**
+ * Which weekday a week starts on, for a given language.
+ *
+ * Sunday in the United States, Monday across most of Europe, Saturday in much of the Arab world
+ * — and a masjid's calendar reading wrong for its own congregation is the kind of small thing
+ * that makes an app feel foreign. `Intl.Locale.weekInfo` knows; where it is unavailable this
+ * falls back to Sunday rather than guessing.
+ *
+ * Returns 0-6 with 0 = Sunday, which is what `Date.getUTCDay()` speaks.
+ */
+export function weekStartsOn(language: string): number {
+  try {
+    const info = (new Intl.Locale(language || 'en') as unknown as { weekInfo?: { firstDay?: number } }).weekInfo;
+    // weekInfo counts 1 = Monday … 7 = Sunday.
+    if (info && typeof info.firstDay === 'number') return info.firstDay % 7;
+  } catch {
+    /* an unknown language, or a runtime without weekInfo */
+  }
+  return 0;
+}
+
+/** Days in a month, without constructing a local-time Date (which could land on the wrong day
+ *  in a zone behind UTC). */
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
+
+/**
+ * A calendar grid for the month containing `date`, padded to whole weeks.
+ *
+ * Built from plain UTC calendar arithmetic and formatted as YYYY-MM-DD strings — never from a
+ * local-time `Date`, which in a zone behind UTC can put the 1st of the month on the previous
+ * day and shift the entire grid by one column.
+ */
+export function monthGrid(date: string, language = 'en'): MonthCell[][] {
+  const [year, month] = date.split('-').map(Number);
+  const m = month - 1;
+  const first = new Date(Date.UTC(year, m, 1)).getUTCDay();
+  const start = weekStartsOn(language);
+  const lead = (first - start + 7) % 7;
+  const total = daysInMonth(year, m);
+
+  const cells: MonthCell[] = [];
+  for (let i = 0; i < lead; i += 1) cells.push({ date: null, dayOfMonth: 0 });
+  for (let d = 1; d <= total; d += 1) {
+    cells.push({ date: `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, dayOfMonth: d });
+  }
+  while (cells.length % 7 !== 0) cells.push({ date: null, dayOfMonth: 0 });
+
+  const weeks: MonthCell[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+
+/** Short weekday initials in the right order for a locale, for the grid's header row. */
+export function weekdayLabels(language = 'en'): string[] {
+  const start = weekStartsOn(language);
+  const fmt = new Intl.DateTimeFormat(language || 'en', { timeZone: 'UTC', weekday: 'short' });
+  return Array.from({ length: 7 }, (_, i) => {
+    // 2024-01-07 was a Sunday, so this walks a real week from a known Sunday.
+    const d = new Date(Date.UTC(2024, 0, 7 + ((start + i) % 7)));
+    return fmt.format(d).slice(0, 2);
+  });
+}
+
+/** "August 2026", in the masjid's own language. */
+export function formatMonth(date: string, language = 'en'): string {
+  const [y, m] = date.split('-').map(Number);
+  try {
+    return new Intl.DateTimeFormat(language || 'en', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(
+      new Date(Date.UTC(y, m - 1, 1)),
+    );
+  } catch {
+    return date.slice(0, 7);
+  }
+}

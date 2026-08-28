@@ -16,7 +16,9 @@ import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Github } from 'lucide-react';
 import { api, type AppInfo } from './api';
 import { stripBase, withBase } from './base';
-import { useAppearanceSync } from './prefs';
+import { useAppearanceSync, setThemeOverride } from './prefs';
+import { PERIOD_SURFACE } from './periodTheme';
+import type { PeriodKey } from './prayerTimes';
 import { useInstall, useServiceWorker } from './pwa';
 import { InstallStrip, UpdateStrip } from './Install';
 import { Scene } from './ui';
@@ -71,6 +73,8 @@ export function App(): JSX.Element {
   const [route, setRoute] = useState<Route>(() => routeOf(location.pathname));
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [times, setTimes] = useState<Timetable | null>(null);
+  /** Which part of the day it is, reported up by Today. Drives the whole page's look. */
+  const [period, setPeriod] = useState<PeriodKey | null>(null);
 
   useEffect(() => {
     const on = () => setRoute(routeOf(location.pathname));
@@ -109,6 +113,26 @@ export function App(): JSX.Element {
     else el.setAttribute('data-surface', 'musalli');
   }, [isAdmin]);
 
+  /**
+   * The musalli page themes itself by the TIME OF DAY, not by the browser's light/dark setting:
+   * Fajr is dark, Duha is light, Maghrib is dark again, and each period has its own sky with the
+   * sun in a different place. So the period sets both the attribute the sky keys off AND the
+   * light/dark surface, overriding the reader's preference for as long as they are on this page.
+   *
+   * The admin panel keeps following the preference — it is a settings screen, and a volunteer
+   * who set their dashboard to dark should not find it bright at noon.
+   */
+  useEffect(() => {
+    const el = document.documentElement;
+    if (isAdmin || !period) {
+      el.removeAttribute('data-period');
+      setThemeOverride(null);
+      return;
+    }
+    el.setAttribute('data-period', period);
+    setThemeOverride(PERIOD_SURFACE[period]);
+  }, [isAdmin, period]);
+
   // The timetable is only needed by the musalli half, so the admin panel does not pay for it.
   useEffect(() => {
     if (isAdmin) return;
@@ -142,7 +166,7 @@ export function App(): JSX.Element {
 
         {route === '/' &&
           (times ? (
-            <Today data={times} />
+            <Today data={times} onPeriod={setPeriod} />
           ) : (
             <main className="centre-wrap">
               <span className="spinner" />
@@ -173,7 +197,7 @@ export function App(): JSX.Element {
         )}
         {!isAdmin && updateReady && <UpdateStrip onApply={applyUpdate} />}
 
-        {!isAdmin && <Foot info={info} />}
+        {!isAdmin && <Foot />}
       </div>
     </>
   );
@@ -196,17 +220,21 @@ function NotFound({ onHome }: { onHome: (e: React.MouseEvent) => void }): JSX.El
 /**
  * The footer carries the AGPL source link.
  *
- * This app is reached over a network by people who never installed it, which is exactly
- * the situation AGPL §13 is about: they are users of the software, and the offer of
- * source has to reach them, not only the admin. It is small and out of the way, because
- * the musalli came here for a prayer time.
+ * This app is reached over a network by people who never installed it, which is exactly the
+ * situation AGPL §13 is about: they are users of the software, and the offer of source has to
+ * reach them, not only the admin. It is small and out of the way, because the musalli came here
+ * for a prayer time.
+ *
+ * No version number. It meant something to whoever built this and nothing at all to the person
+ * reading it, and the licence obligation is that the source is REACHABLE, not that the build is
+ * labelled. The admin panel still shows the version, where it is the thing being asked about.
  */
-function Foot({ info }: { info: AppInfo | null }): JSX.Element {
+function Foot(): JSX.Element {
   return (
     <footer className="page-foot">
       <a href="https://github.com/OpenMasjid-Solutions/OpenMasjidCompanion" target="_blank" rel="noopener noreferrer">
         <Github size={12} style={{ verticalAlign: '-0.1em', marginInlineEnd: '0.25rem' }} aria-hidden="true" />
-        OpenMasjid Companion{info ? ` ${info.version}` : ''}
+        OpenMasjid Solutions
       </a>
     </footer>
   );

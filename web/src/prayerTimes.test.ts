@@ -17,15 +17,22 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   type Day,
+  changedPrayers,
   formatDate,
+  formatMonth,
   formatTime,
   formatUntil,
+  iqamahChanges,
   momentsFor,
+  monthGrid,
+  periodOf,
   positionAt,
   slotTime,
   slotsFor,
   todayInZone,
   tzOffsetMs,
+  weekStartsOn,
+  weekdayLabels,
   zonedTimeToEpoch,
 } from './prayerTimes';
 
@@ -352,4 +359,142 @@ test('slotTime places ordinary prayers by Adhan and Jumu‘ah by jamā‘ah', ()
   assert.equal(slotTime(slots.find((s) => s.key === 'maghrib')!), '19:45', 'Adhan');
   assert.equal(slotTime(slots.find((s) => s.key === 'jumuah')!), '13:15', 'jamāʿah');
   assert.equal(slotTime(slots.find((s) => s.key === 'sunrise')!), '06:21');
+});
+
+// ── The period the page themes itself by ─────────────────────────────────────
+
+test('each prayer opens the period named after it, and Jumu‘ah sits inside Dhuhr', () => {
+  // The sky at one o'clock on a Friday is the sky at one o'clock. Giving Jumu'ah a period of its
+  // own would repaint the whole app once a week for no reason a musalli could name.
+  const week = [day('2026-08-24')];
+  const at = (hhmm: string) => periodOf(positionAt(week, NY, zonedTimeToEpoch('2026-08-24', hhmm, NY)));
+  assert.equal(at('05:30'), 'fajr');
+  assert.equal(at('07:00'), 'sunrise', 'Duha');
+  assert.equal(at('14:00'), 'dhuhr');
+  assert.equal(at('18:00'), 'asr');
+  assert.equal(at('20:00'), 'maghrib');
+  assert.equal(at('22:00'), 'isha');
+
+  const friday = [day('2026-08-28', { jumuah: [{ label: 'J', adhan: null, iqamah: '13:15' }] })];
+  assert.equal(periodOf(positionAt(friday, NY, zonedTimeToEpoch('2026-08-28', '14:00', NY))), 'dhuhr');
+});
+
+test('BEFORE ANYTHING HAS COME IN, the period is night', () => {
+  // Happens between midnight and Fajr on the window's first day. Night is the truthful answer,
+  // and it is also the one that does not flash a white page at somebody at four in the morning.
+  assert.equal(periodOf(positionAt([], NY, Date.parse('2026-08-24T09:00:00Z'))), 'isha');
+  const today = [day('2026-08-24')];
+  assert.equal(periodOf(positionAt(today, NY, zonedTimeToEpoch('2026-08-24', '03:00', NY))), 'isha');
+});
+
+// ── Iqamah changes ───────────────────────────────────────────────────────────
+
+const withIqamah = (date: string, fajr: string, dhuhr = '13:30') =>
+  day(date, {
+    prayers: {
+      fajr: { adhan: '05:01', iqamah: fajr },
+      dhuhr: { adhan: '13:05', iqamah: dhuhr },
+      asr: { adhan: '17:48', iqamah: '18:00' },
+      maghrib: { adhan: '19:45', iqamah: '19:50' },
+      isha: { adhan: '21:05', iqamah: '21:30' },
+    },
+  });
+
+test('the day a jamā‘ah time changes is marked, and only that day', () => {
+  // The one thing on a month of prayer times somebody actually needs to spot: the day they will
+  // otherwise turn up at the wrong time.
+  const days = [
+    withIqamah('2026-08-23', '05:25'),
+    withIqamah('2026-08-24', '05:25'),
+    withIqamah('2026-08-25', '05:35'), // changed
+    withIqamah('2026-08-26', '05:35'),
+    withIqamah('2026-08-27', '05:35', '13:45'), // changed again, a different prayer
+  ];
+  assert.deepEqual([...iqamahChanges(days)].sort(), ['2026-08-25', '2026-08-27']);
+});
+
+test('the first day of the window is never marked — there is nothing before it', () => {
+  const days = [withIqamah('2026-08-23', '05:25'), withIqamah('2026-08-24', '05:25')];
+  assert.equal(iqamahChanges(days).size, 0);
+});
+
+test('A FRIDAY IS NOT A CHANGE just because Jumu‘ah exists that day', () => {
+  // Jumu'ah is sent on Fridays and only on Fridays. Folding it into the comparison would mark
+  // every Friday (it appeared) and every Saturday (it went away) — fifty-two false marks a year,
+  // which makes the whole feature worthless.
+  const days = [
+    withIqamah('2026-08-27', '05:35'),
+    { ...withIqamah('2026-08-28', '05:35'), jumuah: [{ label: 'J', adhan: null, iqamah: '13:15' }] },
+    withIqamah('2026-08-29', '05:35'),
+  ];
+  assert.equal(iqamahChanges(days).size, 0, 'neither the Friday nor the Saturday is a change');
+});
+
+test('a day with no jamā‘ah set is compared like any other', () => {
+  const none = day('2026-08-24');
+  none.prayers.asr = { adhan: '17:48', iqamah: null };
+  const days = [withIqamah('2026-08-23', '05:25'), none];
+  assert.equal(iqamahChanges(days).has('2026-08-24'), true, 'losing a jamāʿah time is a change too');
+});
+
+test('the changed prayers are named, with both times, for the day that changed', () => {
+  const days = [withIqamah('2026-08-23', '05:25'), withIqamah('2026-08-24', '05:35')];
+  const changed = changedPrayers(days, '2026-08-24', '12');
+  assert.equal(changed.length, 1);
+  assert.match(changed[0], /Fajr/);
+  assert.match(changed[0], /5:25/);
+  assert.match(changed[0], /5:35/);
+  assert.deepEqual(changedPrayers(days, '2026-08-23', '12'), [], 'nothing to compare the first day to');
+});
+
+// ── The month grid ───────────────────────────────────────────────────────────
+
+test('a month grid is whole weeks, padded, with every real day present exactly once', () => {
+  const weeks = monthGrid('2026-08-24', 'en');
+  assert.ok(weeks.every((w) => w.length === 7), 'every row is a week');
+  const real = weeks.flat().filter((c) => c.date);
+  assert.equal(real.length, 31, 'August has 31 days');
+  assert.equal(real[0].date, '2026-08-01');
+  assert.equal(real[30].date, '2026-08-31');
+  assert.equal(new Set(real.map((c) => c.date)).size, 31, 'no duplicates');
+});
+
+test('the 1st lands in the right column', () => {
+  // 2026-08-01 is a Saturday. With a Sunday-start week that is the last column.
+  const weeks = monthGrid('2026-08-15', 'en');
+  assert.equal(weeks[0][6].date, '2026-08-01');
+  for (let i = 0; i < 6; i += 1) assert.equal(weeks[0][i].date, null, 'the days before it are padding');
+});
+
+test('the week starts where the reader’s language says it does', () => {
+  // A masjid's calendar reading wrong for its own congregation is the kind of small thing that
+  // makes an app feel foreign.
+  assert.equal(weekStartsOn('en-US'), 0, 'Sunday');
+  const gb = weekStartsOn('en-GB');
+  assert.ok(gb === 1 || gb === 0, 'Monday where the runtime knows, Sunday where it does not');
+  assert.equal(weekdayLabels('en').length, 7);
+  assert.equal(new Set(weekdayLabels('en')).size >= 6, true, 'the labels are distinct');
+});
+
+test('a Monday-start locale shifts the whole grid by a column, not by a day', () => {
+  if (weekStartsOn('en-GB') !== 1) return; // the runtime has no weekInfo — nothing to assert
+  const weeks = monthGrid('2026-08-15', 'en-GB');
+  assert.equal(weeks[0][5].date, '2026-08-01', 'Saturday is the sixth column when weeks start Monday');
+  assert.equal(weeks.flat().filter((c) => c.date).length, 31);
+});
+
+test('MONTH BOUNDARIES ARE UTC CALENDAR ARITHMETIC, never a local Date', () => {
+  // A local-time Date in a zone behind UTC puts the 1st on the previous day and shifts the whole
+  // grid by a column. February in a leap year is the case that catches it.
+  assert.equal(monthGrid('2028-02-10').flat().filter((c) => c.date).length, 29, '2028 is a leap year');
+  assert.equal(monthGrid('2026-02-10').flat().filter((c) => c.date).length, 28);
+  assert.equal(monthGrid('2026-12-31').flat().filter((c) => c.date).pop()!.date, '2026-12-31');
+  assert.equal(monthGrid('2026-01-01').flat().filter((c) => c.date)[0].date, '2026-01-01');
+});
+
+test('the month is named in the masjid’s own language', () => {
+  assert.match(formatMonth('2026-08-24', 'en'), /August/);
+  assert.match(formatMonth('2026-08-24', 'en'), /2026/);
+  assert.equal(typeof formatMonth('2026-08-24', 'ar'), 'string');
+  assert.equal(formatMonth('2026-08-24', 'not-a-language').length > 0, true, 'a bad language must not throw');
 });

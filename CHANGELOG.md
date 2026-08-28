@@ -14,6 +14,25 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **The page now looks like the time of day.** Each prayer has its own sky, and the sun moves
+  with it — low and to the side at Fajr, high overhead at Dhuhr, at the horizon by Maghrib, with
+  the moon and stars at Isha. It is light through the day and dark at either end, following the
+  masjid's own times rather than your phone's dark-mode setting.
+- **The jamāʿah time is now the one you see first**, with the Adhan beside it and both under
+  proper column headings. It is the time you are actually deciding by.
+- **A month view.** Tap the calendar to see the whole month, with the days your jamāʿah times
+  change marked — the one thing on a month of prayer times worth spotting, and the day people
+  otherwise turn up at the wrong time. Tap a day to jump to it.
+- **Swipe between days**, the way you swipe through photos. Scrolling still scrolls.
+- **A "Today" button** to get back after browsing ahead.
+
+### Fixed
+
+- **Browsing to another day used to show the weekday with a stray comma** where it now offers a
+  way back to today. It was also redundant — the full date sits directly beneath it.
+- The foot of the page says **OpenMasjid Solutions** rather than a build number, which meant
+  nothing to anyone reading it.
+
 - **A QR code and a poster for the noticeboard.** Print it, put it up, and anyone who scans it
   gets your prayer times and can keep them on their phone. The poster carries your masjid's name,
   the code, and three short lines — with the iPhone and Android steps spelled out, because those

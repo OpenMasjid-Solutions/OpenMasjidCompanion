@@ -361,14 +361,32 @@ h1, h2, h3, p { margin: 0; }
   --coral-strong: #B04A1B;
 }
 
-/* ── The sky ─────────────────────────────────────────────────────────────────
+/* ── The sky, one per prayer period ──────────────────────────────────────────
  *
- * Two looks, one per theme. `data-theme` still owns ink and contrast; the sky only supplies the
- * ground behind it, so WCAG AA holds in both without the background being able to break it.
+ * The musalli page themes itself by the TIME OF DAY, not by the browser's light/dark setting
+ * (Hasan, 2026-08-25). Fajr is dark, Duha is light, Maghrib is dark again — and the sun moves
+ * across the day: low and off to the side at Fajr, high overhead at Dhuhr, sinking through Asr,
+ * at the horizon by Maghrib, replaced by the moon at Isha.
  *
- * All of it is gradients — no images, no canvas, nothing per-frame. It loads on a phone with one
- * bar of signal and costs a Pi nothing.
+ * `data-period` is set on the root from the MASJID's timetable, resolved through the IANA zone
+ * Display sent — never the device clock. `periodTheme.ts` maps the same period to light or dark,
+ * which drives `data-theme` and therefore every ink, glass and shadow token. The two tables are
+ * two halves of one decision and neither language can check the other, so `periodTheme.test.ts`
+ * asserts the split and the contrast harness measures the result.
+ *
+ * THREE THINGS THAT LOOK LIKE STYLE AND ARE NOT:
+ *
+ *  1. Every dark-period glow core is capped at 0.20 alpha. Above that the glow composites into a
+ *     pale patch, and on a tall phone the moon sits directly behind the header and the countdown
+ *     — text on a light patch with light ink. The previous two-look sky had this at 0.34 and got
+ *     away with it only because no text happened to land there.
+ *  2. On a LIGHT sky a warm sun SUBTRACTS luminance — saturated orange is darker than pale blue.
+ *     The instinct that a brighter sun is safer is backwards, and the outer warm rings are where
+ *     the light periods' contrast margin actually goes.
+ *  3. `--ink-scene-faint` cannot clear 4.5:1 against any of these skies. It is a large-text token
+ *     only; nothing at body size may use it here.
  */
+
 .sky {
   position: fixed;
   inset: 0;
@@ -377,25 +395,97 @@ h1, h2, h3, p { margin: 0; }
   background: var(--sky-gradient);
 }
 
-/* Night, and the default. */
+/* Night, and the fallback for "we do not know what time it is at this masjid yet" — a fresh
+   install, or Display not yet granted. Dark is the safe unknown: it is what the default ink set
+   already assumes, so an unknown period degrades to a correct-looking page rather than a broken
+   one. It is never guessed from the device clock (CLAUDE.md §7). */
 .sky {
-  --sky-gradient: linear-gradient(180deg, #0a1830 0%, #0f2044 52%, #14294f 100%);
-  --sky-body: radial-gradient(circle, rgba(226, 236, 255, 0.34) 0%, rgba(186, 205, 240, 0.16) 34%, rgba(140, 165, 215, 0.06) 58%, transparent 72%);
+  --sky-gradient: linear-gradient(180deg, #04081a 0%, #070f28 34%, #0b1736 62%, #0f1e40 84%, #132446 100%);
+  --sky-body: radial-gradient(circle, rgba(236, 242, 255, 0.20) 0%, rgba(214, 226, 250, 0.16) 18%, rgba(202, 216, 246, 0.12) 19%, rgba(172, 192, 236, 0.08) 42%, rgba(130, 155, 210, 0.03) 64%, transparent 78%);
+  --sky-body-y: -14%;
+  --sky-body-x: -9%;
+  --sky-body-size: min(56vw, 26rem);
+  --sky-stars: 1;
 }
 
-/* Day. */
-[data-theme="light"] .sky {
-  --sky-gradient: linear-gradient(180deg, #b7d6f0 0%, #d7e9f8 45%, #eef6fc 100%);
-  --sky-body: radial-gradient(circle, rgba(255, 226, 174, 0.85) 0%, rgba(255, 202, 140, 0.42) 34%, rgba(255, 186, 120, 0.14) 58%, transparent 72%);
+/* ── Fajr — still night, with the first light low and to the side ──────────── */
+[data-period='fajr'] .sky {
+  --sky-gradient: linear-gradient(180deg, #05081a 0%, #090f2c 30%, #101f3e 58%, #1b2749 80%, #24244a 100%);
+  /* A hue rotation rather than a brightening: a genuinely lightening dawn band fails AA. */
+  --sky-body: radial-gradient(circle, rgba(255, 200, 162, 0.14) 0%, rgba(250, 178, 158, 0.12) 21%, rgba(244, 170, 152, 0.10) 22%, rgba(198, 152, 168, 0.07) 42%, rgba(148, 132, 178, 0.03) 64%, transparent 80%);
+  --sky-body-y: 54%;
+  --sky-body-x: -24%;
+  --sky-body-size: min(46vw, 22rem);
+  /* The stars are going out, not gone. */
+  --sky-stars: 0.35;
 }
 
-/* The sun or the moon, low in the corner. Logical inset, so it mirrors in Arabic and Urdu along
-   with everything else rather than being the one thing that stays put. */
+/* ── Duha — the reference's own morning screen ─────────────────────────────── */
+[data-period='sunrise'] .sky {
+  --sky-gradient: linear-gradient(180deg, #b7d6f0 0%, #cfe4f7 32%, #dfeefb 58%, #eef6fc 84%, #f7fbfe 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 241, 214, 0.92) 0%, rgba(255, 231, 186, 0.66) 18%, rgba(255, 226, 174, 0.48) 19%, rgba(255, 210, 148, 0.30) 41%, rgba(255, 194, 132, 0.12) 63%, transparent 78%);
+  --sky-body-y: -4%;
+  --sky-body-x: -14%;
+  --sky-body-size: min(62vw, 30rem);
+  --sky-stars: 0;
+}
+
+/* ── Dhuhr — the brightest the page gets, sun high and near centre ─────────── */
+[data-period='dhuhr'] .sky {
+  --sky-gradient: linear-gradient(180deg, #aacfef 0%, #bfdcf5 24%, #d6e9fa 52%, #edf6fd 80%, #fbfdff 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 253, 244, 0.95) 0%, rgba(255, 247, 219, 0.74) 16%, rgba(255, 242, 202, 0.52) 17%, rgba(255, 233, 178, 0.34) 39%, rgba(255, 216, 146, 0.13) 61%, transparent 76%);
+  --sky-body-y: -24%;
+  --sky-body-x: 4%;
+  --sky-body-size: min(78vw, 34rem);
+  --sky-stars: 0;
+}
+
+/* ── Asr — the light going golden, sun lowering ────────────────────────────── */
+[data-period='asr'] .sky {
+  --sky-gradient: linear-gradient(180deg, #b4d0ea 0%, #cfdcec 24%, #e6e0e4 50%, #f8e6d3 76%, #ffefdc 100%);
+  /* The outer warm rings are where this period's contrast margin lives — a warmer sun here eats
+     it first. See note 2 in the header. */
+  --sky-body: radial-gradient(circle, rgba(255, 236, 198, 0.88) 0%, rgba(255, 219, 160, 0.66) 17%, rgba(255, 210, 146, 0.48) 18%, rgba(255, 190, 122, 0.30) 40%, rgba(250, 165, 106, 0.11) 62%, transparent 78%);
+  --sky-body-y: 16%;
+  --sky-body-x: -12%;
+  --sky-body-size: min(64vw, 30rem);
+  --sky-stars: 0;
+}
+
+/* ── Maghrib — deep above, an ember at the horizon ─────────────────────────
+ *
+ * The one place the owner's two instructions pulled apart: his Maghrib screenshot is flat deep
+ * navy, but he also asked for "where the sun is". So the sky keeps the reference's dark polarity
+ * — near-white ink, as on his screen — and puts the sunset where a sunset actually is, low and
+ * warm at the horizon, well below the text. It reads as Maghrib without going light. */
+[data-period='maghrib'] .sky {
+  --sky-gradient: linear-gradient(180deg, #060b20 0%, #0b1836 26%, #1c1638 50%, #35202f 72%, #4a2412 92%, #52250f 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 156, 88, 0.13) 0%, rgba(248, 134, 74, 0.11) 21%, rgba(242, 120, 66, 0.09) 22%, rgba(176, 74, 90, 0.08) 42%, rgba(150, 70, 100, 0.03) 64%, transparent 80%);
+  --sky-body-y: 62%;
+  --sky-body-x: -20%;
+  --sky-body-size: min(72vw, 32rem);
+  --sky-stars: 0.2;
+}
+
+/* ── Isha — full night ─────────────────────────────────────────────────────── */
+[data-period='isha'] .sky {
+  --sky-gradient: linear-gradient(180deg, #03050d 0%, #060b20 36%, #0a1230 68%, #0d1739 100%);
+  --sky-body: radial-gradient(circle, rgba(228, 238, 255, 0.20) 0%, rgba(212, 226, 250, 0.16) 19%, rgba(198, 213, 242, 0.11) 20%, rgba(143, 166, 216, 0.07) 42%, rgba(120, 145, 200, 0.03) 64%, transparent 80%);
+  --sky-body-y: -14%;
+  --sky-body-x: -10%;
+  --sky-body-size: min(56vw, 26rem);
+  --sky-stars: 1;
+}
+
+/* The sun or the moon. Logical inset so it mirrors in Arabic and Urdu along with everything
+   else, rather than being the one thing that stays put. */
 .sky__body {
   position: absolute;
-  inset-block-start: -16%;
-  inset-inline-end: -14%;
-  inline-size: min(62vw, 30rem);
+  inset-block-start: var(--sky-body-y, -16%);
+  inset-inline-end: var(--sky-body-x, -14%);
+  /* Per period: the midday sun is the largest, which is how Dhuhr reads brightest without
+     pushing the zenith blue past the point where the darkened coral stops clearing AA. */
+  inline-size: var(--sky-body-size, min(62vw, 30rem));
   aspect-ratio: 1;
   background: var(--sky-body);
   border-radius: 50%;
@@ -416,12 +506,13 @@ h1, h2, h3, p { margin: 0; }
   box-shadow: inset 0 0 260px 90px var(--scene-vignette);
 }
 
-/* Stars: night only. On the light theme's pale sky they would be white dots on white. */
-.sky__stars { display: none; }
-[data-theme="dark"] .sky__stars {
-  display: block;
+/* Stars, faded by the period rather than switched on and off: the sky does not go from full
+   night to full morning in one step, and neither should this. Zero on the light periods, where
+   they would be white dots on white. */
+.sky__stars {
   position: absolute;
   inset: 0;
+  opacity: var(--sky-stars, 0);
   background-image:
     radial-gradient(1.4px 1.4px at 24px 38px, rgba(255, 255, 255, 0.85), transparent 60%),
     radial-gradient(1px 1px at 148px 22px, rgba(255, 255, 255, 0.55), transparent 60%),
@@ -433,15 +524,12 @@ h1, h2, h3, p { margin: 0; }
     radial-gradient(1px 1px at 246px 44px, rgba(255, 255, 255, 0.40), transparent 60%);
   background-size: 340px 268px;
   background-repeat: repeat;
-  animation: skyTwinkle 14s ease-in-out infinite alternate;
-}
-@keyframes skyTwinkle {
-  from { opacity: 0.5; }
-  to   { opacity: 1; }
+  transition: opacity 600ms linear;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sky__body, [data-theme="dark"] .sky__stars { animation: none; }
+  .sky__body { animation: none; }
+  .sky__stars { transition: none; }
 }
 
 /* ── The hero: which prayer is on, and how long there is ─────────────────── */
@@ -512,38 +600,6 @@ h1, h2, h3, p { margin: 0; }
 
 /* ── The timetable itself ────────────────────────────────────────────────── */
 
-.times { margin-block-start: 0.35rem; }
-.time-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: 0.75rem;
-  padding: 0.85rem 0.9rem;
-  border-block-end: 1px solid color-mix(in srgb, var(--ink-scene) 12%, transparent);
-}
-.time-row:last-child { border-block-end: 0; }
-.time-row__name { font-size: 1.12rem; font-weight: 600; color: var(--ink-scene); text-shadow: var(--text-shadow-scene); }
-.time-row__times { display: flex; align-items: baseline; gap: 0.6rem; }
-.time-row__adhan { font-size: 1.12rem; font-weight: 600; color: var(--ink-scene); text-shadow: var(--text-shadow-scene); }
-.time-row__iqamah { font-size: 0.86rem; color: var(--ink-scene-muted); }
-
-/* Passed prayers recede rather than disappear — the day so far is still information. */
-.time-row--past .time-row__name,
-.time-row--past .time-row__adhan { color: var(--ink-scene-muted); font-weight: 500; }
-
-/* The current one is OUTLINED, not filled. A filled row shouts; an outline says "here" and
-   leaves the column of times even. */
-.time-row--now {
-  border: 2px solid var(--ink-scene);
-  border-radius: 0.85rem;
-  margin-block: 0.25rem;
-  padding-block: 0.8rem;
-}
-.time-row--now .time-row__name,
-.time-row--now .time-row__adhan { font-weight: 700; color: var(--ink-scene); }
-
-/* Shurūq is a sun event, not a jamā'ah. Lighter, and it never carries an Iqamah. */
-.time-row--sun .time-row__name { font-weight: 500; }
 
 /* ── Honest states ───────────────────────────────────────────────────────── */
 
@@ -716,3 +772,206 @@ h1, h2, h3, p { margin: 0; }
   .poster__qr { break-inside: avoid; }
 }
 @page { size: auto; margin: 16mm; }
+
+/* ── Revision, 2026-08-25 ────────────────────────────────────────────────────
+ * Iqamah-first rows under real column headings, a "go to today" control, swipeable
+ * days, and the month view. The per-period skies are in the block after this one.
+ */
+
+/* Visible to a screen reader, to nobody else. The prayer-name column has a heading for
+   semantics but no visible label — "Prayer" over a list of prayer names is noise. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── The timetable, in three columns ─────────────────────────────────────────
+ * The IQAMAH is the emphasised one. A musalli looking at their phone is working out when to
+ * leave the house, and that is the jamā'ah time; the Adhan is the context that makes it make
+ * sense. The old layout led with the Adhan and tucked the jamā'ah behind the word "Jamā'ah",
+ * which put the small print where the answer belonged.
+ *
+ * A fixed column template on BOTH the heading row and the data rows, so the two line up — a
+ * grid whose columns are `auto` would size each row independently and the headings would sit
+ * over nothing in particular. */
+.times { margin-block-start: 0.35rem; }
+
+.time-head,
+.time-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.1rem 5.6rem;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.time-head {
+  padding: 0 0.9rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  /* MUTED, not faint. --ink-scene-faint cannot reach 4.5:1 against ANY tinted sky in any
+     period — it measures 3.2-3.9 across the six — so it is structurally a large-text token
+     and must never carry copy at this size. */
+  color: var(--ink-scene-muted);
+  text-shadow: var(--text-shadow-scene);
+}
+.time-head > span { text-align: end; }
+.time-head > span:first-child { text-align: start; }
+
+.time-row {
+  padding: 0.8rem 0.9rem;
+  border-block-end: 1px solid color-mix(in srgb, var(--ink-scene) 12%, transparent);
+}
+.time-row:last-child { border-block-end: 0; }
+
+.time-row__name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The Adhan: present, legible, and quieter than the answer beside it. */
+.time-row__adhan {
+  text-align: end;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--ink-scene-muted);
+}
+
+/* The Iqamah: the number the reader came for. */
+.time-row__iqamah {
+  text-align: end;
+  font-size: 1.24rem;
+  font-weight: 700;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  letter-spacing: -0.01em;
+}
+
+/* Passed prayers recede rather than disappear — the day so far is still information. */
+.time-row--past .time-row__name,
+.time-row--past .time-row__iqamah { color: var(--ink-scene-muted); font-weight: 500; }
+/* Muted rather than faint, for the same reason as the column headings above: at this size
+   the faint token cannot clear AA on a tinted sky. The row still recedes — it is smaller,
+   lighter in weight, and sits beside an un-outlined name. */
+.time-row--past .time-row__adhan { color: var(--ink-scene-muted); }
+
+/* The current one is OUTLINED, not filled. A filled row shouts; an outline says "here" and
+   leaves the column of times even. */
+.time-row--now {
+  border: 2px solid var(--ink-scene);
+  border-radius: 0.85rem;
+  margin-block: 0.25rem;
+  padding-block: 0.75rem;
+}
+.time-row--now .time-row__name,
+.time-row--now .time-row__iqamah { font-weight: 800; color: var(--ink-scene); }
+
+/* Shurūq is a sun event, not a jamā'ah: lighter, and its Iqamah cell stays empty. */
+.time-row--sun .time-row__name { font-weight: 500; }
+
+/* ── Swiping between days ────────────────────────────────────────────────────
+ * The new day slides in from the side it came from, the way a photo does. `touch-action` keeps
+ * vertical scrolling native — only horizontal panning is ours to interpret. */
+.today { touch-action: pan-y; }
+
+.times[data-slide="next"] { animation: dayInFromRight 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+.times[data-slide="prev"] { animation: dayInFromLeft 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+@keyframes dayInFromRight {
+  from { opacity: 0; transform: translate3d(14px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes dayInFromLeft {
+  from { opacity: 0; transform: translate3d(-14px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .times[data-slide] { animation: none; }
+}
+
+/* ── "Today" ─────────────────────────────────────────────────────────────────
+ * On today it is a label. On any other day it becomes a button whose arrow points back the way
+ * today lies, so it reads as somewhere to go rather than as a caption. */
+.todaybar { text-align: center; margin-block-start: 0.5rem; }
+
+.arc__chip--btn {
+  cursor: pointer;
+  gap: 0.2rem;
+  padding-inline: 0.55rem;
+  color: var(--ink-scene);
+  border-color: color-mix(in srgb, var(--coral) 55%, transparent);
+}
+.arc__chip--btn:hover { background: color-mix(in srgb, var(--scene-base) 60%, transparent); }
+.arc__chip--btn:active { transform: scale(0.97); }
+
+/* ── The month ───────────────────────────────────────────────────────────────
+ * Thirty days of near-identical numbers is the worst possible way to find the one day the
+ * jamā'ah times change, which is the day somebody turns up at the wrong time. So that is the
+ * only thing this view marks. */
+.month { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 5.5rem; }
+
+.month__bar { display: flex; align-items: center; gap: 0.35rem; margin-block: 0.5rem 1rem; }
+.month__title {
+  flex: 1; text-align: center; min-width: 0;
+  font-family: var(--font-display); font-size: 1.2rem; font-weight: 700;
+  color: var(--ink-scene); text-shadow: var(--text-shadow-scene);
+}
+
+.month__grid { display: flex; flex-direction: column; gap: 0.25rem; }
+.month__week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.25rem; }
+
+.month__wd {
+  text-align: center; padding-block-end: 0.3rem;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  /* Muted, not faint — see .time-head. */
+  color: var(--ink-scene-muted); text-shadow: var(--text-shadow-scene);
+}
+
+.month__cell {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem;
+  border: 0; border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--scene-base) 34%, transparent);
+  color: var(--ink-scene);
+  font-size: 0.95rem;
+}
+.month__cell:hover:not(:disabled) { background: color-mix(in srgb, var(--scene-base) 60%, transparent); }
+.month__cell--pad { background: none; }
+/* A day this masjid has not published times for. Inert and obviously so, rather than a button
+   that leads to a blank page. */
+.month__cell--empty { opacity: 0.28; cursor: default; background: none; }
+/* Today is RINGED, matching how the current prayer is marked in the day view. */
+.month__cell--today { box-shadow: inset 0 0 0 2px var(--ink-scene); font-weight: 800; }
+/* A change day is tinted as well as dotted: colour alone is never the only signal, and the
+   bolder number is a third. The tint is a fixed warm orange rather than var(--coral), because
+   the LIGHT theme's coral is a dark brown-red — at a low alpha over a pale sky it desaturates
+   into grey and the marked day reads as disabled rather than as flagged. */
+.month__cell--changed {
+  background: rgba(238, 138, 84, 0.30);
+  font-weight: 700;
+}
+[data-theme="dark"] .month__cell--changed { background: rgba(240, 150, 100, 0.26); }
+
+.month__num { line-height: 1; }
+.month__dot { inline-size: 5px; block-size: 5px; border-radius: 50%; background: var(--coral); }
+.month__dot--key { flex: none; margin-block-start: 0.4rem; }
+
+.month__key {
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  margin-block-start: 1rem; padding: 0.7rem 0.85rem;
+  border-radius: 0.7rem; font-size: 0.85rem; line-height: 1.5;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 15%, transparent);
+}
+.month__key svg { flex: none; margin-block-start: 0.15rem; color: var(--coral); }

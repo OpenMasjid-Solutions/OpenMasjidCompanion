@@ -4,30 +4,35 @@
 /**
  * The musalli's page: which prayer is on, how long until the next, and the day's timetable.
  *
- * The design follows docs/DESIGN_LANGUAGE.md — the arc, the big current-prayer header, passed
- * prayers dimmed and the current one outlined rather than filled. What matters underneath it:
+ * The design follows docs/DESIGN_LANGUAGE.md. What matters underneath it:
  *
  *  • **Every time on this page came from Display.** Nothing here computes one.
  *  • **Every time is the MASJID's wall clock**, in the timezone the payload carries — not the
  *    reader's. Someone opening this in another country sees the masjid's times, as they read on
  *    the wall inside the building.
  *  • **Old data says so.** A stale marker is what makes serving a cache honest at all.
+ *  • **The IQAMAH is the answer to the question.** A musalli checking their phone is deciding
+ *    when to leave the house, and that is the jamā'ah time. The Adhan is context beside it.
  */
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react';
 import {
   type Day,
   type Masjid,
+  type PeriodKey,
   type Slot,
   formatDate,
   formatTime,
   formatUntil,
+  periodOf,
   positionAt,
   slotTime,
   slotsFor,
   todayInZone,
   zonedTimeToEpoch,
 } from './prayerTimes';
+import { Month } from './Month';
+import { useSwipe } from './swipe';
 import { MasjidLogo, Note } from './ui';
 
 export interface Timetable {
@@ -58,9 +63,12 @@ function useMinuteTick(): number {
   return now;
 }
 
-export function Today({ data }: { data: Timetable }): JSX.Element {
+export function Today({ data, onPeriod }: { data: Timetable; onPeriod: (period: PeriodKey) => void }): JSX.Element {
   const now = useMinuteTick();
   const [offset, setOffset] = useState(0);
+  const [view, setView] = useState<'day' | 'month'>('day');
+  /** Which way the last day change went, so the new day slides in from the side it came from. */
+  const [slide, setSlide] = useState<'next' | 'prev' | null>(null);
 
   const masjid = data.masjid;
   const zone = masjid?.timezone ?? 'UTC';
@@ -77,14 +85,63 @@ export function Today({ data }: { data: Timetable }): JSX.Element {
   // The hero always reports NOW, whichever day the table below is showing. Someone browsing
   // ahead to next Friday still wants to know how long until Maghrib today.
   const position = useMemo(() => positionAt(data.days, zone, now), [data.days, zone, now]);
+  const period = periodOf(position);
+
+  /**
+   * Tell the shell which part of the day it is, so the whole page can be themed for it.
+   *
+   * Reported upward rather than applied here because it sets an attribute on the ROOT element —
+   * the sky, the ink and the glass all key off it, and they sit outside this component.
+   */
+  useEffect(() => {
+    if (masjid) onPeriod(period);
+  }, [period, masjid, onPeriod]);
+
+  const step = useCallback(
+    (by: 1 | -1) => {
+      setOffset((o) => {
+        const next = Math.min(data.days.length - 1, Math.max(0, todayIndex + o + by)) - todayIndex;
+        if (next !== o) setSlide(by === 1 ? 'next' : 'prev');
+        return next;
+      });
+    },
+    [data.days.length, todayIndex],
+  );
+
+  const swipe = useSwipe(
+    useCallback(() => step(1), [step]),
+    useCallback(() => step(-1), [step]),
+  );
 
   if (!masjid || !day) return <NotSetUp />;
 
   const slots = slotsFor(day);
   const isToday = index === todayIndex;
 
+  if (view === 'month') {
+    return (
+      <Month
+        days={data.days}
+        masjid={masjid}
+        today={data.days[todayIndex]?.date ?? day.date}
+        anchor={day.date}
+        onAnchor={(date) => {
+          const i = data.days.findIndex((d) => d.date.slice(0, 7) === date.slice(0, 7));
+          if (i >= 0) setOffset(i - todayIndex);
+        }}
+        onPick={(date) => {
+          const i = data.days.findIndex((d) => d.date === date);
+          if (i >= 0) setOffset(i - todayIndex);
+          setSlide(null);
+          setView('day');
+        }}
+        onClose={() => setView('day')}
+      />
+    );
+  }
+
   return (
-    <main className="today">
+    <main className="today" {...swipe}>
       <section className="hero">
         <h1 className="hero__now">{position.label || masjid.name}</h1>
         {position.next && (
@@ -96,17 +153,23 @@ export function Today({ data }: { data: Timetable }): JSX.Element {
 
       <Arc slots={slots} day={day} zone={zone} now={now} isToday={isToday} />
 
-      <div style={{ textAlign: 'center', marginBlockStart: '0.5rem' }}>
-        <span className="arc__chip">{isToday ? 'Today' : formatDate(day.date, masjid.language).split(' ')[0]}</span>
+      <div className="todaybar">
+        {isToday ? (
+          <span className="arc__chip">Today</span>
+        ) : (
+          // An arrow pointing back the way today lies, so it reads as "go back to today" rather
+          // than as a label. Replaces a chip that used to print the weekday, which was both
+          // redundant — the full date is directly below it — and wrong (it printed the comma).
+          <button className="arc__chip arc__chip--btn" onClick={() => { setSlide(offset > 0 ? 'prev' : 'next'); setOffset(0); }}>
+            {offset > 0 && <ChevronLeft size={14} aria-hidden="true" />}
+            Today
+            {offset < 0 && <ChevronRight size={14} aria-hidden="true" />}
+          </button>
+        )}
       </div>
 
       <div className="datebar">
-        <button
-          className="datebar__btn"
-          onClick={() => setOffset((o) => o - 1)}
-          disabled={index <= 0}
-          aria-label="Previous day"
-        >
+        <button className="datebar__btn" onClick={() => step(-1)} disabled={index <= 0} aria-label="Previous day">
           <ChevronLeft size={22} aria-hidden="true" />
         </button>
         <div className="datebar__main">
@@ -115,17 +178,23 @@ export function Today({ data }: { data: Timetable }): JSX.Element {
               Hijri date — see the work order's divergence 5. */}
           <div className="datebar__hijri">{day.hijri.label}</div>
         </div>
-        <button
-          className="datebar__btn"
-          onClick={() => setOffset((o) => o + 1)}
-          disabled={index >= data.days.length - 1}
-          aria-label="Next day"
-        >
+        <button className="datebar__btn" onClick={() => step(1)} disabled={index >= data.days.length - 1} aria-label="Next day">
           <ChevronRight size={22} aria-hidden="true" />
+        </button>
+        <button className="datebar__btn" onClick={() => setView('month')} aria-label="This month">
+          <CalendarDays size={20} aria-hidden="true" />
         </button>
       </div>
 
-      <div className="times">
+      {/* Keyed on the date so a day change remounts and the slide replays. */}
+      <div className="times" key={day.date} data-slide={slide ?? undefined} role="table" aria-label={`Prayer times for ${formatDate(day.date, masjid.language)}`}>
+        <div className="time-head" role="row">
+          <span role="columnheader">
+            <span className="sr-only">Prayer</span>
+          </span>
+          <span role="columnheader">Adhan</span>
+          <span role="columnheader">Iqamah</span>
+        </div>
         {slots.map((slot, i) => (
           <TimeRow
             key={`${slot.key}-${i}`}
@@ -154,38 +223,37 @@ function rowState(slot: Slot, date: string, zone: string, now: number, isToday: 
 }
 
 /**
- * One row: the time it happens, large, and the other time beside it, small.
+ * One row: prayer, Adhan, Iqamah — under real column headings.
  *
- * **Jumu'ah is the other way round from the rest**, and it has to be. Every Jumu'ah on a Friday
- * carries the same Adhan — that day's single Dhuhr Adhan, because Display has no per-Jumu'ah
- * one — so leading with it prints "1:04 PM" identically down two or three rows and buries the
- * jamā'ah times, which are the only thing telling them apart and the only thing anyone came to
- * find out. So the jamā'ah leads and the shared Adhan follows it, which is also the order
- * `slotTime` places them on the timeline in.
+ * **The Iqamah is the larger of the two**, because it is the one being asked about: a musalli
+ * looking at their phone is working out when to leave, and that is the jamā'ah. The Adhan sits
+ * beside it, smaller, as the context that makes it make sense.
+ *
+ * Headed columns also quietly fix a Friday problem. Every Jumu'ah that day carries the same
+ * Adhan — Display has no per-Jumu'ah one — so two rows show an identical Adhan and different
+ * Iqamahs. Unlabelled, that reads as a mistake; under a heading it reads as exactly what it is.
+ *
+ * Marked up with ARIA table roles rather than a <table>: the current prayer is outlined as a
+ * whole row, which is awkward on table cells, and CSS grid gives the alignment for nothing.
  */
 function TimeRow({ slot, masjid, state }: { slot: Slot; masjid: Masjid; state: RowState }): JSX.Element {
   const cls = ['time-row', state === 'past' && 'time-row--past', state === 'now' && 'time-row--now', slot.sunEvent && 'time-row--sun']
     .filter(Boolean)
     .join(' ');
   const fmt = (t: string | null) => formatTime(t, masjid.hourCycle, masjid.language);
-  const isJumuah = slot.key === 'jumuah';
-  const lead = isJumuah ? slot.iqamah : slot.adhan;
-  const follow = isJumuah
-    ? slot.adhan
-      ? `Adhan ${fmt(slot.adhan)}`
-      : ''
-    : slot.iqamah
-      ? `Jamā‘ah ${fmt(slot.iqamah)}`
-      : '';
   return (
-    <div className={cls}>
-      <div className="time-row__name">{slot.label}</div>
-      <div className="time-row__times">
-        <span className="time-row__adhan tnum">{fmt(lead)}</span>
-        {/* A sun event has no jamā'ah, so it gets no second column at all rather than a dash
-            that invites the reader to look for one. */}
-        {!slot.sunEvent && <span className="time-row__iqamah tnum">{follow}</span>}
-      </div>
+    <div className={cls} role="row">
+      <span className="time-row__name" role="cell">
+        {slot.label}
+      </span>
+      <span className="time-row__adhan tnum" role="cell">
+        {fmt(slot.adhan)}
+      </span>
+      {/* A sun event has no jamā'ah at all, so its Iqamah cell is left empty rather than filled
+          with a dash that invites the reader to look for one. */}
+      <span className="time-row__iqamah tnum" role="cell">
+        {slot.sunEvent ? '' : fmt(slot.iqamah)}
+      </span>
     </div>
   );
 }

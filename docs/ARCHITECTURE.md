@@ -352,3 +352,41 @@ panel is code-split.
 poster is a cartridge of ink and an unreadable QR code. The print stylesheet hides the toolbar,
 the sky and the chrome, and `break-inside: avoid` keeps a step and its hints off the fold.
 Verified under `emulateMedia({ media: 'print' })` rather than by eye.
+
+## Slice 7 — the UI revision (0.1.0-dev.7)
+
+**The Iqamah leads.** A musalli checking their phone is working out when to leave the house, and
+that is the jamā'ah time. Three columns under real headings replace the old "Adhan big, Jamā'ah
+X small" row — which also quietly fixes a Friday problem: every Jumu'ah that day carries the
+same Adhan (Display has no per-Jumu'ah one), so two rows showing an identical Adhan read as a
+mistake unlabelled and as exactly what they are under a heading.
+
+**Six skies, one per prayer period.** Reverses the slice-4 decision — see DESIGN_LANGUAGE.md for
+why the first reading was wrong. `data-period` selects the sky; `periodTheme.ts` maps period to
+light/dark and `setThemeOverride` makes it beat the browser preference. The override lives in
+prefs.ts rather than being written straight onto the element, because `applyTheme` is called
+from three places (hydrate, a prefs patch, and the live `prefers-color-scheme` listener) and any
+one of them would otherwise silently undo it a moment later.
+
+**`--ink-scene-faint` is a large-text-only token.** It cannot reach 4.5:1 against any tinted
+sky; three uses at body size were moved to `--ink-scene-muted`.
+
+**Swipe is decided by which axis moves first**, and once decided as a scroll it is left alone
+for the rest of the touch. The failure that matters is not a missed swipe but a STOLEN one: a
+prayer page that jumps to tomorrow when someone scrolls is worse than one with no swipe at all,
+because it happens to people who were not trying. Pointer events, not touch, so a trackpad drag
+works and nothing needs a non-passive listener. `swipeResult` is pure so the rule is testable.
+
+**The month view marks only jamā'ah changes.** Adhan times move daily and nobody needs telling;
+jamā'ah times hold for a week or two and then change, and that is the day somebody turns up at
+the wrong time. `iqamahChanges` deliberately excludes Jumu'ah — it appears on Fridays and only
+Fridays, so including it would mark every Friday and every Saturday, fifty-two false marks a
+year. The legend is scoped to the VISIBLE month: a legend pointing at nothing reads as broken.
+
+**A fixed warm tint, not `var(--coral)`, marks a change day.** The light theme's coral is a dark
+brown-red; at a low alpha over a pale sky it desaturates into grey and the day reads as disabled
+rather than flagged.
+
+**The "Today" chip became a button.** It used to print `formatDate(...).split(' ')[0]` — which on
+"Saturday, August 29" is "Saturday," with the comma, and was redundant beside the full date
+directly below it.

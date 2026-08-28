@@ -100,8 +100,27 @@ export function resolveTheme(theme: Prefs['theme']): 'dark' | 'light' {
   return theme;
 }
 
+/**
+ * An override that outranks the reader's own light/dark setting.
+ *
+ * The MUSALLI page themes itself by the time of day — Fajr is dark, Duha is light — so on that
+ * surface the period decides and the browser preference does not apply. The admin panel has no
+ * override and follows the preference as normal.
+ *
+ * Held here rather than written straight onto the element, because `applyTheme` is called from
+ * three places (hydrate, a prefs patch, and the live `prefers-color-scheme` listener) and any
+ * one of them would otherwise silently undo the override a moment later.
+ */
+let themeOverride: 'light' | 'dark' | null = null;
+
+export function setThemeOverride(theme: 'light' | 'dark' | null): void {
+  if (themeOverride === theme) return;
+  themeOverride = theme;
+  applyTheme(state.theme);
+}
+
 export function applyTheme(theme: Prefs['theme']): void {
-  document.documentElement.setAttribute('data-theme', resolveTheme(theme));
+  document.documentElement.setAttribute('data-theme', themeOverride ?? resolveTheme(theme));
 }
 
 export function applyWallpaper(id: string): void {

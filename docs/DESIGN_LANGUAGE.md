@@ -23,12 +23,26 @@ justify, and this file is what that identity is.
 night is deep navy with stars and a moon. Nothing about it is decorative — it makes a
 prayer-times app feel like it is about the actual sky rather than about a table.
 
-*Revised 2026-08-24.* The first build of this moved the sky through **five phases** across the
-day (night → dawn → morning → day → dusk) and planned to drive those boundaries off the masjid's
-real Fajr, Shurūq and Maghrib. Hasan reviewed it and cut it: **one design throughout, matching
-the screenshots.** So there are exactly two looks — a day one and a night one — chosen by the
-reader's light/dark setting, and nothing about the page changes as the hours pass. It is less
-clever and more consistent, which for a page someone opens twice a day is the better trade.
+*Revised twice. The second revision is the one that stands.*
+
+**2026-08-24** — the first build moved the sky through five phases and drove them off the real
+prayer times. Hasan cut it to two looks chosen by the reader's light/dark setting: "one design
+throughout, matching the screenshots."
+
+**2026-08-25** — that reading was wrong, and he corrected it:
+
+> "why's it always dark mode? the light/dark mode is based on the time of day and which salah.
+>  And each salah should have its own theme like where the sun is and stuff."
+
+So the sky has **six looks, one per prayer period**, and the period decides light or dark rather
+than the browser preference. Fajr is dark, Duha is light, Maghrib is dark again. "One design
+throughout" meant one *design language*, not one *appearance* — the earlier reading collapsed
+the wrong axis.
+
+The sun moves with the day: low and off to the side at Fajr, rising through Duha, high and
+LARGEST at Dhuhr, sinking through Asr, at the horizon by Maghrib, replaced by the moon at Isha.
+Size is the one thing a light period can spend freely — lightness is not, because a deeper
+midday blue stops the darkened coral clearing AA.
 
 **2. The arc as the hero.** A curve across the top with the day's prayers as dots along it and
 a marker at *now*. The passed prayers are behind you, the coming ones ahead. It answers "where
@@ -71,21 +85,44 @@ code, no assets, and no pixel-matching — our tokens, our glass, our type, our 
 
 ## How the sky actually works
 
-Two looks, keyed off `data-theme` and nothing else:
+`data-period` on the root selects one of six skies. `periodTheme.ts` maps the same period to
+`light` or `dark`, which sets `data-theme` and therefore every ink, glass, vignette and
+text-shadow token. **Those two tables are two halves of one decision that neither language can
+check** — CSS cannot tell the script how dark a gradient is, and the script cannot see the
+stylesheet — so `periodTheme.test.ts` asserts the split and a harness measures the result.
 
-- **Dark** — deep navy, a moon glow in the top corner, a faint star field.
-- **Light** — pale blue, a warm sun glow in the same corner, no stars (they would be white on
-  white).
+The period comes from the MASJID's timetable through Display's IANA zone, never the device
+clock. When there is no timetable — a fresh install, Display not granted, or a date outside the
+fetched window — it falls back to **isha**. Dark is the safe unknown: it is what the default ink
+set already assumes, so an unknown period degrades to a correct-looking page rather than a
+broken one.
 
-`data-theme` still owns ink and contrast; the sky only supplies the ground behind them, so
-WCAG AA holds in both and the background has no way to break it. Verified rather than assumed:
-a harness samples the *rendered pixels* behind every text element in both themes and reports the
-ratio. It has caught two real failures so far — the footer's AGPL source link at 2.8:1 against
-the old midday sky, and the light-theme Hijri coral at 4.57:1, which passed but with no headroom.
+Three things in that stylesheet look like style and are not:
 
-All of it is CSS: gradients, a radial glow, and a star field made of repeating
-`radial-gradient`s rather than an image. No bytes on a phone, no work on a Pi, and the drift
-animation is behind `prefers-reduced-motion` like every other moving thing here.
+1. **Every dark-period glow core is capped at ~0.14–0.20 alpha.** Above that the glow composites
+   into a pale patch, and on a tall phone the moon sits directly behind the header and the
+   countdown. The previous two-look sky had this at 0.34 and got away with it only because no
+   text happened to land there.
+2. **On a light sky a warm sun SUBTRACTS luminance** — saturated orange is darker than pale
+   blue. The instinct that a brighter sun is safer is backwards, and the outer warm rings are
+   where the light periods' contrast margin actually goes.
+3. **`--ink-scene-faint` cannot clear 4.5:1 against any of these skies.** Its best case across
+   every period is ~3.6:1. It is structurally a large-text token; nothing at body size may use
+   it here. Three uses were moved to `--ink-scene-muted` when this was found.
+
+Verified rather than assumed: a harness opens each period with the browser set to the OPPOSITE
+light/dark preference, samples the rendered pixels behind every text element, and reports the
+ratio. Worst case across all six is 5.60:1. It has now caught three real failures — the footer's
+source link at 2.8:1, the light Hijri coral at 4.57:1 with no headroom, and the faint-ink
+column headings above.
+
+All of it is CSS: gradients, a radial glow with a paired-stop rim, and a star field of repeating
+`radial-gradient`s. No bytes on a phone, no work on a Pi, and the motion is behind
+`prefers-reduced-motion`.
+
+**The sun's height changes across the day; its side does not.** `inset-inline-end` flips under
+RTL, so an east-to-west model would run backwards for Arabic and Urdu readers. Height over time
+is honest in both directions.
 
 **Whose clock, then?** The masjid's — for everything that is actually a time. The sky no longer
 depends on the clock at all, but the countdown, the current-prayer highlight and the date all
