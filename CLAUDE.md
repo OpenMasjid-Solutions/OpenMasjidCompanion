@@ -444,6 +444,15 @@ emails or messages a musalli, ever.
   screen (one model, two views — Display's poster code follows the same rule for the same
   reason).
 - Hijri comes from Display's payload. Do not compute it here.
+- **A jamāʿah "change" is not a moved time** (the month view mark, `prayerChanged`). A masjid sets
+  a jamāʿah either as a **clock time** (holds; the gap to the adhan drifts daily) or as an
+  **offset** ("Maghrib + 5"; the printed time moves daily and nobody decided anything). Nothing
+  changed if **either** the time held **or** the gap held — comparing only printed times marked
+  every day of an offset Maghrib, and comparing only gaps would mark every day of a fixed Fajr.
+  A **rounded** offset is indistinguishable from a small revision from the outside, which is why
+  Maghrib is excluded by default with an admin switch (`month.maghrib`) rather than a cleverer
+  rule. The setting is masjid-wide, rides in the public payload, and **is part of that payload's
+  ETag** — otherwise a phone 304s and keeps the old marks.
 
 ---
 

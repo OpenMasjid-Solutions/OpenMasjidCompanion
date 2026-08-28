@@ -1,7 +1,7 @@
 {
   "name": "openmasjid-companion-server",
   "private": true,
-  "version": "0.1.0-dev.7",
+  "version": "0.1.0-dev.8",
   "description": "API + push scheduler + storage + static web host for OpenMasjid Companion",
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -10,7 +10,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tests": "tsc -p tsconfig.check.json",
-    "test": "node --import tsx --test src/basePath.test.ts src/ingress.test.ts src/store.test.ts src/auth.test.ts src/rateLimit.test.ts src/changelog.test.ts src/session.test.ts src/site.test.ts src/cache.test.ts src/relay.test.ts src/timetable.test.ts src/png.test.ts src/pwa.test.ts src/manifest.test.ts src/licenseHeaders.test.ts src/testFileCoverage.test.ts"
+    "test": "node --import tsx --test src/basePath.test.ts src/ingress.test.ts src/store.test.ts src/auth.test.ts src/rateLimit.test.ts src/changelog.test.ts src/session.test.ts src/site.test.ts src/cache.test.ts src/relay.test.ts src/timetable.test.ts src/png.test.ts src/pwa.test.ts src/manifest.test.ts src/marks.test.ts src/campaigns.test.ts src/licenseHeaders.test.ts src/testFileCoverage.test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

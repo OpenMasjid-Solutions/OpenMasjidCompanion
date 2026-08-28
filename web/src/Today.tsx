@@ -19,8 +19,10 @@ import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock3 } from '
 import {
   type Day,
   type Masjid,
+  type MonthMarks,
   type PeriodKey,
   type Slot,
+  MONTH_MARKS,
   formatDate,
   formatTime,
   formatUntil,
@@ -31,6 +33,7 @@ import {
   todayInZone,
   zonedTimeToEpoch,
 } from './prayerTimes';
+import { Appeals } from './Give';
 import { Month } from './Month';
 import { useSwipe } from './swipe';
 import { MasjidLogo, Note } from './ui';
@@ -41,6 +44,10 @@ export interface Timetable {
   stale: boolean;
   masjid: Masjid | null;
   days: Day[];
+  /** Which jamā'āt the month view marks as changed. Optional because a phone can be holding a
+   *  service-worker cache of a payload written before this setting existed, and a month view
+   *  that throws on an old cache is a worse bug than one that marks the default days. */
+  marks?: MonthMarks;
 }
 
 /** Re-render often enough that the countdown stays true to the minute, and no more. A page left
@@ -123,6 +130,7 @@ export function Today({ data, onPeriod }: { data: Timetable; onPeriod: (period: 
       <Month
         days={data.days}
         masjid={masjid}
+        marks={data.marks ?? MONTH_MARKS}
         today={data.days[todayIndex]?.date ?? day.date}
         anchor={day.date}
         onAnchor={(date) => {
@@ -206,6 +214,11 @@ export function Today({ data, onPeriod }: { data: Timetable; onPeriod: (period: 
       </div>
 
       {data.stale && <StaleNote at={data.at} />}
+
+      {/* Under the times, never over them. Someone has their answer by this point and is
+          already looking at the screen; the section removes itself entirely when the masjid
+          has no appeals running, which is most masjids most of the year. */}
+      <Appeals language={masjid.language} />
     </main>
   );
 }

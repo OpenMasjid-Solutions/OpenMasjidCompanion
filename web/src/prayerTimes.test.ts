@@ -23,6 +23,7 @@ import {
   formatTime,
   formatUntil,
   iqamahChanges,
+  prayerChanged,
   momentsFor,
   monthGrid,
   periodOf,
@@ -435,6 +436,83 @@ test('a day with no jamā‘ah set is compared like any other', () => {
   none.prayers.asr = { adhan: '17:48', iqamah: null };
   const days = [withIqamah('2026-08-23', '05:25'), none];
   assert.equal(iqamahChanges(days).has('2026-08-24'), true, 'losing a jamāʿah time is a change too');
+});
+
+// ── The offset trap ──────────────────────────────────────────────────────────
+//
+// This is the bug that made the month view useless on real data: every single day was marked.
+// A masjid that holds Maghrib five minutes after the adhan has a Maghrib jamā'ah that moves
+// EVERY DAY, because the adhan does — and a mark on every day carries exactly as much
+// information as no mark at all.
+
+/** A day whose Maghrib jamā'ah is a fixed offset after its (drifting) adhan. */
+const offsetMaghrib = (date: string, adhanMin: number, gap = 5) => {
+  const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  return day(date, {
+    prayers: {
+      fajr: { adhan: '05:01', iqamah: '05:25' },
+      dhuhr: { adhan: '13:05', iqamah: '13:30' },
+      asr: { adhan: '17:48', iqamah: '18:00' },
+      maghrib: { adhan: hhmm(adhanMin), iqamah: hhmm(adhanMin + gap) },
+      isha: { adhan: '21:05', iqamah: '21:30' },
+    },
+  });
+};
+
+test('AN OFFSET JAMĀʿAH IS NOT A CHANGE, on any day, even when Maghrib is counted', () => {
+  // The jamā'ah moved because the sun did. Nobody decided anything, so nothing is marked.
+  const days = [
+    offsetMaghrib('2026-08-23', 19 * 60 + 45),
+    offsetMaghrib('2026-08-24', 19 * 60 + 44),
+    offsetMaghrib('2026-08-25', 19 * 60 + 43),
+    offsetMaghrib('2026-08-26', 19 * 60 + 41),
+  ];
+  assert.equal(iqamahChanges(days, { maghrib: true }).size, 0, 'the printed time moved daily; the decision did not');
+});
+
+test('MAGHRIB IS LEFT OUT BY DEFAULT, which is what makes a rounded offset survivable', () => {
+  // "Maghrib + 5, rounded to the next five minutes" holds for days and then jumps five while
+  // the adhan moved one. From the outside that is indistinguishable from a small committee
+  // revision, so it cannot be detected — it can only be excluded, and the admin can put it back.
+  const days = [
+    offsetMaghrib('2026-08-23', 19 * 60 + 45, 5), // 19:50
+    offsetMaghrib('2026-08-24', 19 * 60 + 44, 6), // 19:50 — held, rounded
+    offsetMaghrib('2026-08-25', 19 * 60 + 40, 5), // 19:45 — the rounding stepped
+  ];
+  assert.equal(iqamahChanges(days).size, 0, 'off by default: the step is not shown');
+  assert.equal(iqamahChanges(days, { maghrib: true }).has('2026-08-25'), true, 'on: the admin asked to see it');
+});
+
+test('A FIXED JAMĀʿAH IS STILL NOT A CHANGE while the adhan drifts under it', () => {
+  // The mirror of the offset case, and the reason comparing gaps alone would be just as wrong
+  // as comparing times alone: here the gap moves every day and the decision does not.
+  const same = { adhan: '19:45', iqamah: '19:50' };
+  const a = day('2026-08-23', { prayers: { ...day('2026-08-23').prayers, maghrib: same } });
+  const b = day('2026-08-24', { prayers: { ...day('2026-08-24').prayers, maghrib: { adhan: '19:43', iqamah: '19:50' } } });
+  assert.equal(prayerChanged(a.prayers.maghrib, b.prayers.maghrib), false, 'the clock time held');
+});
+
+test('a real revision is still caught, offset rule or not', () => {
+  // 19:50 → 20:00 while the adhan moved one minute. Neither the time nor the gap held, so this
+  // is a decision, and it is marked.
+  const a = { adhan: '19:45', iqamah: '19:50' };
+  const b = { adhan: '19:44', iqamah: '20:00' };
+  assert.equal(prayerChanged(a, b), true);
+});
+
+test('with no adhan to explain it, a moved jamāʿah is a change', () => {
+  // Display allows a null adhan. Without one there is nothing that could account for the move,
+  // so the honest answer is that it changed rather than a silent assumption either way.
+  assert.equal(prayerChanged({ adhan: null, iqamah: '19:50' }, { adhan: null, iqamah: '20:00' }), true);
+});
+
+test('the tooltip names only the prayers the reader is being shown', () => {
+  const days = [
+    offsetMaghrib('2026-08-23', 19 * 60 + 45),
+    offsetMaghrib('2026-08-24', 19 * 60 + 30), // a big Maghrib move, offset intact
+  ];
+  assert.deepEqual(changedPrayers(days, '2026-08-24', '12'), [], 'nothing changed, so nothing is named');
+  assert.deepEqual(changedPrayers(days, '2026-08-24', '12', 'en', { maghrib: true }), [], 'still an offset, still nothing');
 });
 
 test('the changed prayers are named, with both times, for the day that changed', () => {

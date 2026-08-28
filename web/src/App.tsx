@@ -20,7 +20,7 @@ import { useAppearanceSync, setThemeOverride } from './prefs';
 import { PERIOD_SURFACE } from './periodTheme';
 import type { PeriodKey } from './prayerTimes';
 import { useInstall, useServiceWorker } from './pwa';
-import { InstallStrip, UpdateStrip } from './Install';
+import { InstallPrompt, UpdateStrip } from './Install';
 import { Scene } from './ui';
 import { MasjidHeader, Today, type Timetable } from './Today';
 
@@ -187,7 +187,7 @@ export function App(): JSX.Element {
         {route === 'unknown' && <NotFound onHome={go('/')} />}
 
         {!isAdmin && route === '/' && times?.masjid && (
-          <InstallStrip
+          <InstallPrompt
             kind={install.kind}
             name={info?.installName || times.masjid.name}
             dismissed={install.dismissed}

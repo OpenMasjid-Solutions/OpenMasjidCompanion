@@ -28,6 +28,8 @@ export interface TimetableStatus {
   at: number;
   stale: boolean;
   problem: { code: string; message: string; retryable: boolean } | null;
+  /** What the month view counts as a jamā'ah change. */
+  marks: { maghrib: boolean };
 }
 
 interface ListResult {
@@ -42,6 +44,23 @@ export function TimetablePicker({ status, onChanged }: { status: TimetableStatus
   const [list, setList] = useState<ListResult | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+
+  /** Held locally so the checkbox moves the instant it is clicked. The server is the truth and
+   *  `onChanged` refetches it, but a checkbox that waits for a round trip feels broken. */
+  const [maghrib, setMaghrib] = useState(status.marks.maghrib);
+  useEffect(() => setMaghrib(status.marks.maghrib), [status.marks.maghrib]);
+
+  const setMarks = async (on: boolean) => {
+    setMaghrib(on);
+    setError('');
+    const r = await api.post('/api/admin/month-marks', { maghrib: on });
+    if (!r.ok) {
+      setError(r.error);
+      setMaghrib(!on); // put it back — it did not save
+      return;
+    }
+    onChanged();
+  };
 
   const loadList = useCallback(async () => {
     const r = await api.get<ListResult>('/api/admin/timetables');
@@ -130,6 +149,23 @@ export function TimetablePicker({ status, onChanged }: { status: TimetableStatus
               Showing <b>{status.masjidName}</b> &mdash; {status.days} days of times, in {status.timezone}.
               {status.at ? ` Last read ${new Date(status.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.` : ''}
             </p>
+          )}
+
+          {/* The month view's one decision. It lives here rather than on a settings screen of
+              its own because it is a statement about THESE times, and an admin reading "12
+              days of times, in America/New_York" is already thinking about them. */}
+          {status.id && !status.problem && (
+            <label className="switch">
+              <input type="checkbox" checked={maghrib} onChange={(e) => void setMarks(e.target.checked)} />
+              <span className="switch__main">
+                <span className="switch__title">Mark Maghrib changes in the month view</span>
+                <span className="switch__hint">
+                  The month view marks the days your jamāʿah times change. Maghrib is left out by default, because most
+                  masjids hold it a set few minutes after the adhan &mdash; so its time moves every single day on its own,
+                  and marking that would mark every day. Turn this on if your Maghrib jamāʿah is a fixed time you set.
+                </span>
+              </span>
+            </label>
           )}
 
           {error && <p className="form-error">{error}</p>}

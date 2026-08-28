@@ -14,7 +14,7 @@
  * real: everything this app does depends on being reachable from outside the building.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { BellRing, CalendarClock, Gift } from 'lucide-react';
+import { BellRing, CalendarClock } from 'lucide-react';
 import { api } from '../api';
 import { stripBase, withBase } from '../base';
 import { navigate } from '../App';
@@ -27,6 +27,7 @@ import { RemoteAccess, type RemoteStatus } from './RemoteAccess';
 import { TimetablePicker, type TimetableStatus } from './Timetable';
 import { Appearance, type PwaStatus } from './Appearance';
 import { Poster, Share } from './Share';
+import { Appeals } from './Appeals';
 
 interface AdminStatus {
   remote: RemoteStatus;
@@ -159,11 +160,7 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
               body="Companion reads your times from OpenMasjid Display, so the times on a phone are the same ones on the wall. It never calculates a prayer time of its own."
             />
           )}
-          <Todo
-            icon={<Gift size={18} aria-hidden="true" />}
-            title="Add your appeals"
-            body="Paste the share link of any appeal from OpenMasjid Donations and it appears in the app, tapping through to your own donation page to give."
-          />
+          <Appeals onChanged={loadStatus} />
           {status?.pwa && <Appearance status={status.pwa} onChanged={loadStatus} />}
 
           {remote && (

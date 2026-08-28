@@ -390,3 +390,69 @@ rather than flagged.
 **The "Today" chip became a button.** It used to print `formatDate(...).split(' ')[0]` — which on
 "Saturday, August 29" is "Saturday," with the comma, and was redundant beside the full date
 directly below it.
+
+## Slice 8 — appeals, and the month view's offset bug (0.1.0-dev.8)
+
+### The month view was marking every single day
+
+Reported from real data. The cause is that **a masjid sets a jamā'ah in one of two ways, and
+both look like "the number moved"** from outside:
+
+- **a clock time** — "Fajr jamā'ah is 5:30", which holds until the committee revises it and has
+  a gap to the adhan that drifts a minute a day underneath it;
+- **an offset** — "Maghrib is five minutes after the adhan", whose printed time moves EVERY DAY
+  because the adhan does, with nobody having decided anything.
+
+The old rule compared printed times, so a masjid with an offset Maghrib had all thirty days
+marked — and a mark on every day carries exactly as much information as no mark at all. The new
+rule (`prayerChanged` in web/src/prayerTimes.ts) says nothing changed if **either** the clock
+time held **or** the gap held. Neither test is sufficient alone: comparing gaps would mark every
+day of a fixed Fajr, for the mirror-image reason.
+
+Measured against a feed with a real offset Maghrib: **36 of 36 days marked → 3 of 30.**
+
+**What the rule cannot see, and the reason for a setting.** An offset ROUNDED to the next five
+minutes — which is what most masjids actually print for Maghrib — holds for four days and then
+jumps five while the adhan moved one. From outside that is indistinguishable from a small
+committee revision, and no cleverer rule fixes it because the information is not in the numbers.
+So Maghrib is excluded by default and the admin gets a switch (`POST /api/admin/month-marks`,
+stored as `month.maghrib`). With the same feed rounded: 3 marks off, 8 on.
+
+The setting is **masjid-wide, not per-phone** — a mark is a claim about this masjid's decisions,
+so it travels in `/api/public/timetable`. That payload is ETag-validated, and **the ETag had to
+grow the setting**: without it, a phone revalidating after the admin flips the switch gets a 304
+because the days did not change, and keeps marking the old days until its cache expires — a
+setting that visibly does nothing.
+
+### The install ask is a dialog now
+
+It was a strip at the foot of the page, on the reasoning that an install prompt must not stand
+in front of the prayer times. On a phone the foot of the page is below the fold, so that was not
+a gentler ask, it was an invisible one. It is now a centred modal that waits ~1.4 s for the
+times to paint first, traps Tab, closes on Escape / the backdrop / either button, and stays
+closed. The update notice is still a strip: nobody needs stopping to be told a version exists.
+
+### Appeals (CLAUDE.md §8)
+
+`server/src/campaigns.ts` reads Donations' existing public donor-page JSON. Zero Donations-side
+changes; no Stripe, no amount, no intent — the tap-through to their donor page is the whole
+interaction.
+
+- **Curation is by pasted links**, whole-list-at-once. One endpoint rather than
+  add/remove/reorder, because the ORDER is the setting and three endpoints mutating one array
+  would have to agree about two open tabs. A bad line refuses the whole submission and quotes
+  itself back: saving the nine that parsed and dropping the tenth is how an appeal goes missing.
+- **Gone ≠ could-not-ask.** 404 is a settled answer worth caching; a 5xx or a timeout keeps what
+  we have. Collapsing them would delete a masjid's Ramadan appeal from the noticeboard because a
+  container restarted while one phone was open.
+- **Hidden from phones, named to the admin**: an appeal that is gone, or that Donations says
+  cannot take a donation. A tile spends the one tap a musalli was going to give it, and a QR
+  code on a noticeboard is not where you find out an appeal is switched off.
+- **A test-mode appeal is NOT hidden** — the masjid chose to feature it and Donations badges its
+  own page — but the admin is warned. §8 asks for exactly this split.
+- The whole payload is parsed with per-field `.catch()`, so a field Donations renames loses one
+  number rather than emptying the section. Image URLs go through `safeImage`, resolved against
+  the DONATIONS base because that is where they were written.
+- `https` is required on a public host, with a message that says why (mixed content, and a
+  phone that is not in the building). A private address is allowed and **flagged** — a masjid
+  testing on their LAN is being reasonable, it just works for nobody else.

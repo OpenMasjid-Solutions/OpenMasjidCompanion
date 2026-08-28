@@ -71,6 +71,13 @@ function isTimetable(url) {
   return url.pathname === BASE + '/api/public/timetable';
 }
 
+/** The appeals. Worth caching for the same reason as the times — the page should never be half
+ *  drawn on a bad connection — but not worth being precious about: a stale progress bar is a
+ *  progress bar a minute out of date, and the revalidation behind it fixes that. */
+function isCampaigns(url) {
+  return url.pathname === BASE + '/api/public/campaigns';
+}
+
 /** Vite's hashed asset filenames are immutable — a change produces a new name — so they can be
  *  cached hard and served without revalidation. */
 function isAsset(url) {
@@ -121,7 +128,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (isTimetable(url)) {
+  if (isTimetable(url) || isCampaigns(url)) {
     event.respondWith(staleWhileRevalidate(request, DATA_CACHE));
     return;
   }

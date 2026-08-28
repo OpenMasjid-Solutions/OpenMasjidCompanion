@@ -32,6 +32,7 @@ import { TimetableService, type TimetableState } from './timetableService';
 import { Icons, type IconKind, THEME_HEX } from './icons';
 import { buildManifest, installName } from './webmanifest';
 import { parseChangelog, readChangelog } from './changelog';
+import { Campaigns, MAX_LINKS, parseShareLink } from './campaigns';
 
 const log = makeLog('server');
 
@@ -53,6 +54,10 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // The icon set needs to know which timetable is chosen, because Display's logo hangs off it.
   // A getter rather than a value: the admin can change the timetable while the server runs.
   const icons = new Icons(store, () => timetable.chosenId);
+  // The masjid's appeals. Reads another app's public JSON and caches it; nothing about it can
+  // fail in a way that matters to the prayer times, which is why it is constructed here with
+  // no ceremony and no readiness check.
+  const campaigns = new Campaigns(store);
 
   const app = Fastify({
     logger: false, // we log ourselves, and never log a secret
@@ -351,7 +356,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       data: {
         // `peek`, not `get`: opening the panel must not block on a broker round trip, and the
         // background refresh keeps this warm anyway.
-        timetable: summariseTimetable(timetable.peek()),
+        timetable: { ...summariseTimetable(timetable.peek()), marks: monthMarks(store) },
         pwa: {
           appName: store.get('app.name') ?? '',
           /** What will actually appear under the icon on a home screen. */
@@ -440,16 +445,83 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
           }
         : null,
       days: feed?.days ?? [],
+      /** Which jamā'āt the month view marks as a change. The masjid's setting, not the
+       *  reader's — see `monthMarks`. */
+      marks: monthMarks(store),
     };
 
     // A weak validator over the content, so a phone that reopens the app gets a 304 instead of
     // the month again. Keyed on the fetch time and the day count rather than hashing the body:
     // the payload only ever changes when one of those does.
-    const etag = `W/"${state.at.toString(36)}-${body.days.length}-${state.stale ? 's' : 'f'}"`;
+    const etag = `W/"${state.at.toString(36)}-${body.days.length}-${state.stale ? 's' : 'f'}-${body.marks.maghrib ? 'm' : ''}"`;
     reply.header('cache-control', 'public, max-age=60');
     reply.header('etag', etag);
     if (req.headers['if-none-match'] === etag) return reply.code(304).send();
     return { data: body };
+  });
+
+  // ── Appeals, read from OpenMasjidDonations ─────────────────────────────────
+
+  /**
+   * The tiles. Public, unauthenticated, and cached hard enough that a noticeboard's worth of
+   * phones opening at once costs one request per appeal.
+   *
+   * An empty list is a perfectly good answer — most masjids will have no appeals most of the
+   * year — so this never 404s and never errors. The page renders nothing, which is correct.
+   */
+  app.get('/api/public/campaigns', async (_req, reply) => {
+    const tiles = await campaigns.publicTiles();
+    reply.header('cache-control', 'public, max-age=60');
+    return { data: { tiles } };
+  });
+
+  app.get('/api/admin/campaigns', { preHandler: requireAdmin }, async () => {
+    return { data: { links: campaigns.list().map((l) => `${l.base}/${l.slug}`), campaigns: await campaigns.adminList(), max: MAX_LINKS } };
+  });
+
+  /**
+   * Replace the whole list, in order.
+   *
+   * One endpoint rather than add/remove/reorder, because the ORDER is the setting: three
+   * endpoints mutating one array would each have to agree about what happens when the admin
+   * has two tabs open, and this has none of that problem.
+   *
+   * A bad line is reported with its own message and the WHOLE submission is refused. Saving the
+   * nine links that parsed and silently dropping the tenth is how a masjid ends up wondering
+   * where an appeal went.
+   */
+  const LinksBody = z.object({ links: z.array(z.string().max(2000)).max(MAX_LINKS + 1) });
+  app.post('/api/admin/campaigns', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = LinksBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'That list could not be read.' });
+    const lines = parsed.data.links.map((l) => l.trim()).filter(Boolean);
+    if (lines.length > MAX_LINKS) {
+      return reply.code(400).send({ error: `That's more appeals than this app shows. Keep it to ${MAX_LINKS}.` });
+    }
+
+    const links = [];
+    for (const line of lines) {
+      const r = parseShareLink(line);
+      // The offending line is quoted back. "One of your links is wrong" in a list of ten is
+      // not a message, it is a puzzle.
+      if (!r.ok) return reply.code(400).send({ error: `${r.error} (${line.slice(0, 80)})` });
+      links.push(r.link);
+    }
+    const seen = new Set<string>();
+    for (const l of links) {
+      const key = `${l.base}/${l.slug}`;
+      if (seen.has(key)) return reply.code(400).send({ error: `That appeal is in the list twice. (${key.slice(0, 80)})` });
+      seen.add(key);
+    }
+
+    campaigns.set(links);
+    return { data: { links: links.map((l) => `${l.base}/${l.slug}`), campaigns: await campaigns.adminList(), max: MAX_LINKS } };
+  });
+
+  /** "Check again" — the admin has just fixed something in Donations and wants to see it here. */
+  app.post('/api/admin/campaigns/refresh', { preHandler: requireAdmin }, async () => {
+    await campaigns.refresh();
+    return { data: { links: campaigns.list().map((l) => `${l.base}/${l.slug}`), campaigns: await campaigns.adminList(), max: MAX_LINKS } };
   });
 
   /** The picker's list. Live from Display every time — an admin opening this screen is about to
@@ -479,6 +551,23 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     // wrong choice is visible immediately rather than at the next poll.
     const state = await timetable.get();
     return { data: summariseTimetable(state) };
+  });
+
+  /**
+   * What the month view marks.
+   *
+   * A masjid whose Maghrib jamā'ah is genuinely a decision — a fixed time, revised by the
+   * committee — wants it counted; the great majority, who hold it a few minutes after the
+   * adhan, do not, because that moves every day on its own. Neither is guessable from the
+   * times, so it is asked rather than inferred.
+   */
+  const MarksBody = z.object({ maghrib: z.boolean() });
+  app.post('/api/admin/month-marks', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = MarksBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'That setting could not be saved.' });
+    if (parsed.data.maghrib) store.set('month.maghrib', '1');
+    else store.del('month.maghrib');
+    return { data: monthMarks(store) };
   });
 
   /** "Refresh now" — an Iqamah was changed in Display and the admin wants it on phones today. */
@@ -681,6 +770,19 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
  * failure in plain words. Never the days: the panel shows a preview from the public route like
  * everyone else, so there is one code path producing prayer times, not two.
  */
+/**
+ * Which jamā'āt the month view counts as a change. Masjid-wide, not per-phone: the mark is a
+ * statement about this masjid's decisions, so every musalli must see the same days marked.
+ *
+ * Maghrib is off unless the masjid says otherwise. Most masjids hold it a fixed few minutes
+ * after the adhan, which moves the printed time daily without anybody deciding anything — see
+ * `prayerChanged` in web/src/prayerTimes.ts for why that case cannot be detected from the
+ * numbers once it is rounded, which is what makes this a setting rather than a cleverer rule.
+ */
+export function monthMarks(store: Store): { maghrib: boolean } {
+  return { maghrib: store.get('month.maghrib') === '1' };
+}
+
 function summariseTimetable(state: TimetableState) {
   return {
     id: state.id,

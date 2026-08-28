@@ -343,41 +343,102 @@ export function periodOf(position: Position): PeriodKey {
  * change (it appeared) and every Saturday a change (it went away) — fifty-two false marks a
  * year, which would make the whole feature worthless.
  */
-function iqamahSignature(day: Day): string {
-  return (['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const).map((k) => day.prayers[k].iqamah ?? '').join('|');
+const DAILY = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
+type DailyKey = (typeof DAILY)[number];
+
+/**
+ * What the month view marks. Masjid-wide, chosen by the admin, and carried in the public
+ * timetable payload so every phone marks the same days.
+ */
+export interface MonthMarks {
+  /** Compare Maghrib's jamā'ah too. Off by default — see `prayerChanged`. */
+  maghrib: boolean;
+}
+
+/** What a masjid gets before it decides otherwise, and the fallback when the server's answer
+ *  has not arrived yet. Maghrib off: the reason is in `prayerChanged`. */
+export const MONTH_MARKS: MonthMarks = { maghrib: false };
+
+function minutesOf(hhmm: string | null): number | null {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(':').map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+}
+
+/**
+ * Did the masjid CHANGE this jamā'ah between two days, or did the time merely move?
+ *
+ * A masjid sets a jamā'ah in one of exactly two ways, and both of them look like "the number
+ * moved" from outside:
+ *
+ *   • **A clock time** — "Fajr jamā'ah is 5:30." It holds until the committee revises it, and
+ *     the gap to the adhan drifts a minute a day underneath it.
+ *   • **An offset** — "Maghrib is five minutes after the adhan." The printed time then moves
+ *     EVERY SINGLE DAY, because the adhan does, and nobody decided anything.
+ *
+ * So neither test is sufficient alone: comparing printed times marks every day of an offset
+ * Maghrib, and comparing gaps marks every day of a fixed Fajr. Nothing changed if EITHER held.
+ *
+ * Comparing only the printed time is what lit up thirty consecutive days as "changes" — and a
+ * mark on every day carries exactly as much information as no mark at all, so the feature was
+ * not merely noisy, it was worthless.
+ *
+ * **What this cannot see**: an offset ROUNDED to the next five minutes, which is what most
+ * masjids actually print for Maghrib. That holds for four days and then jumps five while the
+ * adhan moved one — from the outside, indistinguishable from a small committee revision. There
+ * is no honest way to tell those apart from the numbers, so Maghrib is excluded by default and
+ * the admin gets a switch rather than a guess.
+ */
+export function prayerChanged(before: Prayer, after: Prayer): boolean {
+  if ((before.iqamah ?? '') === (after.iqamah ?? '')) return false; // a clock time, holding
+  const bi = minutesOf(before.iqamah);
+  const ai = minutesOf(after.iqamah);
+  // One of the two days has no jamā'ah at all. Gaining or losing one is a real change.
+  if (bi === null || ai === null) return true;
+  const ba = minutesOf(before.adhan);
+  const aa = minutesOf(after.adhan);
+  if (ba === null || aa === null) return true; // no adhan to explain the move by
+  return ai - bi !== aa - ba; // it moved by something other than the adhan's own drift
+}
+
+function comparedKeys(marks: MonthMarks): readonly DailyKey[] {
+  return marks.maghrib ? DAILY : DAILY.filter((k) => k !== 'maghrib');
 }
 
 /**
  * The days on which the masjid's jamā'ah times change.
  *
- * Adhan times move a minute or two every single day because they are astronomical; jamā'ah times
- * do not. A committee sets them, they hold for a week or two, and then they are revised — and
- * the day they are revised is the one thing on a month of prayer times that somebody actually
- * needs to spot, because it is the day they will otherwise turn up at the wrong time.
+ * Adhan times move a minute or two every single day because they are astronomical; a jamā'ah
+ * time is a decision. The day that decision changes is the one thing on a month of prayer times
+ * that somebody actually needs to spot, because it is the day they will otherwise turn up at
+ * the wrong time.
  *
  * The first day of the window is never marked: there is nothing before it to have changed from.
  */
-export function iqamahChanges(days: Day[]): Set<string> {
+export function iqamahChanges(days: Day[], marks: MonthMarks = MONTH_MARKS): Set<string> {
+  const keys = comparedKeys(marks);
   const out = new Set<string>();
-  let previous: string | null = null;
-  for (const day of days) {
-    const signature = iqamahSignature(day);
-    if (previous !== null && signature !== previous) out.add(day.date);
-    previous = signature;
+  for (let i = 1; i < days.length; i += 1) {
+    if (keys.some((k) => prayerChanged(days[i - 1].prayers[k], days[i].prayers[k]))) out.add(days[i].date);
   }
   return out;
 }
 
 /** Which prayers changed on a given day, for the tooltip on a marked date. */
-export function changedPrayers(days: Day[], date: string, hourCycle: '12' | '24', language = 'en'): string[] {
+export function changedPrayers(
+  days: Day[],
+  date: string,
+  hourCycle: '12' | '24',
+  language = 'en',
+  marks: MonthMarks = MONTH_MARKS,
+): string[] {
   const i = days.findIndex((d) => d.date === date);
   if (i <= 0) return [];
   const before = days[i - 1].prayers;
   const after = days[i].prayers;
-  const names: Record<string, string> = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
-  return (['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const)
-    .filter((k) => (before[k].iqamah ?? '') !== (after[k].iqamah ?? ''))
-    .map((k) => `${names[k]} ${formatTime(before[k].iqamah, hourCycle, language)} → ${formatTime(after[k].iqamah, hourCycle, language)}`);
+  return comparedKeys(marks)
+    .filter((k) => prayerChanged(before[k], after[k]))
+    .map((k) => `${NAMES[k]} ${formatTime(before[k].iqamah, hourCycle, language)} → ${formatTime(after[k].iqamah, hourCycle, language)}`);
 }
 
 // ── The month grid ───────────────────────────────────────────────────────────

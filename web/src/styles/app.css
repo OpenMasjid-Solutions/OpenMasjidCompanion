@@ -681,9 +681,90 @@ h1, h2, h3, p { margin: 0; }
 .picker__item--on { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); color: var(--color-primary); }
 .picker__name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
 
-/* ── Install / update strips (musalli) ──────────────────────────────────────── */
-/* A strip at the foot of the page, not a dialog. Someone opened this to find out when
-   Maghrib is; nothing here may stand in front of that. */
+/* ── The install dialog (musalli) ────────────────────────────────────────────
+ *
+ * In the middle of the screen, over a dimmed page. This was a strip at the foot of the page
+ * until 2026-08-28 — on the reasoning that an install ask must not stand in front of the
+ * prayer times — but on a phone the foot of the page is below the fold, and an ask nobody
+ * scrolls to is not a polite ask, it is a broken one.
+ *
+ * The dim is a plain black wash rather than a themed token on purpose: it has to read as "the
+ * page is behind this" against six different skies, three of which are already dark, and a
+ * tinted scrim over a navy Isha sky is invisible.
+ */
+.modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(2, 4, 12, 0.62);
+  backdrop-filter: blur(3px);
+  animation: modalFade 180ms ease-out;
+}
+
+.modal {
+  position: relative;
+  width: min(23rem, 100%);
+  padding: 1.6rem 1.35rem 1.25rem;
+  text-align: center;
+  border-radius: 1.35rem;
+  color: var(--ink-scene);
+  /* Nearly opaque, unlike the glass elsewhere. A translucent card over a busy sky makes the
+     text underneath show through the text on top, and this is the one card that always has
+     something behind it. */
+  background: color-mix(in srgb, var(--scene-base) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  animation: modalRise 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+/* The card takes focus so a screen reader lands inside the dialog, but it is not something
+   you can DO anything to — and a ring drawn round the whole card reads as an error state.
+   The buttons inside keep their own focus rings, which is where the ring belongs. */
+.modal:focus, .modal:focus-visible { outline: none; }
+
+.modal__close { position: absolute; inset-block-start: 0.5rem; inset-inline-end: 0.5rem; }
+
+.modal__icon {
+  inline-size: 64px;
+  block-size: 64px;
+  border-radius: 1rem;
+  object-fit: cover;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.modal__title {
+  margin-block-start: 0.85rem;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.modal__text {
+  margin-block-start: 0.45rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ink-scene-muted);
+}
+
+/* Stacked, full width, primary on top: one thumb, one column, and the affirmative reachable
+   without a stretch. */
+.modal__actions { display: flex; flex-direction: column; gap: 0.5rem; margin-block-start: 1.15rem; }
+.modal__go, .modal__later { width: 100%; justify-content: center; }
+
+@keyframes modalFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalRise {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-back, .modal { animation: none; }
+}
+
+/* ── Update strip (musalli) ──────────────────────────────────────────────────
+ * Still a strip, deliberately. Nobody needs to be stopped to be told a new version exists. */
 .strip {
   display: flex; align-items: center; gap: 0.7rem;
   width: min(30rem, 100%); margin: 1rem auto 0; padding: 0.8rem 0.9rem;
@@ -975,3 +1056,140 @@ h1, h2, h3, p { margin: 0; }
   border: 1px solid color-mix(in srgb, var(--ink-scene) 15%, transparent);
 }
 .month__key svg { flex: none; margin-block-start: 0.15rem; color: var(--coral); }
+
+/* ── A switch row (admin) ────────────────────────────────────────────────────
+ * A label, a sentence of consequence, and a checkbox — for settings where the wording is the
+ * hard part and the control is trivial. */
+.switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin-block-start: 0.9rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+}
+.switch input { margin-block-start: 0.2rem; flex: none; inline-size: 1.05rem; block-size: 1.05rem; accent-color: var(--color-primary); }
+/* Spans, because the whole row is a <label> and a <label> may not contain a <p>. So they
+   have to be told to be blocks — inline they run into one sentence. */
+.switch__main { min-width: 0; }
+.switch__title { display: block; font-weight: 600; font-size: 0.95rem; }
+.switch__hint { display: block; margin-block-start: 0.2rem; font-size: 0.83rem; line-height: 1.5; color: var(--color-ink-muted); }
+
+/* ── Appeals (musalli) ───────────────────────────────────────────────────────
+ *
+ * Under the times, and quieter than them. The prayer times are why the page exists; an appeal
+ * that outshouted them would be this app failing at its actual job — so the tiles are cards on
+ * the scene rather than another thing competing with the countdown.
+ *
+ * Nothing here takes money. The tile is a picture, a title, a bar and a link out.
+ */
+.appeals { width: min(30rem, 100%); margin: 2.25rem auto 0; padding-inline: 1.1rem; }
+
+.appeals__head {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-scene-muted);
+  text-shadow: var(--text-shadow-scene);
+  margin-block-end: 0.6rem;
+}
+
+.appeals__list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.appeal {
+  display: block;
+  overflow: hidden;
+  border-radius: 1rem;
+  text-decoration: none;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 14%, transparent);
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+.appeal:hover { border-color: color-mix(in srgb, var(--ink-scene) 30%, transparent); }
+.appeal:active { transform: scale(0.995); }
+
+/* A fixed ratio, so a masjid's cover image cannot decide how tall the page is. `object-fit`
+   crops rather than letterboxing — a band of background around a photo looks like a mistake. */
+.appeal__cover {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 16 / 7;
+  object-fit: cover;
+  background: color-mix(in srgb, var(--ink-scene) 8%, transparent);
+}
+
+.appeal__body { padding: 0.85rem 0.95rem 0.9rem; }
+.appeal__title { font-size: 1.02rem; font-weight: 700; line-height: 1.35; }
+
+/* Two lines. A masjid's description can be a paragraph, and the tile is a summary — the whole
+   thing is on the page they are one tap from. */
+.appeal__text {
+  margin-block-start: 0.25rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ink-scene-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.appeal__bar {
+  margin-block-start: 0.75rem;
+  block-size: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ink-scene) 16%, transparent);
+}
+.appeal__fill { display: block; block-size: 100%; border-radius: 999px; background: var(--coral); }
+
+.appeal__nums { margin-block-start: 0.4rem; font-size: 0.88rem; }
+.appeal__goal { color: var(--ink-scene-muted); margin-inline-start: 0.3rem; }
+
+.appeal__foot {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  margin-block-start: 0.7rem;
+}
+.appeal__go {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.88rem; font-weight: 700; color: var(--coral);
+}
+.appeal__monthly {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  font-size: 0.76rem; color: var(--ink-scene-muted);
+}
+
+/* ── Appeals (admin) ─────────────────────────────────────────────────────────
+ * A textarea of links, then the truth about each one. The list below is the point of the
+ * screen: an appeal that quietly stopped showing on phones has to say so HERE. */
+.textarea { resize: vertical; min-block-size: 5rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; line-height: 1.6; }
+
+.appeal-list { list-style: none; margin-block-start: 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+
+.appeal-row {
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  border: 1px solid var(--color-border);
+}
+.appeal-row__main { min-width: 0; }
+.appeal-row__title { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-weight: 600; font-size: 0.95rem; }
+.appeal-row__url {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  margin-block-start: 0.15rem;
+  font-size: 0.78rem; color: var(--color-ink-faint);
+  overflow-wrap: anywhere;
+}
+.appeal-row__note {
+  display: flex; align-items: flex-start; gap: 0.4rem;
+  margin-block-start: 0.4rem;
+  font-size: 0.83rem; line-height: 1.5; color: var(--color-ink-muted);
+}
+.appeal-row__note svg { flex: none; margin-block-start: 0.15rem; }
+.appeal-row__note--warn { color: var(--color-warning); }

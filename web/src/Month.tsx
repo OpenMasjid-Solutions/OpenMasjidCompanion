@@ -18,6 +18,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import {
   type Day,
   type Masjid,
+  type MonthMarks,
   changedPrayers,
   formatMonth,
   iqamahChanges,
@@ -28,6 +29,7 @@ import {
 export function Month({
   days,
   masjid,
+  marks,
   today,
   anchor,
   onAnchor,
@@ -36,6 +38,8 @@ export function Month({
 }: {
   days: Day[];
   masjid: Masjid;
+  /** Which jamā'āt count as a change — the masjid's own setting. */
+  marks: MonthMarks;
   /** The masjid's today, so it can be ringed. */
   today: string;
   /** Any date inside the month being shown. */
@@ -44,7 +48,7 @@ export function Month({
   onPick: (date: string) => void;
   onClose: () => void;
 }): JSX.Element {
-  const changes = iqamahChanges(days);
+  const changes = iqamahChanges(days, marks);
   const available = new Set(days.map((d) => d.date));
   const weeks = monthGrid(anchor, masjid.language);
   /** How many marks are actually on THIS month, which is what the legend is about. */
@@ -104,7 +108,7 @@ export function Month({
 
               // The tooltip names what actually changed, so a marked day answers "changed how?"
               // without a trip into the day view.
-              const what = changed ? changedPrayers(days, cell.date, masjid.hourCycle, masjid.language) : [];
+              const what = changed ? changedPrayers(days, cell.date, masjid.hourCycle, masjid.language, marks) : [];
               const title = [isToday ? 'Today' : '', ...what].filter(Boolean).join(' · ');
 
               return (
@@ -133,7 +137,8 @@ export function Month({
         <p className="month__key">
           <span className="month__dot month__dot--key" aria-hidden="true" />
           <span>
-            Jamāʿah times change on this day. Adhan times shift a little every day and are not marked.
+            Jamāʿah times change on this day. Adhan times shift a little every day and are not marked
+            {marks.maghrib ? '' : ', and nor is Maghrib, which usually follows the adhan'}.
           </span>
         </p>
       ) : (

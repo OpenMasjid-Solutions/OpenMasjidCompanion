@@ -14,6 +14,11 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Your appeals, in the app.** Paste an appeal's share link from OpenMasjid Donations in the
+  admin panel and it appears under the prayer times &mdash; picture, title and how far along it
+  is &mdash; with "Donate" opening your own donation page to give. Companion never handles money;
+  it shows the appeal and hands over. Appeals that have been deleted, or that aren't taking
+  donations at the moment, quietly stop showing and the panel tells you why.
 - **The page now looks like the time of day.** Each prayer has its own sky, and the sun moves
   with it — low and to the side at Fajr, high overhead at Dhuhr, at the horizon by Maghrib, with
   the moon and stars at Isha. It is light through the day and dark at either end, following the
@@ -27,6 +32,16 @@ only what a masjid would actually notice. A released section is never rewritten.
 - **A "Today" button** to get back after browsing ahead.
 
 ### Fixed
+
+- **The month view was marking every single day as a jamāʿah change.** If your Maghrib jamāʿah
+  is set a few minutes after the adhan, its time moves every day on its own &mdash; and the app
+  was calling each of those a change, so every day was marked and the marks meant nothing. It now
+  tells the difference between a time that moved with the sun and one your committee actually
+  changed. Maghrib is left out by default, and there's a switch on the Prayer timetable panel to
+  put it back if your Maghrib jamāʿah is a fixed time you set.
+- **The "add this to your phone" prompt is now a proper dialog** in the middle of the screen
+  rather than a strip at the bottom of the page, where most people never scrolled to see it. It
+  waits until your times are on screen, and once you dismiss it, it stays dismissed.
 
 - **Browsing to another day used to show the weekday with a stray comma** where it now offers a
   way back to today. It was also redundant — the full date sits directly beneath it.
