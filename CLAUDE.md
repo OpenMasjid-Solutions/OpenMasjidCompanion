@@ -483,6 +483,14 @@ at `<donationsPublicBase>/<slug>`. Companion consumes exactly that:
   hear about from us, not from a confused donor.
 - Sanitise everything rendered from this feed (titles, descriptions, image URLs — http(s) only)
   exactly as if it were untrusted, because operationally it is a cross-app input.
+- **Name the failure, never shrug at it.** This fetch leaves the building: the masjid's public
+  address resolves on the internet and comes back through the tunnel, so it can fail at DNS, at
+  the connection, at TLS, on a timeout, on a redirect we will not follow, on an HTTP status, or
+  on a body that is not a campaign. **Those are seven different problems with seven different
+  fixes**, and the admin panel must say which — a single "we couldn't reach this appeal" names
+  the one explanation an admin has already ruled out by opening the link in their own browser.
+  `describeProblem` carries the sentence and `problemDetail` the technical line, and a test
+  asserts every branch has both.
 
 ---
 
@@ -603,6 +611,15 @@ musalli half; it refines this section rather than replacing it.
 - **Secrets hygiene:** `OPENMASJID_APP_SECRET` read from env each start, never persisted, never
   logged. VAPID private key stored in `/data`, never logged, never sent to any browser. Push
   endpoints never logged in full.
+- **One deliberate exception to `redirect: 'error'`: the campaign fetch** (`campaigns.ts`).
+  The rule exists because every other outbound call presents `X-OpenMasjid-App-Secret` and a
+  redirect would hand it to whatever host the redirect named. The campaign fetch presents
+  **nothing** — it is the same anonymous GET a browser makes to a public donor page — so
+  refusing a redirect buys no secrecy and breaks real deployments (a canonical-host rule or a
+  trailing-slash normalisation at the Cloudflare edge). It follows at most 3 hops **manually**,
+  and a hop is allowed only if it is **same-origin** (safe by construction) or a **public https**
+  host. A public link may never bounce us onto a private address: that would make the admin's
+  paste box a port scanner for the masjid's own network.
 - **Outbound fetch posture everywhere:** `redirect: 'error'`, `AbortController` timeouts,
   https-only for anything crossing the tunnel domain, response-size caps on the campaign and
   timetable fetches, and no URL ever built from a request's `Host` header.

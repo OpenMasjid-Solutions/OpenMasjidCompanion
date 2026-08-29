@@ -191,6 +191,178 @@ export function safeImage(raw: string | undefined, base: string): string {
 const clean = (s: string | undefined, max: number): string => (s ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const money = (n: number | undefined): number => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : 0);
 
+// ── Why it did not work ──────────────────────────────────────────────────────
+
+/**
+ * Why a fetch produced no campaign.
+ *
+ * Seven different problems with seven different fixes. The first version of this collapsed all
+ * of them into one sentence — "we couldn't reach this appeal" — and that is worse than useless
+ * on a link the admin has just checked in their own browser: it names the one explanation they
+ * have already ruled out and gives them nowhere to go. Whatever else is uncertain about another
+ * app's availability, WHICH WAY it failed is something we know exactly.
+ */
+export type Problem =
+  | { kind: 'dns'; host: string }
+  | { kind: 'refused'; host: string }
+  | { kind: 'tls'; host: string }
+  | { kind: 'timeout'; host: string }
+  | { kind: 'redirect'; to: string }
+  | { kind: 'http'; status: number }
+  | { kind: 'body' };
+
+/** The admin's sentence: what happened, and what to do about it. Written for a volunteer. */
+export function describeProblem(p: Problem): string {
+  switch (p.kind) {
+    case 'dns':
+      return `This app can't look up "${p.host}" from inside your masjid's network, so it can't read the appeal. The link is fine in a browser on your phone because your phone looks it up on the internet — the server can't. Check that the box running OpenMasjidOS can reach the internet.`;
+    case 'refused':
+      return `Nothing answered at "${p.host}" when this app tried. Your own browser reaches it over the internet; this server has to as well, and something on the network is refusing the connection.`;
+    case 'tls':
+      return `The secure connection to "${p.host}" couldn't be verified. If you're using your own certificate rather than Cloudflare's, that's usually the cause.`;
+    case 'timeout':
+      return `"${p.host}" didn't answer in time. If OpenMasjid Donations is busy or restarting this clears on its own; if it keeps happening, the server may not have a route out to the internet and back.`;
+    case 'redirect':
+      return `That link was redirected somewhere this app won't follow (${p.to}). If there's a login page such as Cloudflare Access in front of your donation pages, this app can't get past it — appeals have to be publicly readable.`;
+    case 'http':
+      return p.status === 403 || p.status === 401
+        ? `The donation page refused this app (HTTP ${p.status}). Something in front of it — a Cloudflare rule, or Access — is requiring a login that a public appeal shouldn't need.`
+        : `The donation page answered with an error (HTTP ${p.status}) instead of the appeal.`;
+    case 'body':
+      return 'Something answered at that address, but it wasn’t an appeal. Check the link points at one appeal in OpenMasjid Donations — its own “Share” button gives you the right one.';
+  }
+}
+
+/** The short technical line, for whoever can act on it. Shown under the sentence. */
+export function problemDetail(p: Problem): string {
+  switch (p.kind) {
+    case 'dns':
+      return `DNS lookup failed for ${p.host}`;
+    case 'refused':
+      return `connection refused by ${p.host}`;
+    case 'tls':
+      return `TLS verification failed for ${p.host}`;
+    case 'timeout':
+      return `no answer from ${p.host} within ${TIMEOUT_MS / 1000}s`;
+    case 'redirect':
+      return `redirected to ${p.to}`;
+    case 'http':
+      return `HTTP ${p.status}`;
+    case 'body':
+      return 'the reply was not a campaign';
+  }
+}
+
+/** Node wraps a network failure in a TypeError with the real errno on `cause`. */
+function classify(err: unknown, host: string): Problem {
+  if (err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError') return { kind: 'timeout', host };
+  const cause = (err as { cause?: { code?: string } } | undefined)?.cause;
+  const code = String(cause?.code ?? '');
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return { kind: 'dns', host };
+  if (/^(CERT_|DEPTH_ZERO|UNABLE_TO_|SELF_SIGNED|ERR_TLS|EPROTO)/.test(code)) return { kind: 'tls', host };
+  return { kind: 'refused', host };
+}
+
+/**
+ * Identify ourselves.
+ *
+ * An unnamed client is what a WAF blocks first, and this request crosses the public internet to
+ * the masjid's own Cloudflare hostname — there is genuinely something in the middle.
+ */
+const UA = 'OpenMasjidCompanion (+https://github.com/OpenMasjid-Solutions/OpenMasjidCompanion)';
+
+/** Enough for a canonical-host or trailing-slash redirect; not enough to be a loop. */
+const MAX_HOPS = 3;
+
+/**
+ * GET, following redirects by hand.
+ *
+ * The rest of this app sets `redirect: 'error'` (CLAUDE.md §13), and the REASON it does is that
+ * every other outbound call presents `X-OpenMasjid-App-Secret` — following a redirect would
+ * hand a credential to whatever host the redirect named. **This call presents nothing**: it is
+ * the same anonymous GET any browser makes to a public donor page. Refusing a redirect outright
+ * therefore buys no secrecy and breaks ordinary deployments — a canonical-host rule, a
+ * trailing-slash normalisation, an http→https bump at the Cloudflare edge.
+ *
+ * So each hop is followed deliberately and re-checked. **Only the address the admin typed may
+ * be a private one**; a redirect must land on public https. Otherwise a public link could bounce
+ * us onto `192.168.x.x` and turn an admin's paste box into a port scanner.
+ */
+async function getFollowing(start: string, adminTyped: boolean): Promise<{ ok: true; res: Response; text: string } | { ok: false; problem: Problem }> {
+  let url = start;
+  for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
+    const host = (() => {
+      try {
+        return new URL(url).hostname;
+      } catch {
+        return url;
+      }
+    })();
+
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        signal: ctrl.signal,
+        // Manual, not 'follow': every hop is inspected before it is taken.
+        redirect: 'manual',
+        headers: { accept: 'application/json', 'user-agent': UA },
+      });
+    } catch (err) {
+      return { ok: false, problem: classify(err, host) };
+    } finally {
+      clearTimeout(t);
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (!location) return { ok: false, problem: { kind: 'http', status: res.status } };
+      let next: URL;
+      try {
+        next = new URL(location, url);
+      } catch {
+        return { ok: false, problem: { kind: 'redirect', to: location.slice(0, 120) } };
+      }
+      // Two kinds of hop are allowed, and nothing else:
+      //
+      //  • SAME ORIGIN — a trailing-slash or path normalisation, and the commonest redirect
+      //    there is. Safe by construction: it cannot reach a host we were not already talking
+      //    to, so it is permitted even from the LAN address an admin may legitimately paste.
+      //  • A PUBLIC HTTPS host — a canonical-hostname rule at the edge.
+      //
+      // What this refuses is the one that matters: a public link that bounces us onto
+      // 192.168.x.x, which would turn the admin's paste box into a port scanner for the
+      // masjid's own network.
+      const sameOrigin = next.origin === new URL(url).origin;
+      const publicHttps = next.protocol === 'https:' && !isPrivateHost(next.hostname);
+      if (next.username || next.password || !(sameOrigin || publicHttps)) {
+        return { ok: false, problem: { kind: 'redirect', to: `${next.protocol}//${next.hostname}` } };
+      }
+      url = next.toString();
+      continue;
+    }
+
+    if (res.status === 404 || res.status === 410) return { ok: true, res, text: '' }; // gone; body unread
+    if (!res.ok) return { ok: false, problem: { kind: 'http', status: res.status } };
+
+    const declared = Number.parseInt(res.headers.get('content-length') ?? '', 10);
+    if (Number.isFinite(declared) && declared > MAX_BYTES) return { ok: false, problem: { kind: 'body' } };
+    const text = await res.text().catch(() => '');
+    if (text.length > MAX_BYTES) return { ok: false, problem: { kind: 'body' } };
+    return { ok: true, res, text };
+  }
+  void adminTyped;
+  return { ok: false, problem: { kind: 'redirect', to: 'too many redirects' } };
+}
+
+/** A campaign, or the reason there isn't one. */
+export interface FetchResult {
+  load: Load<Campaign | null>;
+  /** null when the fetch succeeded (including a definite "it's gone"). */
+  problem: Problem | null;
+}
+
 /**
  * Fetch one appeal.
  *
@@ -199,41 +371,31 @@ const money = (n: number | undefined): number => (typeof n === 'number' && Numbe
  *  - a campaign — it is there and this is it;
  *  - `loaded(null)` — Donations answered that it is **gone** (404: deleted, or made inactive).
  *    A settled answer, worth caching, and the admin is told the appeal no longer exists.
- *  - `KEEP` — we could not ask. Never cached as "gone": a Donations container restarting while
- *    one phone happened to open the app must not delete a masjid's Ramadan appeal from the
- *    noticeboard for the rest of the TTL.
+ *  - `KEEP` — we could not ask, with `problem` saying which of the seven ways. Never cached as
+ *    "gone": a Donations container restarting while one phone happened to open the app must not
+ *    delete a masjid's Ramadan appeal from the noticeboard for the rest of the TTL.
  */
-export async function fetchCampaign(link: Link): Promise<Load<Campaign | null>> {
+export async function fetchCampaign(link: Link): Promise<FetchResult> {
   const url = `${link.base}/api/public/campaign/${encodeURIComponent(link.slug)}`;
+  const got = await getFollowing(url, true);
+  if (!got.ok) {
+    log.debug(`${link.slug}: ${problemDetail(got.problem)}`);
+    return { load: KEEP, problem: got.problem };
+  }
+  const res = got.res;
+  if (res.status === 404 || res.status === 410) return { load: loaded(null), problem: null };
+
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-    let res: Response;
-    try {
-      res = await fetch(url, { signal: ctrl.signal, redirect: 'error', headers: { accept: 'application/json' } });
-    } finally {
-      clearTimeout(t);
-    }
-
-    if (res.status === 404 || res.status === 410) return loaded(null); // settled: it is gone
-    if (!res.ok) return KEEP; // 5xx, a proxy error page, Donations still starting
-
-    const declared = Number.parseInt(res.headers.get('content-length') ?? '', 10);
-    if (Number.isFinite(declared) && declared > MAX_BYTES) return KEEP;
-    const text = await res.text();
-    if (text.length > MAX_BYTES) return KEEP;
-
-    const parsed = PublicCampaign.safeParse(JSON.parse(text)?.data);
+    const parsed = PublicCampaign.safeParse(JSON.parse(got.text)?.data);
     if (!parsed.success) {
-      // Something is at that address answering JSON, but it is not a campaign. Almost always a
-      // link to the Donations app root or to another app entirely, so it is worth a line in
-      // the log — the admin panel can only say "we could not read it".
+      // Something is at that address answering, but it is not a campaign. Almost always a link
+      // to the Donations app root, or to another app entirely.
       log.debug(`not a campaign payload at ${url}`);
-      return KEEP;
+      return { load: KEEP, problem: { kind: 'body' } };
     }
     const c = parsed.data;
 
-    return loaded({
+    return { load: loaded({
       slug: link.slug,
       title: clean(c.title, 120) || link.slug,
       type: clean(c.type, 40),
@@ -249,10 +411,10 @@ export async function fetchCampaign(link: Link): Promise<Load<Campaign | null>> 
       ready: c.ready !== false,
       readyReason: clean(c.readyReason, 300),
       testMode: c.testMode === true,
-    });
+    }), problem: null };
   } catch {
-    // A timeout, a refused connection, a redirect we would not follow, malformed JSON.
-    return KEEP;
+    // Malformed JSON — an HTML error page from something in front of Donations, most often.
+    return { load: KEEP, problem: { kind: 'body' } };
   }
 }
 
@@ -283,6 +445,10 @@ export interface AdminCampaign {
   health: Health;
   /** Set when Donations says the appeal cannot take a donation right now — their words. */
   notReady: string;
+  /** When `health` is 'unreachable': what actually went wrong, in plain words. */
+  why: string;
+  /** The same thing in one technical line, for whoever can act on it. */
+  detail: string;
   testMode: boolean;
   localOnly: boolean;
 }
@@ -292,6 +458,9 @@ export class Campaigns {
   /** One cache per slug, keyed by the full URL so re-pasting a link under a different base is a
    *  different entry rather than a silently shared one. */
   private cache = new Map<string, Cached<Campaign | null>>();
+  /** The last reason a link did not load, keyed the same way. Not in `Cached` because it is
+   *  about the ATTEMPT, and `Cached` deliberately only remembers values. */
+  private problems = new Map<string, Problem | null>();
 
   constructor(private readonly store: Store) {
     this.links = this.read();
@@ -327,13 +496,18 @@ export class Campaigns {
     // re-checks it rather than showing whatever was last seen.
     const live = new Set(this.links.map(linkUrl));
     for (const key of [...this.cache.keys()]) if (!live.has(key)) this.cache.delete(key);
+    for (const key of [...this.problems.keys()]) if (!live.has(key)) this.problems.delete(key);
   }
 
   private entryFor(link: Link): Cached<Campaign | null> {
     const key = linkUrl(link);
     let c = this.cache.get(key);
     if (!c) {
-      c = new Cached<Campaign | null>(() => fetchCampaign(link), TTL_MS, RETRY_MS);
+      c = new Cached<Campaign | null>(async () => {
+        const r = await fetchCampaign(link);
+        this.problems.set(key, r.problem);
+        return r.load;
+      }, TTL_MS, RETRY_MS);
       this.cache.set(key, c);
     }
     return c;
@@ -389,15 +563,25 @@ export class Campaigns {
   /** The admin's list, with every reason a tile is not on a phone. */
   async adminList(): Promise<AdminCampaign[]> {
     const rows = await this.all();
-    return rows.map(({ link, value, ever }) => ({
-      url: linkUrl(link),
-      slug: link.slug,
-      title: value?.title ?? link.slug,
-      health: value ? 'ok' : ever ? 'gone' : 'unreachable',
-      notReady: value && !value.ready ? value.readyReason || 'This appeal isn’t accepting donations at the moment.' : '',
-      testMode: value?.testMode === true,
-      localOnly: isLocalOnly(link),
-    }));
+    return rows.map(({ link, value, ever }) => {
+      const key = linkUrl(link);
+      const problem = this.problems.get(key) ?? null;
+      // A value we have never had AND a live failure is "unreachable". A value that loaded and
+      // came back null is "gone" — the two must not merge, and neither may borrow the other's
+      // explanation.
+      const health: Health = value ? 'ok' : ever ? 'gone' : 'unreachable';
+      return {
+        url: key,
+        slug: link.slug,
+        title: value?.title ?? link.slug,
+        health,
+        notReady: value && !value.ready ? value.readyReason || 'This appeal isn’t accepting donations at the moment.' : '',
+        why: health === 'unreachable' && problem ? describeProblem(problem) : '',
+        detail: health === 'unreachable' && problem ? problemDetail(problem) : '',
+        testMode: value?.testMode === true,
+        localOnly: isLocalOnly(link),
+      };
+    });
   }
 
   /** For the admin panel's summary line, without fetching anything. */

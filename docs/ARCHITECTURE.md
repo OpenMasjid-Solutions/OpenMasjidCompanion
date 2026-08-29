@@ -456,3 +456,59 @@ interaction.
 - `https` is required on a public host, with a message that says why (mixed content, and a
   phone that is not in the building). A private address is allowed and **flagged** — a masjid
   testing on their LAN is being reasonable, it just works for nobody else.
+
+## Slice 8a — why an appeal would not load (0.1.0-dev.9)
+
+Reported from a real box: a public https share link, copied from the Donations dashboard, that
+opens fine in a browser, and the panel said *"We couldn't reach this appeal."*
+
+**The reporting was the bug, whatever the cause turns out to be.** One sentence covered seven
+distinct failures, and the sentence it chose named the one explanation the admin had already
+disproved by opening the link. So the fetch now classifies:
+
+| cause | what the admin is told |
+| --- | --- |
+| `dns` | the server can't look up that hostname, even though a phone can |
+| `refused` | something on the network refused the connection |
+| `tls` | the certificate could not be verified |
+| `timeout` | no answer in time |
+| `redirect` | redirected somewhere we won't follow — e.g. a Cloudflare Access login |
+| `http` | the status, with 401/403 called out as an access rule rather than a bad link |
+| `body` | something answered, but it wasn't an appeal |
+
+Each has a volunteer-readable sentence **and** a one-line technical detail, because the person
+fixing a tunnel is not always the person who pasted the link.
+
+### Why this call leaves the building at all
+
+Worth writing down, because it looks like it shouldn't have to. The platform does **not** run a
+LAN reverse proxy that routes `/donations/*` — path routing is a Cloudflare **Public Hostname**
+rule (`OpenMasjidOS packages/core/src/apps/manager.ts`, `getAppPath`), and the core reaches apps
+by their published host port through the Fabric broker, which we have no grant for. So Companion
+reaching Donations by its public URL is a genuine round trip out to Cloudflare and back, and it
+depends on the box having working outbound DNS and internet. **The durable fix is a Fabric
+capability on Donations** (`donations/campaigns`, LAN-only) — a cross-repo work order, not
+something to invent from here.
+
+### `redirect: 'error'` has one exception now
+
+Every other outbound call presents `X-OpenMasjid-App-Secret`; that is *why* the rule exists.
+The campaign fetch presents nothing, so refusing a redirect buys no secrecy while breaking a
+canonical-host or trailing-slash rule at the edge. Up to 3 hops, taken by hand, each allowed
+only if **same-origin** or **public https**. A public link may not bounce us onto `192.168.x.x`.
+Also sends a real `User-Agent`: an unnamed client is what a WAF blocks first.
+
+## Slice 8b — Add to Home Screen is a Safari feature, not an iOS one
+
+Every browser on iOS is WebKit, so they are indistinguishable to feature detection — but only
+Safari's own share sheet installs a web app. Chrome on iOS, and the in-app browser that opens
+when someone taps a link in WhatsApp, have no such button, and the old dialog told those users
+to look for one. There is no way to tell except the user agent, so `isIosSafari()` is a
+**denylist**: every impostor carries its own token *and* "Safari/605", so testing FOR Safari
+matches all of them. An unrecognised browser is assumed to be Safari — the safer way round,
+since being wrong shows Share-sheet instructions that are at least true of iOS, where being
+wrong the other way tells someone already in Safari to go and open Safari. Pinned in
+`web/src/pwa.test.ts`: the strings are the whole mechanism.
+
+The dialog's icon is centred with `display: block; margin-inline: auto` rather than the card's
+`text-align: center`, which an `<img>` only obeys while nothing makes images blocks.

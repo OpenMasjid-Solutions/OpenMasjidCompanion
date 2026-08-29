@@ -727,12 +727,29 @@ h1, h2, h3, p { margin: 0; }
 
 .modal__close { position: absolute; inset-block-start: 0.5rem; inset-inline-end: 0.5rem; }
 
+/* `display: block` + auto margins rather than leaning on the card's `text-align: center`.
+   An <img> is inline by default and would centre — until any rule anywhere makes images
+   blocks, at which point it silently sticks to the start edge. Centring it explicitly is one
+   line and cannot be undone from a distance. `margin-inline`, so it stays centred under RTL. */
 .modal__icon {
+  display: block;
+  margin-inline: auto;
   inline-size: 64px;
   block-size: 64px;
   border-radius: 1rem;
   object-fit: cover;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+/* The address, shown only when the clipboard refused. Wraps rather than overflowing: it exists
+   to be read and retyped, so every character has to be on screen. */
+.modal__addr {
+  margin-block-start: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--ink-scene-muted);
 }
 
 .modal__title {
@@ -1193,3 +1210,14 @@ h1, h2, h3, p { margin: 0; }
 }
 .appeal-row__note svg { flex: none; margin-block-start: 0.15rem; }
 .appeal-row__note--warn { color: var(--color-warning); }
+
+/* The one-line technical cause under a failing appeal. Quiet, monospace, and never the only
+   thing said — the sentence above it is what a volunteer reads. */
+.appeal-row__detail {
+  margin-block-start: 0.25rem;
+  margin-inline-start: 1.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+  overflow-wrap: anywhere;
+}

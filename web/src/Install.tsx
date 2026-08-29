@@ -23,7 +23,7 @@
  * The update notice stays a strip: nobody needs to be stopped to be told about a version.
  */
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpFromLine, Plus, RefreshCw, Share, X } from 'lucide-react';
+import { ArrowUpFromLine, Compass, Copy, Plus, RefreshCw, Share, X } from 'lucide-react';
 import { withBase } from './base';
 import type { InstallKind } from './pwa';
 
@@ -123,11 +123,24 @@ export function InstallPrompt({
           <p className="modal__text">
             Add it to your home screen and today&rsquo;s times are one tap away, even with no signal.
           </p>
-        ) : (
-          // iOS: no API exists, so the only honest thing is to say which buttons to press.
+        ) : kind === 'ios' ? (
+          // iOS Safari: no API exists, so the only honest thing is to say which buttons to press.
           <p className="modal__text">
             Tap <Share size={15} aria-label="the Share button" style={{ verticalAlign: '-0.15em' }} /> at the bottom of
             the screen, then{' '}
+            <b>
+              Add to Home Screen <Plus size={14} aria-hidden="true" style={{ verticalAlign: '-0.1em' }} />
+            </b>
+            .
+          </p>
+        ) : (
+          // iOS, but not in Safari. Adding to the Home Screen is a SAFARI feature, not an iOS
+          // one — in Chrome, or in the in-app browser that opens when you tap a link in
+          // WhatsApp, the button simply is not in the Share sheet. Telling someone to look for
+          // it there would send them hunting for something that is not on their screen.
+          <p className="modal__text">
+            On iPhone and iPad this only works in <b>Safari</b>. Open this page in Safari, then tap{' '}
+            <Share size={15} aria-label="the Share button" style={{ verticalAlign: '-0.15em' }} /> and{' '}
             <b>
               Add to Home Screen <Plus size={14} aria-hidden="true" style={{ verticalAlign: '-0.1em' }} />
             </b>
@@ -142,14 +155,49 @@ export function InstallPrompt({
               Add to home screen
             </button>
           )}
+          {/* "Open this in Safari" cannot be done from a web page — no browser lets one page
+              hand itself to another. So the useful thing is the ADDRESS, ready to paste. */}
+          {kind === 'ios-other' && <CopyLink />}
           {/* On iOS there is no button that installs anything, so the only control here is the
               one that closes it — and the only action on a dialog should look like the action. */}
-          <button className={kind === 'prompt' ? 'btn modal__later' : 'btn btn--primary modal__later'} onClick={onDismiss}>
+          <button
+            className={kind === 'prompt' || kind === 'ios-other' ? 'btn modal__later' : 'btn btn--primary modal__later'}
+            onClick={onDismiss}
+          >
             {kind === 'prompt' ? 'Not now' : 'Got it'}
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The page's own address, ready to paste into Safari.
+ *
+ * `location.href` rather than the app's configured public URL: whatever address actually got
+ * this page onto their screen is the one that will work when they paste it. Falls back to
+ * showing the address when the clipboard is unavailable, which it is in more iOS in-app
+ * browsers than you would expect.
+ */
+function CopyLink(): JSX.Element {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(location.href);
+      setState('copied');
+    } catch {
+      setState('failed');
+    }
+  };
+  return (
+    <>
+      <button className="btn btn--primary modal__go" onClick={() => void copy()}>
+        {state === 'copied' ? <Compass size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+        {state === 'copied' ? 'Copied — now paste it in Safari' : 'Copy this page’s address'}
+      </button>
+      {state === 'failed' && <p className="modal__addr">{location.href}</p>}
+    </>
   );
 }
 

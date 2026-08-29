@@ -28,6 +28,10 @@ export interface AdminCampaign {
   health: 'ok' | 'gone' | 'unreachable';
   /** Donations' own sentence about why it cannot take a donation. '' when it can. */
   notReady: string;
+  /** Why we could not read it — the actual cause, not a shrug. */
+  why: string;
+  /** The same in one technical line. */
+  detail: string;
   testMode: boolean;
   localOnly: boolean;
 }
@@ -164,11 +168,14 @@ export function Appeals({ onChanged }: { onChanged: () => void }): JSX.Element {
 
 /** One appeal, and every reason it might not be on a phone. */
 function Row({ c }: { c: AdminCampaign }): JSX.Element {
+// The server has worked out WHICH way it failed. Rendering its sentence beats re-deriving
+  // one here from a status — "we couldn't reach it" on a link the admin has just opened in
+  // their own browser names the one explanation they have already ruled out.
   const problem =
     c.health === 'gone'
       ? 'This appeal no longer exists in Donations, or has been made inactive. It isn’t showing in the app.'
       : c.health === 'unreachable'
-        ? 'We couldn’t reach this appeal. If OpenMasjid Donations is restarting, this clears on its own; if the link is wrong, it won’t.'
+        ? c.why || 'We couldn’t reach this appeal. If OpenMasjid Donations is restarting, this clears on its own.'
         : c.notReady
           ? `${c.notReady} It isn’t showing in the app while that’s true.`
           : '';
@@ -192,6 +199,11 @@ function Row({ c }: { c: AdminCampaign }): JSX.Element {
             {problem}
           </p>
         )}
+
+        {/* The technical line, for whoever can act on it. Deliberately not hidden behind a
+            "details" toggle: the person reading this is trying to fix a link, and one short
+            line is not clutter when it is the only line that names the actual fault. */}
+        {c.detail && <p className="appeal-row__detail">{c.detail}</p>}
 
         {/* Test mode does NOT hide the appeal — the masjid chose to feature it and Donations
             badges it on its own page. But an appeal on a test account takes no real money, and

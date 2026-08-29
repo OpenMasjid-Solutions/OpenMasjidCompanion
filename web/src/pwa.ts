@@ -30,6 +30,9 @@ export type InstallKind =
   | 'prompt'
   /** iOS Safari: no API — the musalli must use the Share sheet. */
   | 'ios'
+  /** iOS, but in Chrome / Firefox / an in-app browser, where Add to Home Screen is not
+   *  available at all. The only useful thing to say is "open this in Safari". */
+  | 'ios-other'
   /** Already running from the home screen. */
   | 'installed'
   /** Not offerable: no secure context, or a browser that cannot. */
@@ -42,15 +45,37 @@ export function isStandalone(): boolean {
   return iosStandalone || window.matchMedia('(display-mode: standalone)').matches;
 }
 
-/** iOS Safari, including iPadOS pretending to be a Mac. Detected because there is genuinely no
- *  feature to detect: the absence of `beforeinstallprompt` is indistinguishable from a browser
- *  that simply has not fired it yet. */
+/** iOS or iPadOS, including iPadOS pretending to be a Mac. Detected because there is genuinely
+ *  no feature to detect: the absence of `beforeinstallprompt` is indistinguishable from a
+ *  browser that simply has not fired it yet. */
 export function isIos(): boolean {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent;
   const iOS = /iPad|iPhone|iPod/.test(ua);
   const iPadOS = navigator.platform === 'MacIntel' && (navigator as unknown as { maxTouchPoints: number }).maxTouchPoints > 1;
   return iOS || iPadOS;
+}
+
+/**
+ * On iOS, is this Safari itself?
+ *
+ * **Add to Home Screen is a Safari feature, not an iOS one.** Every browser on iOS is WebKit
+ * underneath, which makes them look identical to feature detection, but only Safari's own share
+ * sheet installs a web app. Someone in Chrome, or in the in-app browser that opens when they tap
+ * a link in WhatsApp or Instagram, can follow "Share → Add to Home Screen" for as long as they
+ * like and never find it — so the app has to say "open this in Safari first" instead.
+ *
+ * A DENYLIST, not an allowlist of Safari. Every one of these puts its own token in the user
+ * agent while also carrying "Safari/605", so testing FOR Safari matches all of them; testing
+ * for each impostor does not. An unrecognised browser is therefore assumed to be Safari, which
+ * is the safer way round: the worst case is the Share-sheet instructions, which are at least
+ * true of iOS in general.
+ */
+const NOT_SAFARI = /(CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|YaBrowser|DuckDuckGo|FBAN|FBAV|FB_IAB|Instagram|Twitter|Snapchat|LinkedInApp|Pinterest|MicroMessenger|Line\/|GSA\/)/i;
+
+export function isIosSafari(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return isIos() && !NOT_SAFARI.test(navigator.userAgent);
 }
 
 /**
@@ -145,7 +170,17 @@ export function useInstall(secure: boolean): { kind: InstallKind; install: () =>
     };
   }, [secure]);
 
-  const kind: InstallKind = installed ? 'installed' : !secure ? 'unavailable' : event ? 'prompt' : isIos() ? 'ios' : 'unavailable';
+  const kind: InstallKind = installed
+    ? 'installed'
+    : !secure
+      ? 'unavailable'
+      : event
+        ? 'prompt'
+        : isIos()
+          ? isIosSafari()
+            ? 'ios'
+            : 'ios-other'
+          : 'unavailable';
 
   const dismiss = useCallback(() => {
     setDismissed(true);

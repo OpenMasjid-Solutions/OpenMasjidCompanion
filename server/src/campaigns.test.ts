@@ -20,7 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { Campaigns, fetchCampaign, isLocalOnly, parseShareLink, safeImage } from './campaigns';
+import { type Problem, Campaigns, describeProblem, fetchCampaign, isLocalOnly, parseShareLink, problemDetail, safeImage } from './campaigns';
 import { Store } from './store';
 
 // ── The pasted link ──────────────────────────────────────────────────────────
@@ -115,6 +115,8 @@ interface Fake {
   /** What the next request gets. */
   reply: { status: number; body: string; type?: string };
   hits: number;
+  /** Answer the next request with a same-origin 302, the way a trailing-slash rule does. */
+  redirectOnce: boolean;
 }
 
 async function startDonations(): Promise<Fake> {
@@ -123,9 +125,14 @@ async function startDonations(): Promise<Fake> {
     close: async () => undefined,
     reply: { status: 200, body: '{}' },
     hits: 0,
+    redirectOnce: false,
   };
   const server = http.createServer((req, res) => {
     state.hits += 1;
+    if (state.redirectOnce) {
+      state.redirectOnce = false;
+      return res.writeHead(302, { location: `${req.url}?r=1` }).end();
+    }
     if (!/^\/api\/public\/campaign\//.test(req.url ?? '')) {
       return res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"no"}');
     }
@@ -168,7 +175,7 @@ test('an appeal comes through, sanitised and in our own shape', async () => {
   const d = await startDonations();
   try {
     d.reply = { status: 200, body: campaignJson() };
-    const r = await fetchCampaign({ base: d.base, slug: 'ramadan' });
+    const r = (await fetchCampaign({ base: d.base, slug: 'ramadan' })).load;
     assert.ok(r.ok);
     const c = r.value!;
     assert.equal(c.title, 'Ramadan Appeal');
@@ -188,13 +195,13 @@ test('GONE AND COULD-NOT-ASK ARE DIFFERENT ANSWERS', async () => {
   try {
     // 404: Donations says this appeal is not there. A settled answer.
     d.reply = { status: 404, body: '{"error":"This donation page isn’t available."}' };
-    const gone = await fetchCampaign({ base: d.base, slug: 'ramadan' });
+    const gone = (await fetchCampaign({ base: d.base, slug: 'ramadan' })).load;
     assert.deepEqual(gone, { ok: true, value: null }, 'a definite "it is gone"');
 
     // 503: Donations is restarting. Answering "gone" here would delete a live appeal from a
     // masjid's noticeboard for a whole TTL because of a container restart.
     d.reply = { status: 503, body: 'upstream not ready' };
-    assert.equal((await fetchCampaign({ base: d.base, slug: 'ramadan' })).ok, false, 'keep what we have');
+    assert.equal((await fetchCampaign({ base: d.base, slug: 'ramadan' })).load.ok, false, 'keep what we have');
   } finally {
     await d.close();
   }
@@ -205,7 +212,7 @@ test('a reply that is not a campaign is kept, not treated as gone', async () => 
   try {
     for (const body of ['not json at all', '{"data":null}', '<html>proxy error</html>', '{"data":[]}']) {
       d.reply = { status: 200, body };
-      assert.equal((await fetchCampaign({ base: d.base, slug: 'x' })).ok, false, `${body.slice(0, 20)} should be KEEP`);
+      assert.equal((await fetchCampaign({ base: d.base, slug: 'x' })).load.ok, false, `${body.slice(0, 20)} should be KEEP`);
     }
   } finally {
     await d.close();
@@ -218,7 +225,7 @@ test('a missing field degrades that field, never the whole appeal', async () => 
   const d = await startDonations();
   try {
     d.reply = { status: 200, body: JSON.stringify({ data: { title: 'Roof Fund' } }) };
-    const r = await fetchCampaign({ base: d.base, slug: 'roof' });
+    const r = (await fetchCampaign({ base: d.base, slug: 'roof' })).load;
     assert.ok(r.ok);
     assert.equal(r.value!.title, 'Roof Fund');
     assert.equal(r.value!.goalAmount, 0, 'no goal is a tile with no progress bar, not an error');
@@ -233,7 +240,7 @@ test('a wrongly typed field is dropped rather than rendered', async () => {
   const d = await startDonations();
   try {
     d.reply = { status: 200, body: campaignJson({ goalAmount: 'lots', title: 42, currency: 'not-a-code' }) };
-    const r = await fetchCampaign({ base: d.base, slug: 'ramadan' });
+    const r = (await fetchCampaign({ base: d.base, slug: 'ramadan' })).load;
     assert.ok(r.ok);
     assert.equal(r.value!.goalAmount, 0);
     assert.equal(r.value!.title, 'ramadan', 'falls back to the slug rather than printing "42"');
@@ -364,6 +371,165 @@ test('removing an appeal forgets what was cached about it', async () => {
     assert.equal(d.hits, 1, 're-checked rather than served from the old entry');
   } finally {
     await d.close();
+    s.cleanup();
+  }
+});
+
+// ── Why it did not work ──────────────────────────────────────────────────────
+//
+// The first version answered "we couldn't reach this appeal" to every one of these, which is
+// the one explanation an admin has already ruled out by opening the link in their own browser.
+// Whatever is uncertain about another app's availability, WHICH WAY it failed is knowable.
+
+test('AN HTTP ERROR IS REPORTED AS ONE, with its status', async () => {
+  const d = await startDonations();
+  try {
+    d.reply = { status: 403, body: 'forbidden' };
+    const r = await fetchCampaign({ base: d.base, slug: 'ramadan' });
+    assert.equal(r.load.ok, false);
+    assert.deepEqual(r.problem, { kind: 'http', status: 403 });
+    // A 403 in front of a PUBLIC donor page is nearly always an access rule, so the sentence
+    // says so rather than blaming the link.
+    assert.match(describeProblem(r.problem!), /refused|login/i);
+    assert.equal(problemDetail(r.problem!), 'HTTP 403');
+  } finally {
+    await d.close();
+  }
+});
+
+test('a name that does not resolve says so, and names the host', async () => {
+  // The commonest real cause: the admin's phone looks the address up on the internet and the
+  // link works; the server behind them cannot, and gets told nothing useful.
+  const r = await fetchCampaign({ base: 'https://not-a-real-host.invalid/donations', slug: 'ramadan' });
+  assert.equal(r.load.ok, false);
+  assert.equal(r.problem?.kind, 'dns');
+  assert.match(describeProblem(r.problem!), /not-a-real-host\.invalid/);
+  assert.match(describeProblem(r.problem!), /look up/i);
+});
+
+test('nothing listening is not the same as a name that will not resolve', async () => {
+  // Port 1 on loopback: resolves instantly, refuses instantly.
+  const r = await fetchCampaign({ base: 'http://127.0.0.1:1/donations', slug: 'ramadan' });
+  assert.equal(r.load.ok, false);
+  assert.equal(r.problem?.kind, 'refused');
+});
+
+test('a reply that is not a campaign is reported as such, not as unreachable', async () => {
+  const d = await startDonations();
+  try {
+    d.reply = { status: 200, body: '<html>an error page from something in front</html>', type: 'text/html' };
+    const r = await fetchCampaign({ base: d.base, slug: 'ramadan' });
+    assert.equal(r.problem?.kind, 'body');
+    assert.match(describeProblem(r.problem!), /wasn’t an appeal|Share/);
+  } finally {
+    await d.close();
+  }
+});
+
+test('every problem has a sentence and a technical line, and neither is empty', () => {
+  // A missing branch here would surface as a blank warning box on the panel — the failure mode
+  // this whole taxonomy exists to prevent, reintroduced by a switch that fell through.
+  const all: Problem[] = [
+    { kind: 'dns', host: 'h' },
+    { kind: 'refused', host: 'h' },
+    { kind: 'tls', host: 'h' },
+    { kind: 'timeout', host: 'h' },
+    { kind: 'redirect', to: 'https://x' },
+    { kind: 'http', status: 500 },
+    { kind: 'body' },
+  ];
+  for (const p of all) {
+    assert.ok(describeProblem(p).length > 20, `${p.kind} needs a real sentence`);
+    assert.ok(problemDetail(p).length > 3, `${p.kind} needs a detail line`);
+  }
+});
+
+// ── Redirects ────────────────────────────────────────────────────────────────
+
+/** A server that redirects once, to wherever it is told. */
+async function startRedirector(to: string): Promise<{ base: string; close: () => Promise<void> }> {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(302, { location: to }).end();
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const { port } = server.address() as AddressInfo;
+  return { base: `http://127.0.0.1:${port}/donations`, close: () => new Promise<void>((r) => server.close(() => r())) };
+}
+
+test('A SAME-ORIGIN REDIRECT IS FOLLOWED, because this call carries no credential', async () => {
+  // Everything else in this app sets redirect:'error' — and the REASON is that those calls
+  // present X-OpenMasjid-App-Secret. This one is an anonymous GET to a public page, so refusing
+  // a trailing-slash or canonical-host redirect buys no secrecy and breaks real deployments.
+  const d = await startDonations();
+  try {
+    d.redirectOnce = true;
+    d.reply = { status: 200, body: campaignJson() };
+    const r = await fetchCampaign({ base: d.base, slug: 'ramadan' });
+    assert.equal(r.load.ok, true, 'the redirect was followed');
+    assert.equal(r.load.ok && r.load.value?.title, 'Ramadan Appeal');
+  } finally {
+    await d.close();
+  }
+});
+
+test('A CROSS-ORIGIN HOP TO A PRIVATE ADDRESS IS REFUSED, even from a private start', async () => {
+  // The address the admin typed may be a LAN one. A redirect TARGET may not be, unless it is
+  // the same origin we were already talking to — otherwise a pasted link becomes a way to make
+  // this server fetch arbitrary addresses on the masjid's own network.
+  const d = await startDonations();
+  const rd = await startRedirector(`${d.base}/api/public/campaign/ramadan`);
+  try {
+    const r = await fetchCampaign({ base: rd.base, slug: 'ramadan' });
+    assert.equal(r.load.ok, false);
+    assert.equal(r.problem?.kind, 'redirect');
+  } finally {
+    await rd.close();
+    await d.close();
+  }
+});
+
+test('A REDIRECT MAY NOT REACH A PRIVATE ADDRESS, however the first link looked', async () => {
+  // Only the address the admin typed may be a LAN one. Without this, a public link that
+  // redirects turns the admin's paste box into a port scanner for the masjid's own network.
+  const rd = await startRedirector('http://192.168.1.1/admin');
+  try {
+    const r = await fetchCampaign({ base: rd.base, slug: 'ramadan' });
+    assert.equal(r.load.ok, false);
+    assert.equal(r.problem?.kind, 'redirect');
+    assert.match(describeProblem(r.problem!), /redirected/i);
+  } finally {
+    await rd.close();
+  }
+});
+
+test('a redirect loop gives up rather than spinning', async () => {
+  const server = http.createServer((req, res) => {
+    res.writeHead(302, { location: `https://example.invalid${req.url}` }).end();
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const { port } = server.address() as AddressInfo;
+  try {
+    const r = await fetchCampaign({ base: `http://127.0.0.1:${port}/donations`, slug: 'ramadan' });
+    assert.equal(r.load.ok, false);
+    // Either it ran out of hops or the invalid host failed to resolve — both are refusals, and
+    // neither is a hang.
+    assert.ok(r.problem?.kind === 'redirect' || r.problem?.kind === 'dns');
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
+test('the panel is told which way it failed, not just that it did', async () => {
+  const s = tempStore();
+  try {
+    const c = new Campaigns(s.store);
+    c.set([{ base: 'https://not-a-real-host.invalid/donations', slug: 'ramadan' }]);
+    const row = (await c.adminList())[0];
+    assert.equal(row.health, 'unreachable');
+    assert.match(row.why, /look up/i, 'a sentence a volunteer can act on');
+    assert.match(row.detail, /DNS lookup failed/, 'and the technical line under it');
+    assert.deepEqual(await c.publicTiles(), [], 'and nothing on a phone either way');
+  } finally {
     s.cleanup();
   }
 });

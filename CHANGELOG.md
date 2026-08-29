@@ -33,6 +33,19 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Fixed
 
+- **When an appeal won't load, the app now says why.** It used to answer "we couldn't reach this
+  appeal" to every possible cause &mdash; including on a link that opens perfectly in your own
+  browser, which is the least helpful thing it could have said. It now tells you whether the
+  server couldn't look up your address, couldn't connect, was refused, timed out, was redirected
+  to a login page, or got something back that wasn't an appeal &mdash; each with the technical
+  line underneath for whoever looks after the box.
+- **Appeal links that go through a redirect now work.** Cloudflare and similar often redirect a
+  link to its canonical address, and the app was refusing to follow, which looked exactly like a
+  broken link.
+- **On an iPhone, the "add to your phone" prompt now says to open the page in Safari** when
+  you're in Chrome, Firefox, or the browser that opens inside WhatsApp or Instagram. Adding to
+  the Home Screen only works in Safari, and the old wording sent people looking for a button
+  their browser doesn't have. The masjid's logo is centred in that prompt now too.
 - **The month view was marking every single day as a jamāʿah change.** If your Maghrib jamāʿah
   is set a few minutes after the adhan, its time moves every day on its own &mdash; and the app
   was calling each of those a change, so every day was marked and the marks meant nothing. It now
