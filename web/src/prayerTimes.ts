@@ -90,9 +90,16 @@ export function tzOffsetMs(at: number, timeZone: string): number {
  * transition, and the result is out by an hour. The second pass re-reads the offset at the
  * corrected instant and applies it.
  *
- * Times inside a spring-forward gap (a wall clock reading that never happens) resolve to the
- * instant the clock jumps to, which is the only sensible answer and matches what every calendar
- * does. Display would not normally emit one — its own engine computes in the same zone.
+ * A time inside a spring-forward gap — a wall-clock reading that never happens — has no right
+ * answer, and this returns the instant one hour EARLIER (02:30 on a US spring-forward Sunday
+ * comes back as 01:30 local), not the one the clock jumps to. That is what the two passes
+ * arrive at, and it is written down here because the previous version of this comment claimed
+ * the opposite and nothing checked it.
+ *
+ * It cannot arise from real data: Display computes in the masjid's own zone, so it can only
+ * emit wall-clock times that the masjid's wall clock actually showed. What matters, and what
+ * the tests assert, is that every existing time is exact and a non-existent one still yields a
+ * real instant within the hour rather than NaN or a silent day's error.
  */
 export function zonedTimeToEpoch(date: string, hhmm: string, timeZone: string): number {
   const [y, mo, d] = date.split('-').map(Number);

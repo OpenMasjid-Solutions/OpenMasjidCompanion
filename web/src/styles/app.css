@@ -1304,3 +1304,57 @@ h1, h2, h3, p { margin: 0; }
   color: var(--color-ink-faint);
   overflow-wrap: anywhere;
 }
+
+/* ── Prayer reminders (musalli sheet) ────────────────────────────────────────
+ * A sheet rather than the install dialog's card: this one has choices in it, so it wants the
+ * room and the choices want to be reachable with a thumb. */
+.modal--sheet { width: min(26rem, 100%); text-align: start; }
+.modal--sheet .modal__title { text-align: start; }
+
+.notify__group { margin-block-start: 1.1rem; }
+.notify__label {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+  /* Muted, not faint: --ink-scene-faint cannot clear 4.5:1 on any of the six skies, and this
+     sheet is drawn over all of them. */
+  color: var(--ink-scene-muted);
+  margin-block-end: 0.5rem;
+}
+.notify__chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.notify__hint { margin-block-start: 0.5rem; font-size: 0.82rem; color: var(--ink-scene-muted); }
+
+/* A chip is a checkbox that reads as a choice rather than as a form. `aria-pressed` carries
+   the state for a screen reader; the tick carries it for everyone else, so colour is never
+   the only signal. */
+.chip {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem; font-weight: 600;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 20%, transparent);
+  cursor: pointer;
+}
+.chip--on {
+  color: var(--color-on-primary);
+  background: var(--color-btn);
+  border-color: var(--color-btn);
+}
+/* On the LIGHT sky the standard coral button puts white text at 4.55:1 — over the line and
+   with nothing to spare, which is how the Hijri date nearly failed once already. Chip text is
+   small text, so it has the 4.5 floor and no room to lose any. The darker tone takes it to
+   ~5.9 and is already in the palette. */
+[data-theme="light"][data-surface="musalli"] .chip--on {
+  background: var(--color-btn-hover);
+  border-color: var(--color-btn-hover);
+}
+.chip:active { transform: scale(0.97); }
+
+/* A single number the admin actually wants: how many phones. */
+.stat { display: flex; align-items: baseline; gap: 0.5rem; margin-block-start: 0.9rem; }
+.stat__n { font-family: var(--font-display); font-size: 2rem; font-weight: 800; line-height: 1; }
+.stat__label { font-size: 0.9rem; color: var(--color-ink-muted); }
+
+.spin { animation: spinny 900ms linear infinite; }
+@keyframes spinny { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } .chip:active { transform: none; } }

@@ -14,6 +14,16 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Prayer reminders on a musalli's phone.** Tap the bell on the prayer times and pick which
+  prayers, and whether to be told at the adhan or a set number of minutes before the jamāʿah.
+  It is per phone and off until someone turns it on, and turning it off removes it completely.
+  **The masjid is shown how many phones signed up and nothing else** &mdash; this app keeps no
+  name, number or address for anybody who does. Reminders come straight from your own box; no
+  outside service is involved.
+- **The admin panel can send a test reminder to your own phone**, so you can prove it works
+  before it matters, and it reports how many phones are signed up and whether anything is
+  stopping reminders going out.
+
 - **Tabs along the bottom**, the way an app on a phone works: **Salah** and **Donate**, with
   Qibla to come. The appeals have moved off the end of the prayer times onto their own tab. If
   your masjid has no appeals running there is no Donate tab and no bar at all &mdash; nothing to

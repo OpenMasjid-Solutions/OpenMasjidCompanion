@@ -550,3 +550,76 @@ how you tap the wrong day.
 the words. A tab bar can be translucent because its labels are short and always in the same
 place; a sentence cannot. Dismissible, and dismissing is not a refusal — the new build is
 already downloaded and takes over on the next visit either way. The button only offers it now.
+
+## Slice 9 — prayer notifications (0.1.0-dev.11)
+
+Self-hosted end to end: our own VAPID keypair, `web-push`, and no third party anywhere in the
+loop. `push.ts` holds the keys, the subscriptions and one send; `pushScheduler.ts` decides the
+moment; `zoned.ts` turns the masjid's wall clock into an instant.
+
+### What is stored about a musalli, in full
+
+Endpoint, two keys, which prayers, when, two timestamps. **That is the row.** No name, no phone,
+no IP, no history. The admin is shown a COUNT and there is **no route in this app that returns
+an endpoint** — which is the only way to be sure one is never rendered, and a test asserts the
+admin response body contains no endpoint whatever shape a future field takes. In logs an
+endpoint appears as `host#8-hex`: enough to see which push service is failing, not enough to
+say whose phone.
+
+### Four rules in the scheduler, each preventing a real harm
+
+1. **Never from stale data.** Past 48 hours nothing is sent at all. A confident "Maghrib in 10
+   minutes" from two-day-old times is worse than silence *because somebody acts on it* — they
+   leave the house.
+2. **Never a backlog.** A box that was off for six hours does not deliver six hours of missed
+   reminders on the way back up. Anything past `GRACE_MS` is dropped, not queued.
+3. **Idempotent by construction.** Each row carries `sentThrough`; a tick considers only
+   `(sentThrough, now]` and then advances it. The notification `tag` collapses a duplicate on
+   the phone besides.
+4. **Jitter.** Fifty phones want Maghrib at the same second; one burst is how a push service
+   starts rate-limiting a masjid's box.
+
+410/404 prunes the row at once. Anything else keeps it — a push service having a bad ten minutes
+must not empty a masjid's subscriber list. Bulk rejection (≥5 attempts, ≥50% failing) raises
+`push-failing` **once per episode**.
+
+### Timezones, and a comment that was wrong
+
+`zonedTimeToEpoch` is the same two-pass algorithm as the web half, deliberately duplicated —
+the two are separate builds and a shared module would be a build-time dependency for eleven
+lines of arithmetic. Both are tested against real DST transitions, which is what actually keeps
+them honest.
+
+Writing those tests found that **both copies carried a comment claiming a behaviour the code
+does not have**: a time inside the spring-forward gap resolves to the hour *before*, not the
+instant the clock jumps to. It cannot arise from Display, which computes in the masjid's own
+zone and so only emits times its wall clock actually showed — but the comment is now what the
+code does, and the test pins it.
+
+### The wire is tested for real
+
+Every other test stubs the send. One does not: it stands up an HTTPS listener with a throwaway
+self-signed certificate, lets `web-push` sign and encrypt for real, and asserts the body is
+`aes128gcm`, the `Authorization` is a well-formed VAPID token, **no plaintext is on the wire**,
+and the private key never leaves the process — plus that a real 410 reads as `gone` and a real
+503 as `failed`. Skipped where `openssl` is absent rather than failed.
+
+### The platform truths the UI has to say out loud
+
+Each is otherwise a switch that silently does nothing:
+
+- **No secure context** → no PushManager at all. The server says whether we have one; guessing
+  from `location.protocol` would break a LAN kiosk, which is a legitimate way to open this app.
+- **iOS needs the Home Screen first.** Checked *before* "your browser doesn't support this",
+  because iOS Safari in a tab reports no PushManager — and that message would be both wrong and
+  unactionable when the same browser works perfectly once installed.
+- **Permission can be denied for good.** No amount of asking helps; the way back is the
+  browser's own settings, so that is what it says.
+
+Permission is requested on a real tap and never on load. Turning reminders off **removes** the
+subscription rather than muting it.
+
+A measured detail: the selected chip's white-on-coral came out at 4.55:1 on the light skies —
+over the line with nothing to spare, the same shape as the Hijri coral that nearly failed
+earlier. Chip text is small text and has the 4.5 floor, so the light surface uses the darker
+tone already in the palette: 5.88:1.

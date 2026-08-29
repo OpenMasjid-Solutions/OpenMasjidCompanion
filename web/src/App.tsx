@@ -24,6 +24,7 @@ import { InstallPrompt, UpdateBanner } from './Install';
 import { Scene } from './ui';
 import { MasjidHeader, Today, type Timetable } from './Today';
 import { Give, useCampaigns } from './Give';
+import { Notify, NotifyButton } from './Notify';
 import { TabBar, type Tab } from './Tabs';
 
 /**
@@ -125,6 +126,7 @@ export function App(): JSX.Element {
   // Donate tab at all — and because doing it per page would re-request on every switch.
   const appeals = useCampaigns(!isAdmin);
   const tabs = useMemo(() => tabsFor(appeals && appeals.length), [appeals]);
+  const [notifyOpen, setNotifyOpen] = useState(false);
 
   /**
    * The MUSALLI surface has its own fixed palette (coral on navy, from the reference design),
@@ -191,7 +193,12 @@ export function App(): JSX.Element {
           thing scrolled to. Fixed, so it does not shove the page down under a reading thumb. */}
       {!isAdmin && updateReady && <UpdateBanner onApply={applyUpdate} />}
       <div className={showTabs ? 'shell shell--tabs' : 'shell'}>
-        {!isAdmin && <MasjidHeader name={times?.masjid?.name || 'Prayer times'} />}
+        {!isAdmin && (
+          <MasjidHeader
+            name={times?.masjid?.name || 'Prayer times'}
+            action={<NotifyButton secure={secure} onOpen={() => setNotifyOpen(true)} />}
+          />
+        )}
 
         {route === '/' &&
           (times ? (
@@ -230,6 +237,7 @@ export function App(): JSX.Element {
         {!isAdmin && <Foot />}
       </div>
       {!isAdmin && <TabBar tabs={tabs} route={route} onGo={go} />}
+      {!isAdmin && notifyOpen && <Notify secure={secure} onClose={() => setNotifyOpen(false)} />}
     </>
   );
 }

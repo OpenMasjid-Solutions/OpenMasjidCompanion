@@ -33,13 +33,51 @@ import { Icons, type IconKind, THEME_HEX } from './icons';
 import { buildManifest, installName } from './webmanifest';
 import { parseChangelog, readChangelog } from './changelog';
 import { Campaigns, MAX_LINKS, parseShareLink } from './campaigns';
+import { SubscribeSchema, Subscriptions, type Vapid, sendOne, vapidKeys, vapidSubject } from './push';
+import { PushScheduler } from './pushScheduler';
 
 const log = makeLog('server');
+
+/**
+ * The notification machinery, built together because the three parts are useless apart: the
+ * scheduler needs the keys and the subscriptions, and the routes need all three.
+ */
+export interface PushParts {
+  subs: Subscriptions;
+  vapid: Vapid;
+  scheduler: PushScheduler;
+}
+
+/**
+ * Build it.
+ *
+ * Separate from `buildServer` so `index.ts` can own the timer — start it after listen, stop it
+ * on a signal — while a test drives `scheduler.tick()` directly with an injected clock and
+ * never starts a timer at all.
+ */
+export function makePush(store: Store, timetable: TimetableService): PushParts {
+  const subs = new Subscriptions(store);
+  const vapid = vapidKeys(store);
+  const scheduler = new PushScheduler(
+    subs,
+    vapid,
+    // `peek`, never `get`: the scheduler runs every 30 seconds and must not turn a broker
+    // outage into a fetch storm. The background refresh is what keeps this warm.
+    () => {
+      const s = timetable.peek();
+      return { feed: s.feed, at: s.at };
+    },
+    () => getSite().publicUrl,
+  );
+  return { subs, vapid, scheduler };
+}
 
 export interface ServerDeps {
   store: Store;
   /** Overridable so a test can drive the timetable without a broker or a timer. */
   timetable?: TimetableService;
+  /** Overridable for the same reason: a test wants the scheduler without its timer. */
+  push?: PushParts;
   /** Where the built web app lives. Overridable so a test can point at a fixture, or at
    *  nowhere at all, without needing Vite to have run. */
   publicDir?: string;
@@ -58,6 +96,10 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // fail in a way that matters to the prayer times, which is why it is constructed here with
   // no ceremony and no readiness check.
   const campaigns = new Campaigns(store);
+  // Notifications. The keypair is generated on first boot and kept for the life of the volume
+  // — see push.ts for why it is never rotated. The TIMER is index.ts's, so a test can drive
+  // the scheduler a tick at a time with nothing running in the background.
+  const { subs, vapid, scheduler } = deps.push ?? makePush(store, timetable);
 
   const app = Fastify({
     logger: false, // we log ourselves, and never log a secret
@@ -109,6 +151,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // platform, and each call also holds one of a Pi's sockets for up to 4s. 120/min is far above
   // any real page load, so it can never get in the way of the thing it protects.
   const platformCallOk = makeRateLimiter(120);
+  /**
+   * The push endpoints are UNAUTHENTICATED writes — the only ones in this app — so they get
+   * their own budget rather than sharing the platform one. Generous enough for a real phone
+   * (subscribe, read back, and a few switch flips), mean enough that a loop cannot fill a Pi.
+   */
+  const pushWriteOk = makeRateLimiter(30);
 
   // ── Health check ────────────────────────────────────────────────────────────
   app.get('/healthz', async () => ({ ok: true }));
@@ -522,6 +570,113 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   app.post('/api/admin/campaigns/refresh', { preHandler: requireAdmin }, async () => {
     await campaigns.refresh();
     return { data: { links: campaigns.list().map((l) => `${l.base}/${l.slug}`), campaigns: await campaigns.adminList(), max: MAX_LINKS } };
+  });
+
+  // ── Prayer notifications ───────────────────────────────────────────────────
+
+  /**
+   * The public half of this app's VAPID key, plus whether notifications can honestly be
+   * offered at all.
+   *
+   * `secure` is the server's answer, not the browser's guess: over plain HTTP on the LAN there
+   * is no PushManager, and a page that offered the switch anyway would fail at the tap.
+   */
+  app.get('/api/public/push/key', async (_req, reply) => {
+    reply.header('cache-control', 'no-store'); // it never changes, but a cached "not ready" would
+    return { data: { key: vapid.publicKey, enabled: getSite().enabled } };
+  });
+
+  /**
+   * Subscribe, or change an existing subscription's preferences.
+   *
+   * UNAUTHENTICATED and therefore rate-limited: it is a write endpoint reachable by anyone who
+   * can open the page. Keyed on the caller, and the cap in push.ts bounds the table besides.
+   *
+   * Re-posting the same endpoint updates in place — a musalli moving a switch is the ordinary
+   * case, not a new subscriber.
+   */
+  app.post('/api/public/push/subscribe', async (req, reply) => {
+    if (!pushWriteOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
+    const parsed = SubscribeSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Those notification settings could not be read.' });
+    const put = subs.put(parsed.data);
+    if (!put.ok) {
+      // Told plainly rather than dropped. A silent refusal is a musalli who thinks they are
+      // subscribed and never hears anything again.
+      log.warn('the subscription limit has been reached — new notification sign-ups are being refused');
+      return reply.code(507).send({ error: 'This masjid has reached its limit for notification sign-ups. Please let them know.' });
+    }
+    return { data: { ok: true } };
+  });
+
+  const UnsubBody = z.object({ endpoint: z.string().url().max(1000) });
+  app.post('/api/public/push/unsubscribe', async (req, reply) => {
+    if (!pushWriteOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
+    const parsed = UnsubBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'That could not be read.' });
+    subs.remove(parsed.data.endpoint);
+    return { data: { ok: true } };
+  });
+
+  /**
+   * What this phone chose last time.
+   *
+   * A POST because the endpoint is the lookup key and an endpoint is a pseudo-identifier —
+   * it has no business in a URL, a log line or a referrer header. Answers `null` for an
+   * unknown endpoint rather than 404: "you are not subscribed" is an answer, not an error.
+   */
+  app.post('/api/public/push/prefs', async (req, reply) => {
+    if (!pushWriteOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests. Please try again shortly.' });
+    const parsed = UnsubBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'That could not be read.' });
+    return { data: { prefs: subs.prefsFor(parsed.data.endpoint) } };
+  });
+
+  /**
+   * What the admin is shown: a COUNT and the health of the machinery. Never a list of
+   * endpoints — no route in this app returns one, which is the only way to be sure.
+   */
+  app.get('/api/admin/push', { preHandler: requireAdmin }, async () => {
+    const t = timetable.peek();
+    return {
+      data: {
+        subscribers: subs.count(),
+        lastRunAt: scheduler.lastRunAt,
+        lastSentAt: scheduler.lastSentAt,
+        /** '' when it is working; otherwise why nothing is being sent, in a word the panel
+         *  turns into a sentence. */
+        paused: scheduler.lastSkip,
+        timetableAt: t.at,
+        enabled: getSite().enabled,
+      },
+    };
+  });
+
+  /**
+   * "Send a test notification to this device."
+   *
+   * The admin's own phone, by its own endpoint — so this proves the whole chain (our VAPID
+   * key, the push service, the service worker) without touching anybody else's phone.
+   */
+  const TestBody = z.object({
+    endpoint: z.string().url().max(1000),
+    keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
+  });
+  app.post('/api/admin/push/test', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = TestBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'This device is not set up for notifications yet.' });
+    const outcome = await sendOne(
+      vapid,
+      { endpoint: parsed.data.endpoint, p256dh: parsed.data.keys.p256dh, auth: parsed.data.keys.auth },
+      {
+        title: `Test — ${timetable.peek().feed?.masjidName || 'your masjid'}`,
+        body: 'Notifications are working. This is the only test you will get.',
+        tag: 'companion-test',
+        url: getSite().publicUrl || '/',
+      },
+      vapidSubject(getSite().publicUrl),
+    );
+    return { data: { result: outcome } };
   });
 
   /** The picker's list. Live from Display every time — an admin opening this screen is about to

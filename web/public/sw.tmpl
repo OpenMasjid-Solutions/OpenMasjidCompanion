@@ -164,3 +164,116 @@ self.addEventListener('fetch', (event) => {
     })(),
   );
 });
+
+/* ── Prayer notifications ────────────────────────────────────────────────────
+ *
+ * The payload is written by our own server (see server/src/pushScheduler.ts) and is minimal
+ * by design: a prayer name, a time, the masjid. Nothing personal, nothing auth-critical —
+ * this text lands on a lock screen that other people can see.
+ */
+
+self.addEventListener('push', (event) => {
+  // A push with no data, or data that is not ours, still has to show SOMETHING: the browser
+  // will show its own "This site has been updated in the background" if we do not, which is
+  // worse than a plain line of our own.
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+
+  const title = payload.title || 'Prayer time';
+  const options = {
+    body: payload.body || '',
+    // One tag per prayer per day, so a re-delivery REPLACES rather than stacking three
+    // identical Maghrib reminders on a lock screen.
+    tag: payload.tag || 'prayer',
+    renotify: true,
+    icon: BASE + '/api/public/icon/192.png',
+    badge: BASE + '/api/public/icon/192.png',
+    // The URL travels in `data` because `notificationclick` is a separate event with no
+    // access to this one's payload.
+    data: { url: payload.url || SHELL },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+/**
+ * Focus the app if it is already open; otherwise open it.
+ *
+ * Opening a second window when one is already there is the difference between "my app came
+ * to the front" and "my phone now has four copies of the prayer times".
+ */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || SHELL;
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of all) {
+        // Same-origin is enough: the app may be on any of its own routes, and dragging
+        // someone from the Donate tab back to Salah is not what they asked for.
+        if (new URL(client.url).origin === self.location.origin && 'focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+      return undefined;
+    })(),
+  );
+});
+
+/**
+ * The browser rotated this device's subscription.
+ *
+ * It happens on its own schedule and without asking. If nothing re-registers, the phone goes
+ * quiet for ever with nothing on any screen to explain it — so the new endpoint is sent
+ * straight to the server, carrying the SAME preferences the old one had.
+ *
+ * The old endpoint is unsubscribed explicitly rather than left to be pruned on its next
+ * failure: the admin's subscriber count should not count one phone twice.
+ */
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      const old = event.oldSubscription;
+      try {
+        const key = await fetch(BASE + '/api/public/push/key').then((r) => r.json());
+        const applicationServerKey = key && key.data && key.data.key;
+        if (!applicationServerKey) return;
+
+        // Carry the preferences across. Without them the phone silently reverts to whatever
+        // the defaults are, which for someone who had turned Fajr off is a 5am surprise.
+        let prefs = null;
+        if (old) {
+          const got = await fetch(BASE + '/api/public/push/prefs', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ endpoint: old.endpoint }),
+          }).then((r) => r.json());
+          prefs = got && got.data ? got.data.prefs : null;
+        }
+        if (!prefs) return; // nothing to carry over; the page will re-subscribe when opened
+
+        const fresh =
+          event.newSubscription ||
+          (await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey }));
+
+        await fetch(BASE + '/api/public/push/subscribe', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ subscription: fresh.toJSON(), prefs }),
+        });
+        if (old && old.endpoint !== fresh.endpoint) {
+          await fetch(BASE + '/api/public/push/unsubscribe', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ endpoint: old.endpoint }),
+          });
+        }
+      } catch {
+        // Offline at the moment it rotated. The page re-subscribes next time it is opened,
+        // which is the only other chance there is.
+      }
+    })(),
+  );
+});

@@ -346,7 +346,7 @@ function NotSetUp(): JSX.Element {
 }
 
 /** The masjid's own name and logo at the top — the app on a musalli's phone is theirs. */
-export function MasjidHeader({ name }: { name: string }): JSX.Element {
+export function MasjidHeader({ name, action }: { name: string; action?: React.ReactNode }): JSX.Element {
   return (
     <header className="topbar">
       <span className="brand">
@@ -354,6 +354,7 @@ export function MasjidHeader({ name }: { name: string }): JSX.Element {
         <b>{name}</b>
       </span>
       <span className="spacer" />
+      {action}
     </header>
   );
 }

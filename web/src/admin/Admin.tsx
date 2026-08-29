@@ -28,6 +28,7 @@ import { TimetablePicker, type TimetableStatus } from './Timetable';
 import { Appearance, type PwaStatus } from './Appearance';
 import { Poster, Share } from './Share';
 import { Appeals } from './Appeals';
+import { Notifications } from './Notifications';
 
 interface AdminStatus {
   remote: RemoteStatus;
@@ -162,6 +163,10 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
           )}
           <Appeals onChanged={loadStatus} />
           {status?.pwa && <Appearance status={status.pwa} onChanged={loadStatus} />}
+
+          {/* After the PWA card on purpose: reminders need the app on a phone, and the card
+              above is where the admin is thinking about that. */}
+          <Notifications />
 
           {remote && (
             <Share
