@@ -15,6 +15,7 @@
  * outside the window are visibly inert rather than quietly broken.
  */
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useSwipe } from './swipe';
 import {
   type Day,
   type Masjid,
@@ -65,9 +66,20 @@ export function Month({
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`;
   };
   const canGo = (by: number) => monthsWithData.has(monthOf(shift(by)));
+  const step = (by: number) => {
+    if (canGo(by)) onAnchor(shift(by));
+  };
+
+  // The same gesture as the day view, because a month grid is the same kind of thing to a
+  // thumb. `canGo` is checked inside `step` rather than by not binding the handler: a swipe
+  // into a month with no times should do nothing, not scroll the page sideways.
+  const swipe = useSwipe(
+    () => step(1),
+    () => step(-1),
+  );
 
   return (
-    <main className="month">
+    <main className="month" {...swipe}>
       <div className="month__bar">
         <button className="datebar__btn" onClick={() => onAnchor(shift(-1))} disabled={!canGo(-1)} aria-label="Previous month">
           <ChevronLeft size={22} aria-hidden="true" />
@@ -118,7 +130,7 @@ export function Month({
                   role="gridcell"
                   disabled={!has}
                   title={title || undefined}
-                  aria-label={`${cell.dayOfMonth}${changed ? ', jamāʿah times change' : ''}${isToday ? ', today' : ''}`}
+                  aria-label={`${cell.dayOfMonth}${changed ? ', Iqamah times change' : ''}${isToday ? ', today' : ''}`}
                   onClick={() => onPick(cell.date!)}
                 >
                   <span className="month__num tnum">{cell.dayOfMonth}</span>
@@ -136,17 +148,12 @@ export function Month({
       {visibleChanges > 0 ? (
         <p className="month__key">
           <span className="month__dot month__dot--key" aria-hidden="true" />
-          <span>
-            Jamāʿah times change on this day. Adhan times shift a little every day and are not marked
-            {marks.maghrib ? '' : ', and nor is Maghrib, which usually follows the adhan'}.
-          </span>
+          <span>Iqamah times change on this day.</span>
         </p>
       ) : (
         <p className="month__key">
           <CalendarDays size={15} aria-hidden="true" />
-          <span>
-            No jamāʿah changes this month{changes.size > 0 ? ' — there are some in the weeks either side' : ''}.
-          </span>
+          <span>No Iqamah changes this month.</span>
         </p>
       )}
     </main>

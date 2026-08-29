@@ -318,12 +318,9 @@ export function Notify({ secure, onClose }: { secure: boolean; onClose: () => vo
                   aria-pressed={prefs.announcements}
                 >
                   {prefs.announcements && <Check size={13} aria-hidden="true" />}
-                  Occasional notices
+                  Announcements
                 </button>
               </div>
-              <p className="notify__hint">
-                Rare, and only when there is something to say &mdash; a funeral, a closure, a changed jamāʿah time.
-              </p>
             </div>
 
             {error && <p className="form-error">{error}</p>}

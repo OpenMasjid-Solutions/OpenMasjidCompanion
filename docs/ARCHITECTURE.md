@@ -673,3 +673,94 @@ applied per *subscription* rather than per notification, since the point is to d
 phones from each other, not a phone from itself. Sixty phones now take ~3 s where they took
 minutes, and there are wall-clock tests on both the tick and the broadcast so it cannot come
 back quietly.
+
+## Slice 11 — the day view, closer to the reference (0.1.0-dev.13)
+
+A batch of wording and layout corrections from Hasan against the reference app's screenshots.
+
+### The arc
+
+Three things were wrong with it and each had a different cause:
+
+- **It stopped short of the screen.** The path was inset 4 units at each end AND sat inside the
+  page's 1.1rem of text padding. The path now runs 0…W and `.arc` is pulled back out through
+  that padding with logical margins, so it is full-bleed and still full-bleed under RTL.
+- **It sat too far below the countdown.** Not a margin — the `viewBox` was `0 -40 320 144`
+  while the path only occupied y 31…96, so **71 units of the SVG were empty space above the
+  peak**. The box is now the path's own bounds plus the "now" marker's radius.
+- **The shape.** A quadratic's single control point gives a parabola. A cubic with controls at
+  0.28W and 0.72W flattens the top and steepens the shoulders — the "arched in" look. Sampled
+  against the reference: at a quarter of the width ours sits 0.284 of the way down from the
+  peak where the reference sits 0.282.
+
+The band is 0.275 of the width, taken from the reference, and the "TODAY" chip is pulled up to
+float between the two descending limbs the way the reference composes it — verified at 320, 390,
+430 and 480px that it never touches the line.
+
+### Colouring a changed Iqamah
+
+`changedOn()` returns the same set `changedPrayers()` renders as the month's tooltip sentences,
+so the two screens cannot disagree. The number goes coral — the Hijri date's accent, measured at
+5.4–9.4 : 1 across all six skies — with no badge, note or asterisk.
+
+**On a Friday it can name a prayer with no row to colour.** Jumu'ah *replaces* Dhuhr in
+`slotsFor`, so a changed Dhuhr jamā'ah appears in the month's tooltip and has nothing on the day
+to attach to. That is the honest outcome: the Dhuhr jamā'ah is not being held that day, so
+colouring the Jumu'ah time — a different number, set by a different decision — would be a lie.
+Pinned by a test so nobody "fixes" it into one.
+
+### The small ones
+
+- `.time-row:last-child { border-block-end: 0 }` beat `.time-row--now` on specificity, so **Isha
+  at Isha time lost the bottom of its outline**. Now `:last-child:not(.time-row--now)`.
+- The Iqamah column is wider and the Adhan sits further left, because "10:15 PM" wrapped its
+  "PM" and that pushed the row's baseline out of line with every other row. Both time cells are
+  `nowrap` so it cannot come back at a larger text scale.
+- The date never wraps: three round buttons and their gaps were eating 144px of a 355px row,
+  which left "Wednesday, September 2" without room for its last word. Smaller buttons, tighter
+  gaps, and a font that scales down rather than a line that breaks.
+- Shurūq's time spans both time columns and centres, rather than sitting under one of two
+  headings that do not apply to it.
+- The month view swipes between months, and refuses at the ends of the fetched window rather
+  than swiping into a month it has no times for.
+
+### A note on the contrast harness
+
+It sampled a few pixels **above** each element and called that the background. Once the date
+stepper tightened up, "above the Hijri date" became the Gregorian date's own glyphs, and it
+reported the Hijri line at 1.3 : 1 against its neighbour. It now hides the element's text, takes
+the frame, and reads the pixel at the element's own centre — the colour the glyphs are actually
+drawn onto. Every previous number in this file was measured the old way; the current worst
+across the six skies is **5.45 : 1**.
+
+### Four things the review caught that testing had not
+
+A four-dimension adversarial review over this diff (completeness, correctness, CSS, a11y/RTL),
+with every finding handed to a separate agent told to refute it. Ten survived. Four were real
+defects rather than nits, and all four share a shape: **they were invisible in the exact test I
+had run.**
+
+1. **The changed-Iqamah coral never appeared on today.** `.time-row__iqamah--changed` is
+   (0,1,0); `.time-row--past .time-row__iqamah` and `.time-row--now .time-row__iqamah` are both
+   (0,2,0) *and* later in the file. So the mark worked on every day except the one anybody
+   opens the app on. My own check had used a future day, where no row carries a state class.
+   Fixed by moving the rule below the state rules and naming them explicitly — a tie on
+   specificity is decided by source order, which is why the first attempt at the fix still lost.
+2. **The "now" marker floated up to 8px off the end of the line it caps.** `pathLength="1"` +
+   `stroke-dasharray` is measured by ARC LENGTH; the dots and the marker were placed at the
+   BÉZIER PARAMETER. The two only coincide on a straight line, and the new cubic is further from
+   uniform than the quadratic was. Everything is now placed through a sampled arc-length table,
+   measured at 0.00 units of gap across the whole day.
+3. **The outlined current row sat 2px inside every other row.** The 2px border eats the content
+   box, so the current prayer's time did not line up with the column above and below it. Two
+   pixels reads as bad kerning rather than a bug, which is exactly why it would never have been
+   reported.
+4. **Colour was the only signal, and coral sits within 1.08 : 1 of the muted ink in luminance.**
+   As pure hue it is invisible to a red-green colour blind reader and to every screen reader.
+   The ask was "no note anywhere", which is about what is *visible* — so the changed time holds
+   its weight instead of receding with its row, and carries an `.sr-only` ", Iqamah changed".
+   Nothing was added that a sighted reader can see.
+
+The month view also had no `touch-action: pan-y`, the companion rule the day-view swipe depends
+on, and the longest English date ("Wednesday, September 30") overflowed its box onto the arrows
+at 320px — the narrowest phone still in use.

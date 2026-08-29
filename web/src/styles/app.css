@@ -564,7 +564,20 @@ h1, h2, h3, p { margin: 0; }
  *
  * An inline SVG rather than a canvas: it scales, it costs nothing, and it can be labelled.
  */
-.arc { display: block; width: 100%; height: auto; overflow: visible; }
+/* FULL BLEED. The page has 1.1rem of side padding for its text; the arc is not text, and the
+   reference it is matching runs off both edges of the screen. Pulled back out through that
+   padding rather than the padding being removed, because every other row on this page wants it.
+   Logical margins, so it is still full-bleed under RTL. */
+.arc {
+  display: block;
+  height: auto;
+  overflow: visible;
+  margin-inline: -1.1rem;
+  inline-size: calc(100% + 2.2rem);
+  /* The gap under the countdown. Small on purpose — the arc belongs to the hero above it, not
+     to the list below. */
+  margin-block-start: 1.1rem;
+}
 .arc__track { fill: none; stroke: color-mix(in srgb, var(--ink-scene) 22%, transparent); stroke-width: 2.5; stroke-linecap: round; }
 .arc__done  { fill: none; stroke: var(--coral-strong); stroke-width: 3; stroke-linecap: round; }
 .arc__dot   { fill: color-mix(in srgb, var(--ink-scene) 35%, transparent); }
@@ -583,16 +596,29 @@ h1, h2, h3, p { margin: 0; }
 
 /* ── The date stepper ────────────────────────────────────────────────────── */
 
-.datebar { display: flex; align-items: center; gap: 0.5rem; margin-block: 0.9rem 0.35rem; }
+/* Tighter than it looks it needs to be, and that is the point: three round buttons and three
+   gaps were eating 144px of a 355px row, which left "Wednesday, September 2" without the width
+   for its last word. */
+.datebar { display: flex; align-items: center; gap: 0.3rem; margin-block: 0.9rem 0.35rem; }
 .datebar__main { flex: 1; text-align: center; min-width: 0; }
+/* NEVER WRAPS. A date broken across two lines shifts every row beneath it, and the orphan is
+   always the day number — the one part being read. It scales down instead: at the narrowest
+   phone the longest date there is ("Wednesday, September 30") still fits on one line. */
 .datebar__greg {
-  font-family: var(--font-display); font-size: 1.15rem; font-weight: 700;
+  font-family: var(--font-display);
+  /* The floor has to clear the WORST case, which is not today's date: "Wednesday, September
+     30" is 23 characters, and at a 0.95rem floor it overflowed its box on a 320px screen and
+     spilled over the arrows either side. Sized so that one fits at 320px, which is the
+     narrowest phone anybody still carries. */
+  font-size: clamp(0.75rem, 3.9vw, 1.15rem);
+  font-weight: 700;
+  white-space: nowrap;
   color: var(--ink-scene); text-shadow: var(--text-shadow-scene);
 }
 .datebar__hijri { font-size: 0.92rem; color: var(--coral); margin-block-start: 0.1rem; }
 .datebar__btn {
   flex: none; display: grid; place-items: center;
-  inline-size: 2.5rem; block-size: 2.5rem; border-radius: 999px;
+  inline-size: 2.25rem; block-size: 2.25rem; border-radius: 999px;
   background: transparent; border: 0; color: var(--ink-scene);
 }
 .datebar__btn:hover:not(:disabled) { background: color-mix(in srgb, var(--scene-base) 40%, transparent); }
@@ -995,12 +1021,16 @@ h1, h2, h3, p { margin: 0; }
  * over nothing in particular. */
 .times { margin-block-start: 0.35rem; }
 
+/* The Iqamah column is the wider of the two, and the Adhan sits a little further left than it
+   used to. "10:15 PM" at the Iqamah's size is the longest thing this grid ever has to hold, and
+   at the old width its "PM" wrapped onto a second line — which pushed the row's own baseline out
+   of line with every other row. */
 .time-head,
 .time-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 5.1rem 5.6rem;
+  grid-template-columns: minmax(0, 1fr) 4.9rem 6.1rem;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .time-head {
@@ -1022,7 +1052,10 @@ h1, h2, h3, p { margin: 0; }
   padding: 0.8rem 0.9rem;
   border-block-end: 1px solid color-mix(in srgb, var(--ink-scene) 12%, transparent);
 }
-.time-row:last-child { border-block-end: 0; }
+/* The separator under the last row is dropped — but NOT when that row is the outlined current
+   one, whose bottom edge is part of a box rather than a rule between rows. `:last-child` beats
+   `.time-row--now` on specificity, so Isha at Isha time lost the bottom of its outline. */
+.time-row:last-child:not(.time-row--now) { border-block-end: 0; }
 
 .time-row__name {
   font-size: 1.1rem;
@@ -1038,6 +1071,18 @@ h1, h2, h3, p { margin: 0; }
   text-align: end;
   font-size: 0.92rem;
   font-weight: 500;
+  white-space: nowrap;
+  color: var(--ink-scene-muted);
+}
+
+/* Shurūq has no jamā'ah, so its one time spans both time columns and centres between them
+   rather than sitting under a heading that does not apply to it. */
+.time-row__suntime {
+  grid-column: 2 / 4;
+  text-align: center;
+  font-size: 0.98rem;
+  font-weight: 500;
+  white-space: nowrap;
   color: var(--ink-scene-muted);
 }
 
@@ -1046,6 +1091,7 @@ h1, h2, h3, p { margin: 0; }
   text-align: end;
   font-size: 1.24rem;
   font-weight: 700;
+  white-space: nowrap;
   color: var(--ink-scene);
   text-shadow: var(--text-shadow-scene);
   letter-spacing: -0.01em;
@@ -1066,9 +1112,36 @@ h1, h2, h3, p { margin: 0; }
   border-radius: 0.85rem;
   margin-block: 0.25rem;
   padding-block: 0.75rem;
+  /* The border is INSIDE the box, so without this the current row's content sits 2px in from
+     every other row's — its time no longer lines up with the column it belongs to. Two pixels
+     is small enough to look like bad kerning rather than a bug, which is exactly why it would
+     never have been reported. */
+  padding-inline: calc(0.9rem - 2px);
 }
 .time-row--now .time-row__name,
 .time-row--now .time-row__iqamah { font-weight: 800; color: var(--ink-scene); }
+
+/* The day this jamā'ah changed. No badge, no asterisk, no note at the foot of the page:
+   someone who knows their usual time sees that this one is not it, and someone who does not is
+   not made to read an explanation of a thing that does not concern them. The same coral the
+   Hijri date uses, measured at 5.4–9.4 : 1 across all six skies.
+
+   THE PAST AND CURRENT SELECTORS ARE NOT OPTIONAL. `.time-row--past .time-row__iqamah` and
+   `.time-row--now .time-row__iqamah` are both (0,2,0) and set their own colour, so a bare
+   `.time-row__iqamah--changed` lost to them — which silenced the mark on every prayer that had
+   already passed today and on the one happening now. In other words it worked on every day
+   except the one anybody looks at.
+
+   The weight is held at 700 rather than receding with the rest of a past row, because coral and
+   the muted ink sit within 1.08 : 1 of each other in luminance: as pure colour this mark is a
+   hue difference, which WCAG 1.4.1 will not accept as the only signal and a red-green colour
+   blind reader cannot see at all. Weight is the second signal, and it costs no chrome. */
+.time-row__iqamah--changed,
+.time-row--past .time-row__iqamah--changed,
+.time-row--now .time-row__iqamah--changed {
+  color: var(--coral);
+  font-weight: 700;
+}
 
 /* Shurūq is a sun event, not a jamā'ah: lighter, and its Iqamah cell stays empty. */
 .time-row--sun .time-row__name { font-weight: 500; }
@@ -1095,7 +1168,11 @@ h1, h2, h3, p { margin: 0; }
 /* ── "Today" ─────────────────────────────────────────────────────────────────
  * On today it is a label. On any other day it becomes a button whose arrow points back the way
  * today lies, so it reads as somewhere to go rather than as a caption. */
-.todaybar { text-align: center; margin-block-start: 0.5rem; }
+/* Pulled UP into the arc, the way the reference composes it: the chip floats between the
+   two descending limbs, where there is nothing but sky. Sitting below the arc instead left a
+   band of empty page between the curve and the date for no reason. It never touches the line —
+   at the chip's height the curve is already out at the screen edges. */
+.todaybar { text-align: center; margin-block-start: -2.6rem; }
 
 .arc__chip--btn {
   cursor: pointer;
@@ -1111,7 +1188,11 @@ h1, h2, h3, p { margin: 0; }
  * Thirty days of near-identical numbers is the worst possible way to find the one day the
  * jamā'ah times change, which is the day somebody turns up at the wrong time. So that is the
  * only thing this view marks. */
-.month { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 1.25rem; }
+/* `touch-action: pan-y` for the same reason as the day view: it tells the browser that
+   vertical scrolling is the page's and horizontal panning is ours. Without it a touch device
+   can claim the gesture before a single pointer event reaches the handler, and the swipe
+   silently does nothing on exactly the devices it exists for. */
+.month { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 1.25rem; touch-action: pan-y; }
 
 .month__bar { display: flex; align-items: center; gap: 0.35rem; margin-block: 0.5rem 1rem; }
 .month__title {

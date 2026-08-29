@@ -22,6 +22,7 @@ import {
   formatMonth,
   formatTime,
   formatUntil,
+  changedOn,
   iqamahChanges,
   prayerChanged,
   momentsFor,
@@ -575,4 +576,55 @@ test('the month is named in the masjid’s own language', () => {
   assert.match(formatMonth('2026-08-24', 'en'), /2026/);
   assert.equal(typeof formatMonth('2026-08-24', 'ar'), 'string');
   assert.equal(formatMonth('2026-08-24', 'not-a-language').length > 0, true, 'a bad language must not throw');
+});
+
+// ── Colouring the changed time in the day view ───────────────────────────────
+
+test('changedOn names the same prayers the month view names', () => {
+  // Two views of one comparison. If these ever disagree, one of the screens is lying — the
+  // month would mark a day the day view shows nothing for, or the reverse.
+  const days = [withIqamah('2026-08-23', '05:25'), withIqamah('2026-08-24', '05:35', '13:45')];
+  const named = changedPrayers(days, '2026-08-24', '12').map((s) => s.split(' ')[0].toLowerCase());
+  assert.deepEqual([...changedOn(days, '2026-08-24')].sort(), named.sort());
+  assert.deepEqual([...changedOn(days, '2026-08-24')].sort(), ['dhuhr', 'fajr']);
+});
+
+test('nothing is coloured on the first day of the window', () => {
+  const days = [withIqamah('2026-08-23', '05:25'), withIqamah('2026-08-24', '05:25')];
+  assert.equal(changedOn(days, '2026-08-23').size, 0, 'there is nothing before it to have changed from');
+  assert.equal(changedOn(days, '2026-08-24').size, 0);
+});
+
+test('changedOn follows the masjid’s Maghrib setting, like the month', () => {
+  const rounded = (date: string, adhanMin: number, gap: number) => {
+    const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    return day(date, {
+      prayers: {
+        fajr: { adhan: '05:01', iqamah: '05:25' },
+        dhuhr: { adhan: '13:05', iqamah: '13:30' },
+        asr: { adhan: '17:48', iqamah: '18:00' },
+        maghrib: { adhan: hhmm(adhanMin), iqamah: hhmm(adhanMin + gap) },
+        isha: { adhan: '21:05', iqamah: '21:30' },
+      },
+    });
+  };
+  // A rounded offset: the printed Maghrib steps five minutes while the adhan moved four.
+  const days = [rounded('2026-08-23', 19 * 60 + 45, 5), rounded('2026-08-24', 19 * 60 + 41, 4)];
+  assert.equal(changedOn(days, '2026-08-24').size, 0, 'off by default');
+  assert.deepEqual([...changedOn(days, '2026-08-24', { maghrib: true })], ['maghrib']);
+});
+
+test('ON A FRIDAY A CHANGED DHUHR HAS NO ROW TO COLOUR, and that is the honest answer', () => {
+  // Jumu'ah replaces Dhuhr in the day view. `changedOn` still reports dhuhr — the month's
+  // tooltip names it — but `slotsFor` emits no dhuhr slot, so nothing is coloured. Colouring
+  // the Jumu'ah time instead would attach a Dhuhr decision to a different number.
+  const friday = { ...withIqamah('2026-08-28', '05:25', '13:45'), jumuah: [{ label: 'Jumuʿah', adhan: null, iqamah: '13:15' }] };
+  const days = [withIqamah('2026-08-27', '05:25'), friday];
+  assert.ok(changedOn(days, '2026-08-28').has('dhuhr'), 'the comparison still sees it');
+  assert.equal(
+    slotsFor(friday).some((s) => s.key === 'dhuhr'),
+    false,
+    'but there is no Dhuhr row on a Friday',
+  );
+  assert.ok(slotsFor(friday).some((s) => s.key === 'jumuah'));
 });

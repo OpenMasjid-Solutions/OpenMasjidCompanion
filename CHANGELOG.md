@@ -14,6 +14,10 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Swipe between months** in the month view, the same way you swipe between days.
+- **The day a jamāʿah time changes, that time is shown in a different colour** on the prayer
+  times themselves &mdash; so you can see at a glance which one moved, not just that something did.
+
 - **Send an announcement to everyone.** Type a notice in the admin panel &mdash; a funeral, a
   closure, a changed jamāʿah &mdash; and it goes to every phone signed up for reminders, with your
   masjid’s name on it. It asks you to confirm first, showing how many phones it will reach and
@@ -53,6 +57,16 @@ only what a masjid would actually notice. A released section is never rewritten.
 - **A "Today" button** to get back after browsing ahead.
 
 ### Fixed
+
+- **The marker showing where you are in the day now sits exactly on the end of the line**
+  rather than a little ahead of it.
+- **The arc above the prayer times now runs to the edges of the screen**, sits closer under the
+  countdown, and has the shape it was always meant to have.
+- **Isha at Isha time kept losing the bottom of its highlight box.** It no longer does.
+- **Long dates and long times no longer break onto a second line** &mdash; “Wednesday, September 2”
+  and “10:15 PM” both fit.
+- The Sunrise time is centred between the two columns, since it is neither an Adhan nor an Iqamah.
+- Clearer wording in the month view and in the reminder settings.
 
 - **Prayer reminders would have stopped arriving at masjids with more than a handful of
   people signed up.** Reminders were sent one phone at a time with a pause between each, so a

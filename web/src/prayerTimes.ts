@@ -351,7 +351,7 @@ export function periodOf(position: Position): PeriodKey {
  * year, which would make the whole feature worthless.
  */
 const DAILY = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
-type DailyKey = (typeof DAILY)[number];
+export type DailyKey = (typeof DAILY)[number];
 
 /**
  * What the month view marks. Masjid-wide, chosen by the admin, and carried in the public
@@ -427,6 +427,30 @@ export function iqamahChanges(days: Day[], marks: MonthMarks = MONTH_MARKS): Set
   const out = new Set<string>();
   for (let i = 1; i < days.length; i += 1) {
     if (keys.some((k) => prayerChanged(days[i - 1].prayers[k], days[i].prayers[k]))) out.add(days[i].date);
+  }
+  return out;
+}
+
+/**
+ * Which jamā'āt changed on this day, as keys.
+ *
+ * The same comparison the month view marks a day with — deliberately, so the day view cannot
+ * highlight a time the month says did not change. `changedPrayers` renders the same set as
+ * sentences for the month's tooltip; this is for colouring the number itself.
+ *
+ * **On a Friday it can report a prayer that has no row to colour.** Jumuʿah REPLACES Dhuhr in
+ * the day view (`slotsFor`), so a changed Dhuhr jamāʿah is named in the month's tooltip and
+ * has nothing on the day to attach to. That is the honest outcome rather than a bug to paper
+ * over: the Dhuhr jamāʿah genuinely is not being held that day, so colouring the Jumuʿah time —
+ * a different number, set by a different decision — would be a lie. The change shows up on the
+ * rows that ARE held, and in full in the month's own tooltip.
+ */
+export function changedOn(days: Day[], date: string, marks: MonthMarks = MONTH_MARKS): Set<DailyKey> {
+  const out = new Set<DailyKey>();
+  const i = days.findIndex((d) => d.date === date);
+  if (i <= 0) return out; // nothing before the first day to have changed from
+  for (const k of comparedKeys(marks)) {
+    if (prayerChanged(days[i - 1].prayers[k], days[i].prayers[k])) out.add(k);
   }
   return out;
 }

@@ -18,11 +18,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react';
 import {
   type Day,
+  type DailyKey,
   type Masjid,
   type MonthMarks,
   type PeriodKey,
   type Slot,
   MONTH_MARKS,
+  changedOn,
   formatDate,
   formatTime,
   formatUntil,
@@ -123,6 +125,8 @@ export function Today({ data, onPeriod }: { data: Timetable; onPeriod: (period: 
 
   const slots = slotsFor(day);
   const isToday = index === todayIndex;
+  /** Which jamā'āt this masjid changed on this day. The same rule the month view marks with. */
+  const changed = changedOn(data.days, day.date, data.marks ?? MONTH_MARKS);
 
   if (view === 'month') {
     return (
@@ -208,6 +212,7 @@ export function Today({ data, onPeriod }: { data: Timetable; onPeriod: (period: 
             slot={slot}
             masjid={masjid}
             state={rowState(slot, day.date, zone, now, isToday, position.current?.at ?? 0)}
+            changed={changed.has(slot.key as DailyKey)}
           />
         ))}
       </div>
@@ -243,11 +248,31 @@ function rowState(slot: Slot, date: string, zone: string, now: number, isToday: 
  * Marked up with ARIA table roles rather than a <table>: the current prayer is outlined as a
  * whole row, which is awkward on table cells, and CSS grid gives the alignment for nothing.
  */
-function TimeRow({ slot, masjid, state }: { slot: Slot; masjid: Masjid; state: RowState }): JSX.Element {
+function TimeRow({ slot, masjid, state, changed }: { slot: Slot; masjid: Masjid; state: RowState; changed: boolean }): JSX.Element {
   const cls = ['time-row', state === 'past' && 'time-row--past', state === 'now' && 'time-row--now', slot.sunEvent && 'time-row--sun']
     .filter(Boolean)
     .join(' ');
   const fmt = (t: string | null) => formatTime(t, masjid.hourCycle, masjid.language);
+
+  // A sun event has no jamā'ah at all. Rather than an empty Iqamah cell — which leaves the time
+  // stranded under one of two headings that does not apply to it — its one time spans both
+  // columns and centres between them, so the row reads as "this is not a jamā'ah" at a glance.
+  if (slot.sunEvent) {
+    return (
+      <div className={cls} role="row">
+        <span className="time-row__name" role="cell">
+          {slot.label}
+        </span>
+        {/* Two columns' worth of one cell. Without `aria-colspan` this row would be one cell
+            short of every other row, and a screen reader walking the table column by column
+            would report it as ragged. */}
+        <span className="time-row__suntime tnum" role="cell" aria-colspan={2}>
+          {fmt(slot.adhan)}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className={cls} role="row">
       <span className="time-row__name" role="cell">
@@ -256,10 +281,16 @@ function TimeRow({ slot, masjid, state }: { slot: Slot; masjid: Masjid; state: R
       <span className="time-row__adhan tnum" role="cell">
         {fmt(slot.adhan)}
       </span>
-      {/* A sun event has no jamā'ah at all, so its Iqamah cell is left empty rather than filled
-          with a dash that invites the reader to look for one. */}
-      <span className="time-row__iqamah tnum" role="cell">
-        {slot.sunEvent ? '' : fmt(slot.iqamah)}
+      {/* Coloured when this is the day the masjid changed this jamā'ah — the same comparison the
+          month view marks the day with. No note beside it: someone who knows their usual time
+          sees that this one is not it, and someone who does not is unaffected.
+
+          The words are for a screen reader, which gets nothing at all from a colour. They are
+          in the same `.sr-only` the column headings use, so nothing is added to the page a
+          sighted reader can see — the ask was no visible note, not no information. */}
+      <span className={changed ? 'time-row__iqamah time-row__iqamah--changed tnum' : 'time-row__iqamah tnum'} role="cell">
+        {fmt(slot.iqamah)}
+        {changed && <span className="sr-only">, Iqamah changed</span>}
       </span>
     </div>
   );
@@ -268,21 +299,98 @@ function TimeRow({ slot, masjid, state }: { slot: Slot; masjid: Masjid; state: R
 /**
  * The day as an arc, with the prayers along it and a marker at now.
  *
- * A quadratic Bézier evaluated directly rather than measured through the DOM, so it renders
+ * A cubic Bézier evaluated directly rather than measured through the DOM, so it renders
  * identically on the server-built HTML, in a screenshot, and on a phone. `pathLength="1"`
  * normalises the curve so the travelled portion is a plain fraction.
+ *
+ * THE GEOMETRY IS THE POINT, and three things about it are deliberate (Hasan, 2026-08-29,
+ * matching the reference app in docs/DESIGN_LANGUAGE.md):
+ *
+ *  - **It runs edge to edge.** The path starts and ends at x = 0 and x = W with no inset, and
+ *    the CSS pulls the SVG out through the page's own side padding, so the curve leaves the
+ *    screen rather than stopping short of it inside a column of text.
+ *  - **A cubic, not a quadratic.** Control points at 0.28W and 0.72W flatten the top and steepen
+ *    the shoulders. Worth being honest about the size of this one: normalised to the same
+ *    height it is only about three units away from the parabola it replaced, and most of what
+ *    reads as a different shape is the band being 0.275 of the width rather than 0.208. The
+ *    cubic is here because it is the family that can be tuned toward the reference at all — the
+ *    quadratic has one control point and therefore one degree of freedom, which is the height.
+ *  - **The viewBox is the path's own bounds.** The old one reserved 71 units of empty space
+ *    above the peak, which is the whole of the gap that made the arc sit too far below the
+ *    countdown. Only the stroke and the "now" marker's radius are padded for.
  */
+const W = 320;
+/** Band height. 0.275 of the width, taken from the reference: a shallower arc reads as a slouch
+ *  rather than an arc, and a taller one crowds the times below it. */
+const H = 88;
+/** Control-point depth. A symmetric cubic peaks at H − 0.75k, so this puts the peak at y = 0. */
+const K = H / 0.75;
+const P0 = { x: 0, y: H };
+const C1 = { x: W * 0.28, y: H - K };
+const C2 = { x: W * 0.72, y: H - K };
+const P3 = { x: W, y: H };
+const ARC_D = `M ${P0.x} ${P0.y} C ${C1.x} ${C1.y} ${C2.x} ${C2.y} ${P3.x} ${P3.y}`;
+
+/** The point at Bézier parameter t. */
+function bezier(t: number): { x: number; y: number } {
+  const u = 1 - t;
+  return {
+    x: u ** 3 * P0.x + 3 * u ** 2 * t * C1.x + 3 * u * t ** 2 * C2.x + t ** 3 * P3.x,
+    y: u ** 3 * P0.y + 3 * u ** 2 * t * C1.y + 3 * u * t ** 2 * C2.y + t ** 3 * P3.y,
+  };
+}
+
+/**
+ * Cumulative chord length along the curve, sampled once.
+ *
+ * **A curve's parameter is not its length.** A cubic covers far more ground per unit of t near
+ * its ends than at its peak, and the two only coincide on a straight line. Computed once at
+ * module load because the geometry is constant — nothing here depends on the day or the clock.
+ */
+const ARC_TABLE = (() => {
+  const N = 240;
+  const cum = [0];
+  let prev = bezier(0);
+  for (let i = 1; i <= N; i += 1) {
+    const q = bezier(i / N);
+    cum.push(cum[i - 1] + Math.hypot(q.x - prev.x, q.y - prev.y));
+    prev = q;
+  }
+  const total = cum[N];
+  return { cum, total, N };
+})();
+
+/**
+ * The point a given fraction of the way ALONG the curve.
+ *
+ * The progress stroke is drawn with `pathLength="1"` and a `stroke-dasharray`, which the
+ * browser measures by LENGTH. Placing the dots and the "now" marker at the Bézier parameter
+ * instead left the marker floating up to 8px past the end of the very line it caps, and the
+ * coral reaching a dot did not mean that prayer had passed. Everything is placed by length now,
+ * so the stroke and the things on it agree by construction.
+ *
+ * Interpolated from the table rather than solved: the arc length of a cubic has no closed form,
+ * and 240 chords is well under a pixel of error at any size this renders at.
+ */
+function pointAtFraction(f: number): { x: number; y: number } {
+  const target = Math.min(1, Math.max(0, f)) * ARC_TABLE.total;
+  const { cum, N } = ARC_TABLE;
+  let lo = 0;
+  let hi = N;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cum[mid] < target) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo === 0) return bezier(0);
+  const span = cum[lo] - cum[lo - 1];
+  const within = span > 0 ? (target - cum[lo - 1]) / span : 0;
+  return bezier((lo - 1 + within) / N);
+}
+
 function Arc({ slots, day, zone, now, isToday }: { slots: Slot[]; day: Day; zone: string; now: number; isToday: boolean }): JSX.Element {
-  const W = 320;
-  const H = 96;
-  const P0 = { x: 4, y: H };
-  const P1 = { x: W / 2, y: -34 };
-  const P2 = { x: W - 4, y: H };
-  const at = (t: number) => ({
-    x: (1 - t) ** 2 * P0.x + 2 * (1 - t) * t * P1.x + t ** 2 * P2.x,
-    y: (1 - t) ** 2 * P0.y + 2 * (1 - t) * t * P1.y + t ** 2 * P2.y,
-  });
-  const d = `M ${P0.x} ${P0.y} Q ${P1.x} ${P1.y} ${P2.x} ${P2.y}`;
+  const at = pointAtFraction;
+  const d = ARC_D;
 
   const placed = slots.map((s) => slotTime(s)).filter((t): t is string => !!t).map((t) => zonedTimeToEpoch(day.date, t, zone));
   const first = placed[0] ?? 0;
@@ -292,7 +400,9 @@ function Arc({ slots, day, zone, now, isToday }: { slots: Slot[]; day: Day; zone
   const progress = isToday ? frac(now) : 0;
 
   return (
-    <svg className="arc" viewBox={`0 -40 ${W} ${H + 48}`} role="img" aria-label="The day’s prayers">
+    // Padded by the "now" marker's radius plus its stroke, and by nothing else — every unit
+    // above that is a gap between the countdown and the arc that nobody asked for.
+    <svg className="arc" viewBox={`0 -8 ${W} ${H + 16}`} role="img" aria-label="The day’s prayers">
       <path d={d} className="arc__track" />
       {progress > 0 && <path d={d} className="arc__done" pathLength={1} strokeDasharray={`${progress} 1`} />}
       {placed.map((t, i) => {
