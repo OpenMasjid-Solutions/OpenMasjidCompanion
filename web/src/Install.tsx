@@ -202,22 +202,33 @@ function CopyLink(): JSX.Element {
 }
 
 /**
- * A new build is cached and waiting.
+ * A new build is cached and waiting — a banner across the top (Hasan, 2026-08-29).
  *
  * It is never applied on our own initiative. Swapping the service worker reloads the page, and
  * doing that to someone mid-read — on a page whose whole job is to be glanceable — is worse
  * than being one version behind for another minute.
+ *
+ * **Fixed rather than in the flow.** This appears while somebody is already reading: inserting
+ * it into the top of the document would shove the whole page down under their thumb, which on a
+ * page of times is how you tap the wrong day. Fixed, it costs no layout and stays visible when
+ * they scroll.
+ *
+ * It is dismissible, and dismissing it is not a refusal of the update — the new version is
+ * already downloaded and takes over on the next visit regardless. The button only offers to
+ * have it NOW.
  */
-export function UpdateStrip({ onApply }: { onApply: () => void }): JSX.Element {
+export function UpdateBanner({ onApply }: { onApply: () => void }): JSX.Element | null {
+  const [hidden, setHidden] = useState(false);
+  if (hidden) return null;
   return (
-    <aside className="strip" role="status">
-      <div className="strip__body">
-        <div className="strip__title">A new version is ready</div>
-        <p className="strip__text">Refresh to use it. Your times are unaffected either way.</p>
-      </div>
-      <button className="btn btn--primary strip__go" onClick={onApply}>
-        <RefreshCw size={15} aria-hidden="true" />
+    <aside className="update no-print" role="status">
+      <span className="update__text">A new version is ready</span>
+      <button className="btn btn--primary update__go" onClick={onApply}>
+        <RefreshCw size={14} aria-hidden="true" />
         Refresh
+      </button>
+      <button className="icon-btn update__close" onClick={() => setHidden(true)} aria-label="Later">
+        <X size={16} aria-hidden="true" />
       </button>
     </aside>
   );

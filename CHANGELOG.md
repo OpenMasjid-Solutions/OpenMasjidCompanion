@@ -14,6 +14,11 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Tabs along the bottom**, the way an app on a phone works: **Salah** and **Donate**, with
+  Qibla to come. The appeals have moved off the end of the prayer times onto their own tab. If
+  your masjid has no appeals running there is no Donate tab and no bar at all &mdash; nothing to
+  tap that leads nowhere.
+
 - **Your appeals, in the app.** Paste an appeal's share link from OpenMasjid Donations in the
   admin panel and it appears under the prayer times &mdash; picture, title and how far along it
   is &mdash; with "Donate" opening your own donation page to give. Companion never handles money;
@@ -33,6 +38,10 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Fixed
 
+- **The "a new version is ready" notice is now across the top of the screen** rather than at the
+  foot of the page, where on a phone it was below the fold and most people never saw it. It
+  doesn't shift the page while you're reading, and you can dismiss it &mdash; the new version
+  arrives on your next visit either way.
 - **When an appeal won't load, the app now says why.** It used to answer "we couldn't reach this
   appeal" to every possible cause &mdash; including on a link that opens perfectly in your own
   browser, which is the least helpful thing it could have said. It now tells you whether the

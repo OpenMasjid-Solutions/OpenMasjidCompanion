@@ -2,7 +2,7 @@
 // Copyright (C) 2026 OpenMasjid-Solutions
 
 /**
- * The masjid's appeals, under the prayer times.
+ * The masjid's appeals — their own tab.
  *
  * **Nothing here takes money** (CLAUDE.md §2). Each tile is a picture, a title, a progress bar
  * and a link that leaves for the masjid's own OpenMasjidDonations page. There is no amount
@@ -10,16 +10,17 @@
  * whole interaction, and pretending otherwise would put this app somewhere it has no business
  * being.
  *
- * WHY THIS SITS UNDER THE TIMES rather than on a page of its own: someone opened this to find
- * out when Maghrib is. They have their answer, they are already looking at the screen, and a
- * masjid's appeal in that moment is a reminder rather than an interruption. A separate tab
- * would be visited by nobody, and a modal would be an ambush.
+ * These were a section under the prayer times until 2026-08-29, on the reasoning that someone
+ * who has just read Maghrib is the right moment for a reminder. Hasan asked for tabs, which is
+ * the better shape: an appeal is a thing you go to, and a phone-shaped app puts the places you
+ * can go along the bottom rather than at the end of a scroll.
  *
- * The section is absent, not empty, when there are no appeals — which is most masjids most of
- * the year. A heading over nothing reads as something broken.
+ * **The tab does not exist when there are no appeals.** Most masjids, most of the year — and an
+ * empty "Donate" page is a worse answer than no tab at all. `useCampaigns` is therefore lifted
+ * to the shell, which needs the count to decide whether to draw the bar; this file renders it.
  */
 import { useEffect, useState } from 'react';
-import { ExternalLink, Repeat } from 'lucide-react';
+import { ExternalLink, HandCoins, Repeat } from 'lucide-react';
 import { api } from './api';
 
 export interface Tile {
@@ -56,34 +57,58 @@ function amount(value: number, currency: string, language: string): string {
   }
 }
 
-export function Appeals({ language }: { language: string }): JSX.Element | null {
+/**
+ * The masjid's appeals, fetched once for the whole app.
+ *
+ * Lifted out of the page because the TAB BAR needs the answer too — it does not draw a Donate
+ * tab for a masjid with no appeals — and because fetching per page would re-request on every
+ * switch between Salah and Donate.
+ *
+ * `null` means "not asked yet", which is different from `[]` ("asked, and there are none").
+ * The bar must not flash a tab in and out while the first request is in flight.
+ */
+export function useCampaigns(enabled: boolean): Tile[] | null {
   const [tiles, setTiles] = useState<Tile[] | null>(null);
-
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     void api.get<{ tiles: Tile[] }>('/api/public/campaigns').then((r) => {
-      // A failure here is silence, deliberately. The prayer times are the page; an error
-      // message about appeals underneath them would be this app's problem, not the reader's.
+      // A failure here is silence, deliberately. The prayer times are the app; an error about
+      // appeals would be this app's problem, not the reader's — and with no answer there is
+      // simply no Donate tab, which is the same as a masjid that has no appeals.
       if (alive && r.ok) setTiles(r.data.tiles);
     });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [enabled]);
+  return tiles;
+}
 
-  if (!tiles || tiles.length === 0) return null;
-
+export function Give({ tiles, language }: { tiles: Tile[] | null; language: string }): JSX.Element {
   return (
-    <section className="appeals" aria-labelledby="appeals-head">
-      <h2 className="appeals__head" id="appeals-head">
-        Appeals
-      </h2>
-      <div className="appeals__list">
-        {tiles.map((t) => (
-          <Appeal key={t.href} tile={t} language={language} />
-        ))}
-      </div>
-    </section>
+    <main className="give">
+      <h1 className="give__head">Appeals</h1>
+
+      {tiles === null ? (
+        <div className="centre-wrap">
+          <span className="spinner" />
+        </div>
+      ) : tiles.length === 0 ? (
+        // Reachable by a bookmark or a back button after the last appeal ended. A blank page
+        // would read as broken; this reads as "nothing on at the moment", which is the truth.
+        <div className="give__empty">
+          <HandCoins size={28} aria-hidden="true" />
+          <p>Your masjid doesn&rsquo;t have any appeals running just now.</p>
+        </div>
+      ) : (
+        <div className="appeals__list">
+          {tiles.map((t) => (
+            <Appeal key={t.href} tile={t} language={language} />
+          ))}
+        </div>
+      )}
+    </main>
   );
 }
 

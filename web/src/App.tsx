@@ -12,17 +12,19 @@
  * `location.pathname` (which behind the tunnel still carries "/companion") into the route
  * this code reasons about, and every link goes back through `withBase`.
  */
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { Github } from 'lucide-react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import { Clock3, Github, HandCoins } from 'lucide-react';
 import { api, type AppInfo } from './api';
 import { stripBase, withBase } from './base';
 import { useAppearanceSync, setThemeOverride } from './prefs';
 import { PERIOD_SURFACE } from './periodTheme';
 import type { PeriodKey } from './prayerTimes';
 import { useInstall, useServiceWorker } from './pwa';
-import { InstallPrompt, UpdateStrip } from './Install';
+import { InstallPrompt, UpdateBanner } from './Install';
 import { Scene } from './ui';
 import { MasjidHeader, Today, type Timetable } from './Today';
+import { Give, useCampaigns } from './Give';
+import { TabBar, type Tab } from './Tabs';
 
 /**
  * The admin panel is LAZY, and this line is the reason the musalli bundle stays small.
@@ -36,11 +38,12 @@ const Admin = lazy(() => import('./admin/Admin'));
 
 /** The routes this app answers. Anything else renders the not-found state rather than a
  *  blank page — a mistyped or stale link should say so. */
-export type Route = '/' | '/admin' | 'unknown';
+export type Route = '/' | '/give' | '/admin' | 'unknown';
 
 export function routeOf(pathname: string): Route {
   const p = stripBase(pathname).replace(/\/+$/, '') || '/';
   if (p === '/') return '/';
+  if (p === '/give') return '/give';
   if (p === '/admin' || p.startsWith('/admin/')) return '/admin';
   return 'unknown';
 }
@@ -61,6 +64,22 @@ export function routeOf(pathname: string): Route {
 export function dashboardLanding(route: Route, openedFromDashboard: boolean): string | null {
   if (!openedFromDashboard) return null;
   return route === '/' ? '/admin' : null;
+}
+
+/**
+ * The tabs, which are only the places there are to go.
+ *
+ * Salah always. Donate only once we know the masjid has appeals — `null` is "we have not asked
+ * yet", and drawing a tab on a maybe would make it flicker in a moment after the page settles.
+ * Qibla joins this list when it is built; the bar is deliberately data-driven so that is one
+ * entry rather than a layout change.
+ *
+ * Pure, so the rule can be tested without a browser.
+ */
+export function tabsFor(appeals: number | null): Tab[] {
+  const tabs: Tab[] = [{ route: '/', label: 'Salah', icon: Clock3 }];
+  if (appeals && appeals > 0) tabs.push({ route: '/give', label: 'Donate', icon: HandCoins });
+  return tabs;
 }
 
 /** Client-side navigation that keeps the base path on the URL bar. */
@@ -101,6 +120,11 @@ export function App(): JSX.Element {
   const secure = !!info?.remote.secure;
   const { updateReady, applyUpdate } = useServiceWorker(secure);
   const install = useInstall(secure);
+
+  // Fetched here rather than in the page, because the TAB BAR needs to know whether there is a
+  // Donate tab at all — and because doing it per page would re-request on every switch.
+  const appeals = useCampaigns(!isAdmin);
+  const tabs = useMemo(() => tabsFor(appeals && appeals.length), [appeals]);
 
   /**
    * The MUSALLI surface has its own fixed palette (coral on navy, from the reference design),
@@ -158,10 +182,15 @@ export function App(): JSX.Element {
     navigate(to);
   }, []);
 
+  const showTabs = !isAdmin && tabs.length > 1;
+
   return (
     <>
       <Scene sky={!isAdmin} />
-      <div className="shell">
+      {/* Above everything, so a version notice is the first thing seen rather than the last
+          thing scrolled to. Fixed, so it does not shove the page down under a reading thumb. */}
+      {!isAdmin && updateReady && <UpdateBanner onApply={applyUpdate} />}
+      <div className={showTabs ? 'shell shell--tabs' : 'shell'}>
         {!isAdmin && <MasjidHeader name={times?.masjid?.name || 'Prayer times'} />}
 
         {route === '/' &&
@@ -172,6 +201,8 @@ export function App(): JSX.Element {
               <span className="spinner" />
             </main>
           ))}
+
+        {route === '/give' && <Give tiles={appeals} language={times?.masjid?.language ?? 'en'} />}
 
         {isAdmin && (
           <Suspense
@@ -195,10 +226,10 @@ export function App(): JSX.Element {
             onDismiss={install.dismiss}
           />
         )}
-        {!isAdmin && updateReady && <UpdateStrip onApply={applyUpdate} />}
 
         {!isAdmin && <Foot />}
       </div>
+      {!isAdmin && <TabBar tabs={tabs} route={route} onGo={go} />}
     </>
   );
 }

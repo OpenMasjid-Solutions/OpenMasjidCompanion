@@ -534,7 +534,7 @@ h1, h2, h3, p { margin: 0; }
 
 /* ── The hero: which prayer is on, and how long there is ─────────────────── */
 
-.today { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 5.5rem; }
+.today { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 1.25rem; }
 
 .hero { padding-block: 0.5rem 0.25rem; }
 .hero__now {
@@ -780,21 +780,117 @@ h1, h2, h3, p { margin: 0; }
   .modal-back, .modal { animation: none; }
 }
 
-/* ── Update strip (musalli) ──────────────────────────────────────────────────
- * Still a strip, deliberately. Nobody needs to be stopped to be told a new version exists. */
-.strip {
-  display: flex; align-items: center; gap: 0.7rem;
-  width: min(30rem, 100%); margin: 1rem auto 0; padding: 0.8rem 0.9rem;
-  border-radius: 0.9rem;
+/* ── The update banner (musalli) ─────────────────────────────────────────────
+ *
+ * Across the TOP, and fixed. It appears while someone is already reading, so putting it in the
+ * document flow would push the page down under their thumb — on a page of times, that is how
+ * you tap the wrong day. Fixed costs no layout and stays visible as they scroll.
+ *
+ * Below the install dialog's z-index and above everything else: it is an offer, not a demand.
+ */
+.update {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  padding-block-start: calc(0.55rem + env(safe-area-inset-top));
   color: var(--ink-scene);
-  background: color-mix(in srgb, var(--scene-base) 62%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+  /* OPAQUE, unlike the frosted tab bar. This one carries a message that has to be read,
+     and at 92% the masjid name behind it showed straight through the words. A tab bar can be
+     translucent because its labels are short and always in the same place; a sentence cannot. */
+  background: var(--scene-base);
+  border-block-end: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  animation: updateDrop 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
-.strip__body { flex: 1; min-width: 0; }
-.strip__title { font-weight: 700; font-size: 0.95rem; }
-.strip__text { font-size: 0.85rem; line-height: 1.5; color: var(--ink-scene-muted); margin-block-start: 0.15rem; }
-.strip__go { flex: none; }
-.strip__close { flex: none; }
+.update__text { flex: 1; min-width: 0; font-size: 0.9rem; font-weight: 600; }
+.update__go, .update__close { flex: none; }
+.update__go { padding-block: 0.35rem; }
+
+@keyframes updateDrop {
+  from { opacity: 0; transform: translate3d(0, -100%, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update { animation: none; }
+}
+
+/* ── The bottom tab bar (musalli) ────────────────────────────────────────────
+ *
+ * Where a thumb already is. Fixed, so it does not scroll away from someone half way down a
+ * month — `.shell--tabs` pays for the space it covers, rather than each page remembering to.
+ *
+ * Only drawn when there are at least two places to go (see Tabs.tsx): a masjid with no appeals
+ * would otherwise get a bar with one lit tab on it, which is a label, not navigation.
+ */
+.tabbar {
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline: 0;
+  z-index: 25;
+  display: flex;
+  justify-content: space-around;
+  padding-block: 0.4rem;
+  padding-block-end: calc(0.4rem + env(safe-area-inset-bottom));
+  padding-inline: max(env(safe-area-inset-left), 0.5rem) max(env(safe-area-inset-right), 0.5rem);
+  background: color-mix(in srgb, var(--scene-base) 88%, transparent);
+  backdrop-filter: blur(14px);
+  border-block-start: 1px solid color-mix(in srgb, var(--ink-scene) 14%, transparent);
+}
+
+.tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.18rem;
+  padding-block: 0.3rem;
+  border-radius: 0.7rem;
+  text-decoration: none;
+  /* Muted rather than faint: this is body-sized text on the sky, and --ink-scene-faint cannot
+     clear 4.5:1 against any of the six skies. */
+  color: var(--ink-scene-muted);
+  transition: color 140ms ease;
+}
+.tab--on { color: var(--coral); }
+.tab:active { transform: scale(0.96); }
+.tab__label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; }
+
+/* The bar covers the foot of the page, so the shell gives that height back. One rule, rather
+   than every page inside it remembering to leave room. */
+.shell--tabs { padding-block-end: calc(4.4rem + env(safe-area-inset-bottom)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tab:active { transform: none; }
+}
+
+/* ── The Donate page ─────────────────────────────────────────────────────────── */
+.give { width: min(30rem, 100%); margin-inline: auto; padding: 0.5rem 1.1rem 1.5rem; }
+
+.give__head {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  margin-block-end: 0.9rem;
+}
+
+/* Reachable by a bookmark after the last appeal ended. Says so, rather than showing nothing. */
+.give__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--ink-scene-muted);
+  text-shadow: var(--text-shadow-scene);
+}
 
 /* ── The home-screen preview (admin) ────────────────────────────────────────── */
 /* Shows the icon and the label together, at roughly the size a launcher draws them, because
@@ -1015,7 +1111,7 @@ h1, h2, h3, p { margin: 0; }
  * Thirty days of near-identical numbers is the worst possible way to find the one day the
  * jamā'ah times change, which is the day somebody turns up at the wrong time. So that is the
  * only thing this view marks. */
-.month { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 5.5rem; }
+.month { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 1.25rem; }
 
 .month__bar { display: flex; align-items: center; gap: 0.35rem; margin-block: 0.5rem 1rem; }
 .month__title {
@@ -1103,19 +1199,6 @@ h1, h2, h3, p { margin: 0; }
  *
  * Nothing here takes money. The tile is a picture, a title, a bar and a link out.
  */
-.appeals { width: min(30rem, 100%); margin: 2.25rem auto 0; padding-inline: 1.1rem; }
-
-.appeals__head {
-  font-family: var(--font-display);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-scene-muted);
-  text-shadow: var(--text-shadow-scene);
-  margin-block-end: 0.6rem;
-}
-
 .appeals__list { display: flex; flex-direction: column; gap: 0.75rem; }
 
 .appeal {

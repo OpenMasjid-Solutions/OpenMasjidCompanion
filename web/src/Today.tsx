@@ -33,7 +33,6 @@ import {
   todayInZone,
   zonedTimeToEpoch,
 } from './prayerTimes';
-import { Appeals } from './Give';
 import { Month } from './Month';
 import { useSwipe } from './swipe';
 import { MasjidLogo, Note } from './ui';
@@ -214,11 +213,6 @@ export function Today({ data, onPeriod }: { data: Timetable; onPeriod: (period: 
       </div>
 
       {data.stale && <StaleNote at={data.at} />}
-
-      {/* Under the times, never over them. Someone has their answer by this point and is
-          already looking at the screen; the section removes itself entirely when the masjid
-          has no appeals running, which is most masjids most of the year. */}
-      <Appeals language={masjid.language} />
     </main>
   );
 }

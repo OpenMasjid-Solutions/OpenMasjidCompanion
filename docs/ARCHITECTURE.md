@@ -512,3 +512,41 @@ wrong the other way tells someone already in Safari to go and open Safari. Pinne
 
 The dialog's icon is centred with `display: block; margin-inline: auto` rather than the card's
 `text-align: center`, which an `<img>` only obeys while nothing makes images blocks.
+
+## Slice 8c — tabs (0.1.0-dev.10)
+
+A phone-shaped app gets phone-shaped navigation. **Salah** and **Donate** along the bottom,
+where a thumb already is; **Qibla** joins them when it is built, which is one entry in
+`tabsFor` rather than a layout change.
+
+**The bar is drawn only when there are at least two places to go.** A masjid with no appeals —
+most masjids, most of the year — gets no bar rather than a single lit tab labelled "Salah" over
+the only page there is. That is a label occupying the most valuable strip of a phone screen, not
+navigation. So `useCampaigns` is lifted out of the page and into the shell: the bar needs the
+count to decide whether to exist, and fetching per page would re-request on every switch.
+
+`null` (not asked yet) and `[]` (asked, none) are kept apart, because drawing a tab on a maybe
+would make the bar appear a moment after the page settled — moving the thing under someone's
+thumb.
+
+The tabs are real `<a href>`s so a long-press offers "open in new tab" like any link; the
+handler only takes the plain left-click. `aria-current="page"`, not `aria-selected`: these are
+links to pages, not tabs in a tabpanel widget.
+
+`/give` is a route, so it is bookmarkable — and bookmarkable means reachable after the last
+appeal ended, which is why the page has a real empty state rather than rendering nothing.
+`.shell--tabs` pays for the height the fixed bar covers, in one rule, rather than every page
+inside it remembering to leave room.
+
+### The update notice moved to the top
+
+Hasan's ask, and it is the right way round: at the foot of a phone page it was below the fold.
+
+**Fixed, not in the flow.** It appears while somebody is already reading, so inserting it at the
+top of the document would shove the page down under their thumb — on a page of times, that is
+how you tap the wrong day.
+
+**Opaque, unlike the frosted tab bar.** At 92% the masjid name behind it read straight through
+the words. A tab bar can be translucent because its labels are short and always in the same
+place; a sentence cannot. Dismissible, and dismissing is not a refusal — the new build is
+already downloaded and takes over on the next visit either way. The button only offers it now.

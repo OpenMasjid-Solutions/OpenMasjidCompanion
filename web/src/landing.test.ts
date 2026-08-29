@@ -42,3 +42,37 @@ test('the decision is made about the ROUTE, so the tunnel prefix is already gone
   assert.equal(dashboardLanding(routeOf('/'), true), '/admin');
   assert.equal(dashboardLanding(routeOf('/admin'), true), null);
 });
+
+// ── The tab bar ──────────────────────────────────────────────────────────────
+
+test('the Donate tab exists only when the masjid has appeals', async () => {
+  const { tabsFor } = await import('./App');
+  // null is "we have not asked yet" and must not draw a tab on a maybe — the bar would appear a
+  // moment after the page settled, moving the thing under someone's thumb.
+  assert.deepEqual(tabsFor(null).map((t) => t.route), ['/'], 'before the answer arrives, one place to go');
+  assert.deepEqual(tabsFor(0).map((t) => t.route), ['/'], 'no appeals, no tab');
+  assert.deepEqual(tabsFor(2).map((t) => t.route), ['/', '/give']);
+});
+
+test('ONE TAB IS NOT A TAB BAR', async () => {
+  // Tabs.tsx draws nothing below two. A masjid with no appeals — most masjids, most of the year
+  // — would otherwise get a bar with a single lit tab on it, which is a label taking up the most
+  // valuable strip of a phone screen.
+  const { tabsFor } = await import('./App');
+  assert.ok(tabsFor(0).length < 2, 'the bar has nothing to draw');
+  assert.ok(tabsFor(1).length >= 2, 'one appeal is enough to be worth a tab');
+});
+
+test('the appeals page is a route of its own, and unknown paths still are not', async () => {
+  assert.equal(routeOf('/give'), '/give');
+  assert.equal(routeOf('/give/'), '/give');
+  assert.equal(routeOf('/give/anything'), 'unknown');
+  assert.equal(routeOf('/donate'), 'unknown');
+});
+
+test('a musalli opening the Donate tab is never landed on the admin panel', async () => {
+  // dashboardLanding only ever redirects from the ROOT. Someone who followed a link to /give
+  // said where they wanted to go.
+  assert.equal(dashboardLanding('/give', true), null);
+  assert.equal(dashboardLanding('/', true), '/admin');
+});

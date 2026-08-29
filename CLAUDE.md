@@ -197,6 +197,10 @@ before and during the build; mirror them.**
 
 ### ✅ In scope (v1.0)
 
+- **Bottom tab bar:** Salah, Donate (only when the masjid has appeals), and Qibla when it
+  lands. Drawn only when there are two or more places to go — one lit tab over the only page
+  there is is a label, not navigation. `/give` is a real route, so it is bookmarkable, so it
+  needs a real empty state.
 - **Musalli home (public, no login):** today's Adhan + Iqamah times for the five prayers,
   Jumuʿah, the Hijri and Gregorian dates, a live next-prayer countdown, and the masjid's name
   and logo. Big, calm, one-hand-usable, tabular numerals.
