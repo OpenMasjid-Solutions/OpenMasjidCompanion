@@ -209,7 +209,11 @@ before and during the build; mirror them.**
   opening the app with no signal still shows times — with an honest "last updated" marker.
 - **Web-push prayer notifications (v1, not later):** per-device opt-in; per-prayer on/off;
   notify at Adhan and/or N minutes before Iqamah. Self-hosted VAPID — no third-party push
-  relay. §9.
+  relay. §9. **Plus admin-authored announcements** (added 2026-08-29): one notice, typed and
+  confirmed, to every phone that has not opted out of notices. A separate musalli-facing switch
+  from the prayer reminders — someone who wants silence at prayer times may still want to hear
+  about a funeral — and the only thing in this app that reaches a musalli unbidden, so it is
+  admin-only, needs an explicit `confirm`, and is cooldown-guarded against a double-tap.
 - **Donation appeals:** admin-curated tiles (title, cover image, goal/raised progress) fetched
   from the **Donations app's public campaign API**, each linking out to the Donations donor page
   to actually give. §8.
@@ -248,8 +252,10 @@ before and during the build; mirror them.**
 
 ### 🔭 Later (design for, don't build now)
 
-- **Announcements / Iqamah-change notices** pushed to musallis — an additive method on the
-  Display capability (`v` bump), plus admin-authored notices.
+- **Iqamah-change notices** pushed to musallis automatically — an additive method on the
+  Display capability (`v` bump). *(Admin-authored announcements were here until 2026-08-29 and
+  are now in v1: they need nothing from Display, so the two halves were separable. The admin
+  types a notice and confirms it; it reaches every phone that has not turned notices off.)*
 - Nearby-masjid handoff, events, multiple timetables (e.g. men's/women's halls). *(Qibla was
   here until 2026-08-24 and is now in v1, above.)*
 - Admin WhatsApp `commands:` (e.g. subscriber counts).

@@ -25,7 +25,7 @@
  */
 import { makeLog } from './logger';
 import { raiseAlert } from './fabric';
-import { NAMES, PRAYERS, type Notification, type Prayer, type Prefs, type Subscriptions, type Vapid, safeEndpoint, sendOne, vapidSubject } from './push';
+import { ANNOUNCE_COOLDOWN_MS, ANNOUNCE_MAX_CHARS, NAMES, PRAYERS, type Notification, type Prayer, type Prefs, type Subscriptions, type Vapid, safeEndpoint, sendOne, vapidSubject } from './push';
 import { formatTimeIn, isHhmm, zonedTimeToEpoch } from './zoned';
 import type { TimetableFeed } from './timetable';
 
@@ -47,9 +47,45 @@ export const STALE_LIMIT_MS = 48 * 60 * 60_000;
  *  passed and the reminder is misinformation. */
 export const GRACE_MS = 5 * 60_000;
 
-/** Spread a burst over this long. Long enough not to look like one client to a push service,
- *  short enough that nobody notices. */
-export const JITTER_MS = 20_000;
+/**
+ * Spread a burst, so a masjid's box does not look like one client hammering a push service.
+ *
+ * **Small, because it is applied per send and the sends run concurrently.** The first version
+ * of this was 20 seconds and the loop was sequential, which is a bug that only appears once a
+ * masjid has real subscribers: fifty phones × up to 20 s each is a tick lasting seventeen
+ * minutes, far beyond the five-minute grace window, so reminders would quietly stop arriving
+ * for exactly the masjids where they were working.
+ */
+export const JITTER_MS = 800;
+
+/**
+ * How many pushes are in flight at once.
+ *
+ * The real spreading mechanism. Ten concurrent requests is nothing to a push service and keeps
+ * a tick's wall-clock time proportional to `subscribers / 10` rather than to `subscribers` —
+ * which is what makes the 30-second tick and the five-minute grace window mean anything.
+ */
+export const CONCURRENCY = 10;
+
+/**
+ * Run `work` over `items` with at most `concurrency` in flight.
+ *
+ * A fixed pool of workers pulling from a shared cursor, rather than chunking into batches: a
+ * batch runs at the speed of its slowest member, and one phone on a slow network would hold up
+ * nine others for no reason.
+ */
+export async function fanOut<T>(items: T[], concurrency: number, work: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    for (;;) {
+      const i = next;
+      next += 1;
+      if (i >= items.length) return;
+      await work(items[i]);
+    }
+  });
+  await Promise.all(workers);
+}
 
 /** Bulk rejection across the fleet, not one dead phone — the difference between "somebody
  *  wiped their handset" and "nothing is being delivered to anyone". */
@@ -135,6 +171,39 @@ export function notificationFor(due: Due, feed: TimetableFeed, lead: number | nu
   };
 }
 
+/**
+ * An announcement, as it will appear on a lock screen.
+ *
+ * The masjid's name is the TITLE and the notice is the body, matching the shape of a prayer
+ * reminder — the first thing someone needs to know about a notification on their lock screen is
+ * who it is from.
+ *
+ * The tag carries the send time, so two different notices both appear. A prayer reminder's tag
+ * collapses a re-delivery of the SAME reminder, which is right; collapsing two unrelated
+ * announcements into one would silently swallow the earlier one.
+ */
+export function announcementFor(text: string, masjidName: string, publicUrl: string, at: number): Notification {
+  return {
+    title: masjidName || 'Your masjid',
+    body: text,
+    tag: `announce:${at}`,
+    url: publicUrl || '/',
+  };
+}
+
+/** Why an announcement was refused, or '' when it was sent. */
+export type AnnounceRefusal = '' | 'empty' | 'too-long' | 'cooldown' | 'nobody';
+
+export interface AnnounceResult {
+  refused: AnnounceRefusal;
+  /** How many phones it actually reached. */
+  sent: number;
+  failed: number;
+  pruned: number;
+  /** How many were eligible — subscribers who have not turned announcements off. */
+  audience: number;
+}
+
 export interface TimetableSnapshot {
   feed: TimetableFeed | null;
   /** ms epoch of the last successful read; 0 = never. */
@@ -157,6 +226,9 @@ export class PushScheduler {
   lastRunAt = 0;
   lastSentAt = 0;
   lastSkip: SkipReason = '';
+  /** ms epoch of the last announcement, for the cooldown. In memory on purpose: a restart is
+   *  not a double-send, and the guard exists for the double-tap that happens in one session. */
+  lastAnnouncedAt = 0;
   private alerted = false;
 
   constructor(
@@ -225,24 +297,26 @@ export class PushScheduler {
     // Rule 2: never reach further back than the grace window, however long we were away.
     const floor = now - GRACE_MS;
 
-    let attempted = 0;
+let attempted = 0;
     let failed = 0;
 
+    // Worked out first, so the fan-out below is pure sending. A subscription with nothing due
+    // still has its window advanced, or it re-scans the same span for ever.
+    const work: { row: (typeof rows)[number]; due: Due[] }[] = [];
     for (const row of rows) {
-      const after = Math.max(row.sentThrough, floor);
-      const due = dueFor(feed, row.prefs, after, now);
-      if (due.length === 0) {
-        // Advance anyway, so a subscription with nothing due does not re-scan the same
-        // window for ever.
-        this.subs.markSent(row.id, now, false);
-        continue;
-      }
+      const due = dueFor(feed, row.prefs, Math.max(row.sentThrough, floor), now);
+      if (due.length === 0) this.subs.markSent(row.id, now, false);
+      else work.push({ row, due });
+    }
+
+    await fanOut(work, CONCURRENCY, async ({ row, due }) => {
+      // Rule 4, once per subscription rather than once per notification: the point is to
+      // decorrelate phones from each other, not a phone from itself.
+      await this.sleep(Math.floor(Math.random() * JITTER_MS));
 
       let ok = false;
       let dead = false;
       for (const d of due) {
-        // Rule 4. Deliberately before the send, so the first one is spread too.
-        await this.sleep(Math.floor(Math.random() * JITTER_MS));
         attempted += 1;
         const outcome = await this.send(this.vapid, row, notificationFor(d, feed, row.prefs.beforeIqamah, url), subject);
         if (outcome === 'sent') {
@@ -263,13 +337,64 @@ export class PushScheduler {
         log.debug(`pruning dead subscription ${safeEndpoint(row.endpoint)}`);
         this.subs.remove(row.endpoint);
         result.pruned += 1;
-        continue;
+        return;
       }
       this.subs.markSent(row.id, now, ok);
       if (ok) this.lastSentAt = now;
-    }
+    });
 
     await this.maybeAlert(attempted, failed);
+    return result;
+  }
+
+  /**
+   * Send one notice to everybody who wants them.
+   *
+   * **Not the prayer scheduler's window arithmetic.** An announcement is a thing the admin did,
+   * once, now — there is nothing to compute, nothing to be idempotent about, and `sentThrough`
+   * is deliberately NOT advanced: a broadcast must not silently swallow a prayer reminder that
+   * happened to be due in the same second.
+   *
+   * Refuses rather than half-sends: an empty notice, one over the length a lock screen shows,
+   * or a second one inside the cooldown. That last is an accident guard, not a policy about how
+   * much a masjid may say to its own congregation — it stops a double-tap or a retried request
+   * from sending the same notice to everyone twice, which is not undoable.
+   */
+  async announce(text: string, masjidName: string, now = Date.now()): Promise<AnnounceResult> {
+    const body = text.replace(/\s+/g, ' ').trim();
+    const none: AnnounceResult = { refused: '', sent: 0, failed: 0, pruned: 0, audience: 0 };
+    if (!body) return { ...none, refused: 'empty' };
+    if (body.length > ANNOUNCE_MAX_CHARS) return { ...none, refused: 'too-long' };
+    if (now - this.lastAnnouncedAt < ANNOUNCE_COOLDOWN_MS) return { ...none, refused: 'cooldown' };
+
+    const rows = this.subs.all().filter((r) => r.prefs.announcements);
+    if (rows.length === 0) return { ...none, refused: 'nobody' };
+
+    // Claimed BEFORE the first send. Two requests arriving together must not both get past the
+    // cooldown while the first is still working its way down a list of five hundred phones.
+    this.lastAnnouncedAt = now;
+
+    const url = this.publicUrl() || '/';
+    const subject = vapidSubject(this.publicUrl());
+    const payload = announcementFor(body, masjidName, url, now);
+    const result: AnnounceResult = { refused: '', sent: 0, failed: 0, pruned: 0, audience: rows.length };
+
+    // Concurrent, for the same reason as the tick — and here it is also what the admin is
+    // waiting on: a sequential broadcast to a congregation's worth of phones would leave them
+    // watching a spinner for minutes.
+    await fanOut(rows, CONCURRENCY, async (row) => {
+      await this.sleep(Math.floor(Math.random() * JITTER_MS));
+      const outcome = await this.send(this.vapid, row, payload, subject);
+      if (outcome === 'sent') result.sent += 1;
+      else if (outcome === 'gone') {
+        this.subs.remove(row.endpoint);
+        result.pruned += 1;
+      } else result.failed += 1;
+    });
+
+    // The TEXT is not logged. It is the masjid's message to its congregation, and a log is a
+    // file somebody else may read; the counts are what an operator actually needs.
+    log.info(`announcement sent to ${result.sent} of ${result.audience} phones (${result.pruned} pruned, ${result.failed} failed)`);
     return result;
   }
 

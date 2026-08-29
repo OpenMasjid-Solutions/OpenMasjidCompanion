@@ -14,18 +14,30 @@
  * yet" unless something says otherwise.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { BellRing, RefreshCw, Send } from 'lucide-react';
+import { BellRing, Megaphone, RefreshCw, Send, TriangleAlert } from 'lucide-react';
 import { api } from '../api';
 import { Note } from '../ui';
 
 export interface PushStatus {
   subscribers: number;
+  /** Those who have not turned announcements off — the real size of a broadcast. */
+  audience: number;
+  lastAnnouncedAt: number;
+  maxChars: number;
   lastRunAt: number;
   lastSentAt: number;
   /** '' when it is working; otherwise why nothing is going out. */
   paused: '' | 'no-timetable' | 'stale' | 'no-subscribers';
   timetableAt: number;
   enabled: boolean;
+}
+
+interface AnnounceResult {
+  refused: '' | 'empty' | 'too-long' | 'cooldown' | 'nobody';
+  sent: number;
+  failed: number;
+  pruned: number;
+  audience: number;
 }
 
 const WHEN = (at: number) => (at ? new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'never');
@@ -127,8 +139,8 @@ export function Notifications(): JSX.Element {
                   hold about their congregation, and reading it here is how they find out. */}
               <Note>
                 We can tell you how many, and nothing else. This app stores no name, phone number or address for
-                anybody who signs up &mdash; only their phone&rsquo;s anonymous notification address and which prayers
-                they picked.
+                anybody who signs up &mdash; only their phone&rsquo;s anonymous notification address and what they chose
+                to be told about.
               </Note>
 
               {trouble && (
@@ -164,8 +176,128 @@ export function Notifications(): JSX.Element {
               Check again
             </button>
           </div>
+
+          {status && <Announce status={status} onSent={load} />}
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * One notice to everybody.
+ *
+ * **This is the only thing in this app that reaches a musalli unbidden, and it cannot be
+ * recalled.** So it is built to be hard to do by accident and easy to do deliberately: the
+ * Send button does not send. It asks — naming the number of phones and quoting the message
+ * back — and a second, differently-worded press is what actually broadcasts.
+ *
+ * Typing again after that cancels the confirmation, so an edit can never be sent under a
+ * confirmation the admin gave to different words.
+ */
+function Announce({ status, onSent }: { status: PushStatus; onSent: () => Promise<void> }): JSX.Element {
+  const [text, setText] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [outcome, setOutcome] = useState('');
+
+  const body = text.replace(/\s+/g, ' ').trim();
+  const over = body.length > status.maxChars;
+  const ready = body.length > 0 && !over;
+
+  const send = async () => {
+    setSending(true);
+    setOutcome('');
+    const r = await api.post<AnnounceResult>('/api/admin/push/announce', { text: body, confirm: true });
+    if (!r.ok) setOutcome(r.error);
+    else {
+      const d = r.data;
+      setOutcome(
+        d.refused === 'nobody'
+          ? 'Nobody has notifications turned on yet, so it wasn’t sent to anyone.'
+          : d.refused === 'cooldown'
+            ? 'That was sent a moment ago. Wait a minute before sending another — it stops the same notice going out twice.'
+            : d.refused === 'too-long'
+              ? 'That message is too long to send.'
+              : d.refused === 'empty'
+                ? 'There was no message to send.'
+                : `Sent to ${d.sent} of ${d.audience} phone${d.audience === 1 ? '' : 's'}.${d.failed ? ` ${d.failed} didn’t go through.` : ''}`,
+      );
+      if (!d.refused) setText('');
+    }
+    setConfirming(false);
+    setSending(false);
+    await onSent();
+  };
+
+  return (
+    <div className="announce">
+      <div className="row-between">
+        <h3 className="announce__title">
+          <Megaphone size={16} aria-hidden="true" />
+          Send an announcement
+        </h3>
+      </div>
+      <p className="hint">
+        A one-off notice to every phone signed up &mdash; a funeral, a closure, a changed jamāʿah. It arrives like a
+        prayer reminder, with your masjid&rsquo;s name on it. <b>It can&rsquo;t be taken back once sent.</b>
+      </p>
+
+      <div className="field" style={{ marginBlockStart: '0.6rem' }}>
+        <label className="label" htmlFor="announce-text">
+          Message
+        </label>
+        <textarea
+          id="announce-text"
+          className="input textarea announce__text"
+          rows={2}
+          value={text}
+          maxLength={status.maxChars * 2}
+          placeholder="Jumuʿah is at 1:30 this week, not 1:00."
+          onChange={(e) => {
+            setText(e.target.value);
+            // A confirmation is for the words that were on screen when it was given.
+            setConfirming(false);
+            setOutcome('');
+          }}
+        />
+        <p className={over ? 'form-error' : 'hint'}>
+          {body.length} of {status.maxChars} characters{over ? ' — too long for a phone to show' : ''}
+        </p>
+      </div>
+
+      {outcome && <p className="muted card-body">{outcome}</p>}
+
+      {!confirming ? (
+        <div className="card-actions">
+          <button className="btn" onClick={() => setConfirming(true)} disabled={!ready || sending}>
+            <Megaphone size={15} aria-hidden="true" />
+            Send to everyone&hellip;
+          </button>
+        </div>
+      ) : (
+        // The gate. It quotes the message back, because the thing being confirmed is the WORDS,
+        // and names the count, because "everyone" is not a number anybody can picture.
+        <div className="announce__confirm">
+          <p className="announce__ask">
+            <TriangleAlert size={15} aria-hidden="true" />
+            <span>
+              Send this to <b>{status.audience}</b> phone{status.audience === 1 ? '' : 's'} now? It can&rsquo;t be
+              undone.
+            </span>
+          </p>
+          <blockquote className="announce__quote">{body}</blockquote>
+          <div className="card-actions">
+            <button className="btn btn--primary" onClick={() => void send()} disabled={sending}>
+              {sending ? <span className="spinner" /> : <Megaphone size={15} aria-hidden="true" />}
+              Yes, send it now
+            </button>
+            <button className="btn" onClick={() => setConfirming(false)} disabled={sending}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

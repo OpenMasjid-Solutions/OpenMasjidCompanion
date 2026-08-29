@@ -33,7 +33,7 @@ import { Icons, type IconKind, THEME_HEX } from './icons';
 import { buildManifest, installName } from './webmanifest';
 import { parseChangelog, readChangelog } from './changelog';
 import { Campaigns, MAX_LINKS, parseShareLink } from './campaigns';
-import { SubscribeSchema, Subscriptions, type Vapid, sendOne, vapidKeys, vapidSubject } from './push';
+import { ANNOUNCE_MAX_CHARS, SubscribeSchema, Subscriptions, type Vapid, sendOne, vapidKeys, vapidSubject } from './push';
 import { PushScheduler } from './pushScheduler';
 
 const log = makeLog('server');
@@ -641,6 +641,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     return {
       data: {
         subscribers: subs.count(),
+        /** How many would actually receive an announcement — the ones who have not turned
+         *  notices off. Shown on the confirm step, because "send to 40 phones" has to be the
+         *  real number and not the subscriber count. */
+        audience: subs.all().filter((r) => r.prefs.announcements).length,
+        lastAnnouncedAt: scheduler.lastAnnouncedAt,
+        maxChars: ANNOUNCE_MAX_CHARS,
         lastRunAt: scheduler.lastRunAt,
         lastSentAt: scheduler.lastSentAt,
         /** '' when it is working; otherwise why nothing is being sent, in a word the panel
@@ -677,6 +683,32 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       vapidSubject(getSite().publicUrl),
     );
     return { data: { result: outcome } };
+  });
+
+  /**
+   * Send one announcement to every phone that wants them.
+   *
+   * **This is the only thing in this app that reaches a musalli unbidden**, and it cannot be
+   * recalled once it has gone. So: admin only, refused rather than half-sent, and the caller
+   * has to say `confirm: true` — the panel asks first and this is the server's half of that,
+   * so a mis-fired request or a curl typed from memory cannot broadcast on its own.
+   *
+   * The scheduler's own guards do the rest: a cooldown against a double-tap, and a dead
+   * endpoint pruned exactly as it would be by a prayer reminder.
+   */
+  const AnnounceBody = z.object({
+    text: z.string().min(1).max(ANNOUNCE_MAX_CHARS * 2),
+    /** Deliberately not defaulted. An absent flag is a refusal. */
+    confirm: z.literal(true),
+  });
+  app.post('/api/admin/push/announce', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = AnnounceBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'That announcement could not be sent. Please write a message and confirm it.' });
+
+    // A named refusal comes back with a 200, not an HTTP error: "nobody has notifications on
+    // yet" is an ANSWER the panel renders as a sentence, where a 4xx would make it show a
+    // generic failure instead.
+    return { data: await scheduler.announce(parsed.data.text, timetable.peek().feed?.masjidName ?? '') };
   });
 
   /** The picker's list. Live from Display every time — an admin opening this screen is about to

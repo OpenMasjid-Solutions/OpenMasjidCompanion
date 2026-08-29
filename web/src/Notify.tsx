@@ -42,10 +42,13 @@ export interface Prefs {
   adhan: boolean;
   /** Minutes before the jamā'ah; null = not wanted. */
   beforeIqamah: number | null;
+  /** Occasional notices from the masjid. A separate choice from the prayer reminders: someone
+   *  who wants silence at prayer times may still want to hear about a funeral. */
+  announcements: boolean;
 }
 
 /** Everything on, fifteen minutes before the jamā'ah — enough to leave the house. */
-export const DEFAULTS: Prefs = { prayers: [...PRAYERS], adhan: false, beforeIqamah: 15 };
+export const DEFAULTS: Prefs = { prayers: [...PRAYERS], adhan: false, beforeIqamah: 15, announcements: true };
 
 /** The lead times offered. A field would invite "0" and "60" and a lot of thought about a
  *  choice that has three sensible answers. */
@@ -238,8 +241,8 @@ export function Notify({ secure, onClose }: { secure: boolean; onClose: () => vo
         ) : !on ? (
           <>
             <p className="modal__text">
-              A quiet reminder on this phone before each jamāʿah. Only this device, and you can turn it off whenever you
-              like &mdash; the masjid never sees who signed up.
+              A quiet reminder on this phone before each jamāʿah, and the occasional notice from the masjid. Only this
+              device, and you can turn any of it off whenever you like &mdash; the masjid never sees who signed up.
             </p>
             {error && <p className="form-error">{error}</p>}
             <div className="modal__actions">
@@ -299,8 +302,28 @@ export function Notify({ secure, onClose }: { secure: boolean; onClose: () => vo
                 })}
               </div>
               {!prefs.adhan && prefs.beforeIqamah === null && (
-                <p className="notify__hint">Nothing is selected, so nothing will be sent.</p>
+                <p className="notify__hint">Nothing is selected, so no prayer reminders will be sent.</p>
               )}
+            </div>
+
+            {/* Its own group, because it is its own thing. Someone who wants silence at prayer
+                times may still want to hear that the masjid is closed on Saturday — folding
+                this in with the prayer switches would take that choice away from them. */}
+            <div className="notify__group">
+              <div className="notify__label">From the masjid</div>
+              <div className="notify__chips">
+                <button
+                  className={prefs.announcements ? 'chip chip--on' : 'chip'}
+                  onClick={() => void save({ ...prefs, announcements: !prefs.announcements })}
+                  aria-pressed={prefs.announcements}
+                >
+                  {prefs.announcements && <Check size={13} aria-hidden="true" />}
+                  Occasional notices
+                </button>
+              </div>
+              <p className="notify__hint">
+                Rare, and only when there is something to say &mdash; a funeral, a closure, a changed jamāʿah time.
+              </p>
             </div>
 
             {error && <p className="form-error">{error}</p>}

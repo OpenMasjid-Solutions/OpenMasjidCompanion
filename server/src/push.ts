@@ -66,6 +66,20 @@ export const PrefsSchema = z.object({
   adhan: z.boolean(),
   /** N minutes before the jamā'ah; 0 = at the jamā'ah itself. Null = not wanted. */
   beforeIqamah: z.number().int().min(0).max(MAX_LEAD_MIN).nullable(),
+  /**
+   * Occasional notices from the masjid — a funeral, a closure, a changed jamā'ah.
+   *
+   * **A separate choice from the prayer reminders**, because they are a different thing: a
+   * musalli who unticked every prayer wants silence at prayer times, not to be unreachable
+   * when the masjid has something to say. Broadcasting to them anyway on the grounds that they
+   * "opted into notifications" would be the kind of reasoning that trains people to block a
+   * site.
+   *
+   * Defaults to true, which also makes it the right value for every subscription written
+   * before this field existed — those rows parse as opted in, which is what somebody who
+   * signed up for reminders from their masjid would expect.
+   */
+  announcements: z.boolean().default(true),
 });
 export type Prefs = z.infer<typeof PrefsSchema>;
 
@@ -258,6 +272,14 @@ export async function sendOne(vapid: Vapid, row: Pick<Row, 'endpoint' | 'p256dh'
     return 'failed';
   }
 }
+
+/** How long the masjid must wait between announcements. Not a policy about how much a masjid
+ *  may say to its own congregation — it is an accident guard, so a double-tap or a retried
+ *  request cannot send the same notice to everyone twice. */
+export const ANNOUNCE_COOLDOWN_MS = 60_000;
+
+/** As long as a notification body can be before a lock screen truncates it anyway. */
+export const ANNOUNCE_MAX_CHARS = 200;
 
 /**
  * The `sub:` claim on the VAPID token — a contact for whoever runs the push service, should

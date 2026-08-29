@@ -1358,3 +1358,47 @@ h1, h2, h3, p { margin: 0; }
 .spin { animation: spinny 900ms linear infinite; }
 @keyframes spinny { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } .chip:active { transform: none; } }
+
+/* ── Send an announcement (admin) ────────────────────────────────────────────
+ *
+ * Visually separated from the rest of the panel by a rule and its own ground, because it is
+ * the one control here that reaches every musalli's phone and cannot be undone. It should not
+ * look like the buttons around it.
+ */
+.announce {
+  margin-block-start: 1.1rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--color-border);
+}
+.announce__title {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.95rem; font-weight: 700;
+}
+.announce__text { font-family: inherit; font-size: 0.9rem; }
+
+/* The gate. Warm-toned and boxed so it reads as a stop rather than as more form. */
+.announce__confirm {
+  margin-block-start: 0.7rem;
+  padding: 0.85rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+}
+.announce__ask {
+  display: flex; align-items: flex-start; gap: 0.45rem;
+  font-size: 0.9rem; line-height: 1.5;
+}
+.announce__ask svg { flex: none; margin-block-start: 0.15rem; color: var(--color-warning); }
+
+/* The message, quoted back. The thing being confirmed is the WORDS, so they have to be on
+   screen at the moment of confirming rather than in a field above it. */
+.announce__quote {
+  margin-block-start: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.5rem;
+  border-inline-start: 3px solid var(--color-warning);
+  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

@@ -623,3 +623,53 @@ A measured detail: the selected chip's white-on-coral came out at 4.55:1 on the 
 over the line with nothing to spare, the same shape as the Hijri coral that nearly failed
 earlier. Chip text is small text and has the 4.5 floor, so the light surface uses the darker
 tone already in the palette: 5.88:1.
+
+## Slice 10 — announcements (0.1.0-dev.12)
+
+An admin types a notice, confirms it, and it goes to every phone that has not turned notices
+off. CLAUDE.md §4 had this under *Later*; Hasan pulled it forward on 2026-08-29. The half that
+needed a Display capability (automatic Iqamah-change notices) is still Later — the two were
+separable, and the admin-authored half needs nothing from anybody.
+
+**Announcements are a separate choice from the prayer reminders.** A musalli who unticked every
+prayer wants silence at prayer times, not to be unreachable when the masjid has something to
+say. Broadcasting to them anyway on the grounds that they "opted into notifications" is the
+reasoning that trains people to block a site. The field defaults to `true`, which is also the
+right value for every subscription written before it existed.
+
+**It is the only thing in this app that reaches a musalli unbidden, and it cannot be recalled.**
+So it is hard to do by accident and easy to do deliberately:
+
+- The Send button does not send. It **asks** — naming the real audience size, not the subscriber
+  count — and **quotes the message back**, because the thing being confirmed is the words.
+- **Editing after asking cancels the confirmation**, so an edit can never go out under a
+  confirmation given for different words.
+- The server requires `confirm: true` explicitly. An absent flag is a refusal, so a mis-fired
+  request or a curl typed from memory cannot broadcast on its own.
+- A **60-second cooldown**, claimed *before* the first send so two simultaneous requests cannot
+  both pass it. Not a policy about how much a masjid may say to its congregation — an accident
+  guard, because a double-tap is not undoable.
+- Refused rather than truncated when too long: half a sentence, unrecallably, on every phone.
+- The **text is never logged.** It is the masjid's message to its congregation and a log is a
+  file someone else may read. The counts are what an operator needs.
+
+`sentThrough` is deliberately **not** advanced by a broadcast — otherwise a notice sent at 19:35
+would silently swallow a Maghrib reminder due in the same second. And the staleness rule does
+not apply: it exists so this app never states a prayer TIME it cannot stand behind, and an
+admin's own words are not a prayer time. A closure notice matters most when things are going
+wrong.
+
+### A bug this found in slice 9
+
+Watching a broadcast take forty seconds to reach two phones exposed that **the jitter was
+sequential**: `await sleep(random(20s))` inside a `for` loop over subscriptions. A tick cost
+`subscribers × up to 20 s`. Fifty subscribers is seventeen minutes — far past the five-minute
+grace window — so prayer reminders would have quietly stopped arriving for exactly the masjids
+where they were working. It never showed up in testing because the tests inject a no-op sleep.
+
+Fixed with `fanOut`: a fixed pool of ten workers pulling from a shared cursor (not batches — a
+batch runs at the speed of its slowest member), and the per-send jitter cut to 800 ms and
+applied per *subscription* rather than per notification, since the point is to decorrelate
+phones from each other, not a phone from itself. Sixty phones now take ~3 s where they took
+minutes, and there are wall-clock tests on both the tick and the broadcast so it cannot come
+back quietly.

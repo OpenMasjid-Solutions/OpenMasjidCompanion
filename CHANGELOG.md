@@ -14,6 +14,12 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Send an announcement to everyone.** Type a notice in the admin panel &mdash; a funeral, a
+  closure, a changed jamāʿah &mdash; and it goes to every phone signed up for reminders, with your
+  masjid’s name on it. It asks you to confirm first, showing how many phones it will reach and
+  quoting your message back, because it can’t be taken back once sent. Musallis have their own
+  switch for these, separate from the prayer reminders.
+
 - **Prayer reminders on a musalli's phone.** Tap the bell on the prayer times and pick which
   prayers, and whether to be told at the adhan or a set number of minutes before the jamāʿah.
   It is per phone and off until someone turns it on, and turning it off removes it completely.
@@ -47,6 +53,11 @@ only what a masjid would actually notice. A released section is never rewritten.
 - **A "Today" button** to get back after browsing ahead.
 
 ### Fixed
+
+- **Prayer reminders would have stopped arriving at masjids with more than a handful of
+  people signed up.** Reminders were sent one phone at a time with a pause between each, so a
+  round for fifty phones could take longer than the reminders were valid for. They now go out
+  together and a round for sixty phones takes about three seconds.
 
 - **The "a new version is ready" notice is now across the top of the screen** rather than at the
   foot of the page, where on a phone it was below the fold and most people never saw it. It

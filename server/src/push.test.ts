@@ -22,8 +22,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Store } from './store';
-import { MAX_SUBSCRIPTIONS, type Prefs, type Vapid, PRAYERS, safeEndpoint, sendOne, Subscriptions, vapidKeys } from './push';
-import { GRACE_MS, PushScheduler, STALE_LIMIT_MS, dueFor, notificationFor } from './pushScheduler';
+import { ANNOUNCE_COOLDOWN_MS, ANNOUNCE_MAX_CHARS, MAX_SUBSCRIPTIONS, type Prefs, type Vapid, PRAYERS, safeEndpoint, sendOne, Subscriptions, vapidKeys } from './push';
+import { GRACE_MS, PushScheduler, STALE_LIMIT_MS, announcementFor, dueFor, fanOut, notificationFor } from './pushScheduler';
 import { formatTimeIn, isHhmm, tzOffsetMs, zonedTimeToEpoch } from './zoned';
 import type { TimetableFeed } from './timetable';
 import http from 'node:http';
@@ -123,7 +123,7 @@ const feed = (over: Partial<TimetableFeed> = {}): TimetableFeed =>
     ...over,
   }) as TimetableFeed;
 
-const prefs = (over: Partial<Prefs> = {}): Prefs => ({ prayers: [...PRAYERS], adhan: false, beforeIqamah: 15, ...over });
+const prefs = (over: Partial<Prefs> = {}): Prefs => ({ prayers: [...PRAYERS], adhan: false, beforeIqamah: 15, announcements: true, ...over });
 
 test('a reminder fires the right number of minutes before the jamāʿah', () => {
   const f = feed();
@@ -320,7 +320,7 @@ test('a row whose preferences no longer parse is skipped, not thrown away', () =
 
 interface Sent { endpoint: string; tag: string }
 
-function scenario(opts: { at?: number; outcome?: (endpoint: string) => 'sent' | 'gone' | 'failed' } = {}) {
+function scenario(opts: { at?: number; outcome?: (endpoint: string) => 'sent' | 'gone' | 'failed'; sleep?: ((ms: number) => Promise<void>) | undefined } = {}) {
   const s = tempStore();
   const subs = new Subscriptions(s.store);
   const sent: Sent[] = [];
@@ -335,7 +335,9 @@ function scenario(opts: { at?: number; outcome?: (endpoint: string) => 'sent' | 
       if (outcome === 'sent') sent.push({ endpoint: row.endpoint, tag: payload.tag });
       return outcome;
     },
-    async () => undefined, // no jitter in a test
+    // No jitter by default; a test that is TIMING the fan-out passes `sleep: undefined` to
+    // get the real one back.
+    'sleep' in opts ? opts.sleep : async () => undefined,
   );
   return { ...s, subs, scheduler, sent };
 }
@@ -680,5 +682,321 @@ test('A REAL PUSH IS SIGNED, ENCRYPTED, AND CARRIES NO PLAINTEXT', { skip: haveO
     store.close();
     for (const s of [service, dead, wobbly]) await new Promise<void>((r) => s.close(() => r()));
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── Announcements ────────────────────────────────────────────────────────────
+//
+// The only thing in this app that reaches a musalli unbidden, and the only one that cannot be
+// recalled. So the tests are mostly about who it does NOT reach and what refuses it.
+
+test('AN ANNOUNCEMENT GOES TO EVERYONE WHO WANTS ONE, and to nobody who does not', async () => {
+  const s = scenario();
+  try {
+    const now = Date.parse('2026-08-24T15:00:00Z');
+    s.subs.put(sub('https://push.example/wants', { announcements: true }), now);
+    s.subs.put(sub('https://push.example/opted-out', { announcements: false }), now);
+    // Somebody who turned every prayer off but kept notices. They still get this — wanting
+    // silence at prayer times is not the same as being unreachable.
+    s.subs.put(sub('https://push.example/quiet', { prayers: [], adhan: false, beforeIqamah: null, announcements: true }), now);
+
+    const r = await s.scheduler.announce('Jumuʿah is at 1:30 this week.', 'Masjid An-Noor', now);
+    assert.equal(r.refused, '');
+    assert.equal(r.audience, 2);
+    assert.equal(r.sent, 2);
+    assert.deepEqual(
+      s.sent.map((x) => x.endpoint).sort(),
+      ['https://push.example/quiet', 'https://push.example/wants'],
+      'the opted-out phone is not in the list',
+    );
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('the notice carries the masjid’s name and the admin’s words, unchanged', () => {
+  const n = announcementFor('Masjid closed Saturday for the roof works.', 'Masjid An-Noor', 'https://omos.example.org/companion', 1234);
+  assert.equal(n.title, 'Masjid An-Noor', 'a lock screen has to say who it is from');
+  assert.equal(n.body, 'Masjid closed Saturday for the roof works.');
+  assert.equal(n.url, 'https://omos.example.org/companion');
+});
+
+test('TWO DIFFERENT NOTICES BOTH APPEAR — one does not replace the other', () => {
+  // A prayer reminder's tag collapses a re-delivery of the SAME reminder, which is right.
+  // Collapsing two unrelated announcements would silently swallow the earlier one.
+  const a = announcementFor('Funeral prayer after Dhuhr.', 'M', '', 1000);
+  const b = announcementFor('Car park closed tomorrow.', 'M', '', 2000);
+  assert.notEqual(a.tag, b.tag);
+});
+
+test('an empty or blank notice is refused rather than sent as silence', async () => {
+  const s = scenario();
+  try {
+    const now = Date.parse('2026-08-24T15:00:00Z');
+    s.subs.put(sub('https://push.example/a'), now);
+    for (const text of ['', '   ', '\n\t ']) {
+      const r = await s.scheduler.announce(text, 'M', now);
+      assert.equal(r.refused, 'empty');
+      assert.equal(r.sent, 0);
+    }
+    assert.equal(s.sent.length, 0);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('a notice longer than a lock screen shows is refused, not truncated', async () => {
+  // Truncating would send half a sentence to everybody, unrecallably.
+  const s = scenario();
+  try {
+    const now = Date.parse('2026-08-24T15:00:00Z');
+    s.subs.put(sub('https://push.example/a'), now);
+    const r = await s.scheduler.announce('x'.repeat(ANNOUNCE_MAX_CHARS + 1), 'M', now);
+    assert.equal(r.refused, 'too-long');
+    assert.equal(s.sent.length, 0);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('A DOUBLE TAP CANNOT SEND THE SAME NOTICE TWICE', async () => {
+  // The guard that matters most here: a broadcast is not undoable, and a stuck finger or a
+  // retried request must not put it on five hundred phones a second time.
+  const s = scenario();
+  try {
+    const now = Date.parse('2026-08-24T15:00:00Z');
+    s.subs.put(sub('https://push.example/a'), now);
+
+    const first = await s.scheduler.announce('Funeral prayer after Dhuhr.', 'M', now);
+    assert.equal(first.sent, 1);
+
+    const again = await s.scheduler.announce('Funeral prayer after Dhuhr.', 'M', now + 1000);
+    assert.equal(again.refused, 'cooldown');
+    assert.equal(s.sent.length, 1, 'still only one');
+
+    // And it lets go once the cooldown is over.
+    const later = await s.scheduler.announce('Car park closed tomorrow.', 'M', now + ANNOUNCE_COOLDOWN_MS + 1);
+    assert.equal(later.refused, '');
+    assert.equal(s.sent.length, 2);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('two requests at once cannot both get past the cooldown', async () => {
+  // The window is claimed before the first send, not after the last — otherwise a broadcast to
+  // five hundred phones leaves the gate open for as long as it takes to work down the list.
+  const s = scenario();
+  try {
+    const now = Date.parse('2026-08-24T15:00:00Z');
+    for (let i = 0; i < 5; i += 1) s.subs.put(sub(`https://push.example/${i}`), now);
+    const [a, b] = await Promise.all([
+      s.scheduler.announce('One.', 'M', now),
+      s.scheduler.announce('One.', 'M', now),
+    ]);
+    const refusals = [a.refused, b.refused].filter(Boolean);
+    assert.equal(refusals.length, 1, 'exactly one of the two is refused');
+    assert.equal(s.sent.length, 5, 'and five phones got it once, not twice');
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('with nobody to tell, it says so rather than reporting a success', async () => {
+  const s = scenario();
+  try {
+    const now = Date.parse('2026-08-24T15:00:00Z');
+    s.subs.put(sub('https://push.example/a', { announcements: false }), now);
+    const r = await s.scheduler.announce('Anyone there?', 'M', now);
+    assert.equal(r.refused, 'nobody');
+    assert.equal(r.sent, 0);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('a dead phone is pruned by an announcement exactly as by a reminder', async () => {
+  const s = scenario({ outcome: (e) => (e.endsWith('/dead') ? 'gone' : 'sent') });
+  try {
+    const now = Date.parse('2026-08-24T15:00:00Z');
+    s.subs.put(sub('https://push.example/dead'), now);
+    s.subs.put(sub('https://push.example/live'), now);
+    const r = await s.scheduler.announce('Notice.', 'M', now);
+    assert.equal(r.pruned, 1);
+    assert.equal(r.sent, 1);
+    assert.equal(s.subs.count(), 1);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('AN ANNOUNCEMENT DOES NOT SWALLOW A PRAYER REMINDER DUE AT THE SAME MOMENT', async () => {
+  // `sentThrough` is the scheduler's whole idempotency, and a broadcast deliberately does not
+  // advance it. If it did, a notice sent at 19:35 would silently eat the Maghrib reminder.
+  const s = scenario();
+  try {
+    const at = Date.parse('2026-08-24T23:35:00Z');
+    s.subs.put(sub('https://push.example/a', { prayers: ['maghrib'] }), at - 60_000);
+    await s.scheduler.announce('Notice.', 'M', at);
+    assert.equal(s.sent.length, 1);
+
+    const tick = await s.scheduler.tick(at);
+    assert.equal(tick.sent, 1, 'the Maghrib reminder still went');
+    assert.equal(s.sent[1].tag, '2026-08-24:maghrib:iqamah');
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('an announcement is sent even when the prayer times are stale', async () => {
+  // The staleness rule is about not inventing a TIME. An admin's own words are not a prayer
+  // time, and refusing to relay them because Display is down would be the wrong lesson drawn
+  // from the right rule — a closure notice matters most when things are going wrong.
+  const now = Date.parse('2026-08-24T15:00:00Z');
+  const s = scenario({ at: now - STALE_LIMIT_MS - 60_000 });
+  try {
+    s.subs.put(sub('https://push.example/a'), now);
+    assert.equal((await s.scheduler.tick(now)).skipped, 'stale', 'reminders are paused');
+    const r = await s.scheduler.announce('The masjid is closed today.', 'M', now);
+    assert.equal(r.refused, '', 'but the notice still goes');
+    assert.equal(r.sent, 1);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('a subscription written before announcements existed is opted in', async () => {
+  // The migration, such as it is: an old row has no `announcements` key, and defaulting it to
+  // false would silently exclude everybody who signed up before this shipped.
+  const s = scenario();
+  try {
+    const now = Date.parse('2026-08-24T15:00:00Z');
+    s.store.db
+      .prepare(`INSERT INTO push_subs (endpoint, p256dh, auth, prefs, created_at, sent_through) VALUES (?, 'p', 'a', ?, 0, ?)`)
+      .run('https://push.example/old', JSON.stringify({ prayers: ['fajr'], adhan: false, beforeIqamah: 15 }), now);
+    const r = await s.scheduler.announce('Notice.', 'M', now);
+    assert.equal(r.audience, 1);
+    assert.equal(r.sent, 1);
+  } finally {
+    s.cleanup();
+  }
+});
+
+// ── The route ────────────────────────────────────────────────────────────────
+
+test('BROADCASTING NEEDS BOTH AN ADMIN AND AN EXPLICIT CONFIRMATION', async () => {
+  const s = await routeScenario();
+  try {
+    await s.app.inject({ method: 'POST', url: '/api/public/push/subscribe', payload: body('https://push.example/a') });
+
+    const anon = await s.app.inject({ method: 'POST', url: '/api/admin/push/announce', payload: { text: 'Hello', confirm: true } });
+    assert.equal(anon.statusCode, 401, 'not a musalli');
+
+    const sess = await s.app.inject({ method: 'GET', url: '/api/session', headers: { cookie: 'omos_session=x' } });
+    const token = sess.cookies.find((c) => c.name === COOKIE)!.value;
+    const cookie = `${COOKIE}=${token}`;
+
+    // An absent or false confirmation is a refusal, not a default. The panel asks first, and
+    // this is the server's half of that — a mis-fired request cannot broadcast on its own.
+    for (const payload of [{ text: 'Hello' }, { text: 'Hello', confirm: false }, { confirm: true }, { text: '', confirm: true }]) {
+      const res = await s.app.inject({ method: 'POST', url: '/api/admin/push/announce', payload, headers: { cookie } });
+      assert.equal(res.statusCode, 400, `${JSON.stringify(payload)} should be refused`);
+    }
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('the admin is told the size of the audience before sending, not just the subscriber count', async () => {
+  const s = await routeScenario();
+  try {
+    await s.app.inject({ method: 'POST', url: '/api/public/push/subscribe', payload: body('https://push.example/in') });
+    await s.app.inject({
+      method: 'POST',
+      url: '/api/public/push/subscribe',
+      payload: { ...body('https://push.example/out'), prefs: { ...body('x').prefs, announcements: false } },
+    });
+
+    const sess = await s.app.inject({ method: 'GET', url: '/api/session', headers: { cookie: 'omos_session=x' } });
+    const token = sess.cookies.find((c) => c.name === COOKIE)!.value;
+    const res = await s.app.inject({ method: 'GET', url: '/api/admin/push', headers: { cookie: `${COOKIE}=${token}` } });
+    const data = res.json<{ data: { subscribers: number; audience: number } }>().data;
+    assert.equal(data.subscribers, 2);
+    assert.equal(data.audience, 1, '"send to N phones" has to be the real N');
+    assert.doesNotMatch(res.body, /push\.example/, 'and still no endpoint anywhere');
+  } finally {
+    await s.cleanup();
+  }
+});
+
+// ── Fan-out ──────────────────────────────────────────────────────────────────
+//
+// The bug this pins was shipped, and found by watching a broadcast take forty seconds to reach
+// two phones: the jitter was applied SEQUENTIALLY, so a tick cost `subscribers × up to 20s`.
+// Fifty subscribers is seventeen minutes — far past the five-minute grace window — meaning
+// prayer reminders would quietly stop arriving for exactly the masjids where they were working.
+
+test('the pool runs work CONCURRENTLY and still runs all of it', async () => {
+  let inFlight = 0;
+  let peak = 0;
+  const finished: number[] = [];
+  const items = Array.from({ length: 47 }, (_, i) => i);
+
+  await fanOut(items, 10, async (i) => {
+    inFlight += 1;
+    peak = Math.max(peak, inFlight);
+    await new Promise((r) => setTimeout(r, 1));
+    finished.push(i);
+    inFlight -= 1;
+  });
+
+  assert.equal(finished.length, 47, 'every item ran exactly once');
+  assert.deepEqual([...finished].sort((a, b) => a - b), items);
+  assert.ok(peak > 1, 'and they overlapped rather than queueing one behind the other');
+  assert.ok(peak <= 10, `never more than the limit in flight (peaked at ${peak})`);
+});
+
+test('the pool is bounded by the number of items when there are fewer than the limit', async () => {
+  let peak = 0;
+  let inFlight = 0;
+  await fanOut([1, 2, 3], 10, async () => {
+    inFlight += 1;
+    peak = Math.max(peak, inFlight);
+    await new Promise((r) => setTimeout(r, 1));
+    inFlight -= 1;
+  });
+  assert.equal(peak, 3);
+  await fanOut([], 10, async () => assert.fail('there is nothing to do'));
+});
+
+test('A TICK WITH A CONGREGATION’S WORTH OF PHONES DOES NOT TAKE FOREVER', async () => {
+  // Wall clock, with the REAL sleep and the real jitter. Sequentially this would be minutes;
+  // the bound is deliberately generous so it fails on a regression, not on a slow machine.
+  const s = scenario({ sleep: undefined });
+  try {
+    const now = Date.parse('2026-08-24T23:35:00Z');
+    for (let i = 0; i < 60; i += 1) s.subs.put(sub(`https://push.example/p${i}`, { prayers: ['maghrib'] }), now - 60_000);
+    const started = Date.now();
+    const r = await s.scheduler.tick(now);
+    const took = Date.now() - started;
+    assert.equal(r.sent, 60, 'everyone got it');
+    assert.ok(took < 15_000, `a tick for 60 phones took ${took}ms — the sequential jitter is back`);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('and an announcement to sixty phones is something an admin can wait for', async () => {
+  const s = scenario({ sleep: undefined });
+  try {
+    const now = Date.parse('2026-08-24T15:00:00Z');
+    for (let i = 0; i < 60; i += 1) s.subs.put(sub(`https://push.example/a${i}`), now);
+    const started = Date.now();
+    const r = await s.scheduler.announce('The masjid is closed on Saturday.', 'M', now);
+    const took = Date.now() - started;
+    assert.equal(r.sent, 60);
+    assert.ok(took < 15_000, `a broadcast to 60 phones took ${took}ms — an admin is watching this`);
+  } finally {
+    s.cleanup();
   }
 });
