@@ -804,3 +804,103 @@ or the buttons would move the month with no motion while the swipe animated.
 The column headings sat 6px under the Hijri date and a long way above the row they label, so
 they read as part of the date block. Now 22px below the date and 20px above the first row —
 they belong to what is under them.
+
+## Slice 13 — one curve, and Jumuʿah reminders (0.1.0-dev.15)
+
+### The plateau was a curvature discontinuity
+
+Hasan: *"too much flattening near the apex. The top feels like a plateau instead of a continuous
+curve."* Measuring the two-Bézier version explained both halves of that sentence:
+
+| | crest radius | curvature variation across the crest | curvature step at the apex |
+| --- | --- | --- | --- |
+| two cubics | 96 | **4.59×** | **78%** |
+| stretched half-ellipse (the "egg top" named as the ideal) | 291 | 1.06× | 0 |
+| now: `H·sin^1.6((x/W)^0.835)` | 80 | **1.75×** | ~0 |
+
+Two segments can be given matching **tangents** at the summit but not matching **curvature**, and
+the 78% step is the "visible break". The 4.59× variation is the plateau proper: the curve went
+slack either side of its own peak, ballooning from a radius of 96 to 268 within ±12% of the
+width. A dome that stops doming reads as a table top however smooth its tangents are.
+
+**An analytic curve cannot have that fault.** One C-infinity function over the whole span makes
+"no visible break between ascent, peak and descent" true by construction rather than by tuning,
+and leaves only two things to choose:
+
+- **P = 1.6** sets how round the crest is. Higher sharpens it toward a point; lower rounds it
+  but drags the flanks up steeper, and the gentle start is worth more.
+- **K = 0.835** slides the summit to 0.436 of the width, which is what makes the descent the
+  longer, gentler half — at 0.2W either side the climb has fallen 0.289 of the band, the descent
+  0.250.
+
+**What this gives up**, and it is worth naming: the previous pass had the right edge dropping
+away more sharply, taken from the reference screenshot. A single smooth function cannot both
+leave the horizon gently on the left and dive into it on the right. The seven properties in the
+newer description won.
+
+The path is now a **160-point polyline sampled from that function**, which is both what is
+stroked and what everything is measured against — so the dots cannot drift from the line they
+sit on. Verified against the function it comes from: worst deviation 0.038px on a 390px screen.
+
+The old harness (`shots/s12.js`) encoded the reference SCREENSHOT — a levelled top and a steep
+right edge — so it now fails by design. Its curve checks were retired to `s13b.js`, which tests
+the seven properties instead. A test that pins a superseded spec is worse than no test.
+
+### Jumuʿah reminders
+
+Its own choice, not a rider on Dhuhr, because on a Friday it is not Dhuhr: a different time, the
+prayer people plan their week around, and a masjid may hold two or three hours apart.
+
+**Jumuʿah stands in for Dhuhr on the day it is held**, exactly as `slotsFor` does in the day
+view. A Dhuhr reminder on a Friday would name a jamāʿah the masjid is not holding, at an hour
+nobody is gathering.
+
+Which one is stored **by position** (`jumuah: number[] | null`), not by the masjid's label: a
+label is editable text — "1st Jumuʿah" can become "Early Jumuʿah" — and a stored preference that
+silently stops matching is worse than one that is a little blunt. Position is also what somebody
+means when they say "I go to the second one". `null` means all of them, which is the default and
+what every subscription written before this field existed reads as.
+
+The notification `tag` carries the label for Jumuʿah only. Without that, a masjid's two Jumuʿah
+reminders would share a tag and the second would silently REPLACE the first on the lock screen —
+they are different gatherings an hour apart.
+
+The labels the sheet offers come from the next day in the window that has any, not from the day
+on screen: on a Tuesday `day.jumuah` is empty, and the choice still has to be offerable.
+
+### What the review caught in the Jumuʿah work
+
+Three dimensions of adversarial review, every finding handed to a separate agent told to refute
+it. Four survived that were real defects, and two of them **were pinned as correct behaviour by
+the tests I had just written** — a test can entrench a bug as easily as it catches one.
+
+1. **A Friday went silent for every existing subscriber.** Jumuʿah standing in for Dhuhr is
+   right, but a stored row that asked for Dhuhr and knew nothing about Jumuʿah then matched
+   neither — so somebody reminded every week would simply have stopped being, with nothing
+   anywhere to say why. `PrefsSchema` now carries such a row forward: an ABSENT `jumuah` field
+   is the signal (every version that knows about it sends it, as `null` or a list), and an old
+   row that wanted Dhuhr wanted the midday jamāʿah. An explicit refusal is untouched.
+2. **Two or three identical adhan notifications in the same second.** Display sends no
+   per-Jumuʿah adhan — there is one that day and it is Dhuhr's — so one reminder per chosen
+   jamāʿah meant the same event alerting N times, each claiming an adhan for a jamāʿah whose
+   adhan field is null. One adhan now, named for the day rather than for any one gathering.
+3. **A masjid dropping from two Jumuʿah to one silenced everyone who picked the second** —
+   permanently, and unfixably: the picker only appears when there is more than one to pick
+   between, so off-and-on-again re-posted the same dead list. Both halves fixed: the scheduler
+   falls back to the jamāʿah actually being held, and re-ticking Jumuʿah clears the stale choice.
+4. **The notification tag was keyed on the masjid's editable label**, which Display does not
+   require to be distinct. Two Jumuʿah both named "Jumuʿah" would have collapsed into one on the
+   lock screen. Keyed on position now.
+
+Also: `MAX_JUMUAH` was 10 while the feed schema accepts 16, so a masjid's later jamāʿāt could
+never be notified and a picker tap on one would have failed the whole save silently — there is
+now a test that reads `timetable.ts` and fails if the two ever disagree. And a failed save no
+longer leaves the sheet showing a choice the server never received.
+
+The arc gained the tests it did not have (`web/src/arc.test.ts`): the summit left of centre,
+monotone flanks, curvature that never goes slack across the crest and never steps at the apex,
+a descent gentler than the climb, and the drawn polyline tracking the function to 0.077px. Three
+claims in its comments were also wrong and are corrected — "each chord spans two units, far
+below a pixel" (2 units is 2.4px; it is the DEPARTURE that is sub-pixel), "near-zero slope at
+both horizons" (true only in the limit — by the first rendered pixels it is already 20°), and a
+sentence that ran two different measurements together as if they were one.

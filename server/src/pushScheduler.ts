@@ -25,7 +25,7 @@
  */
 import { makeLog } from './logger';
 import { raiseAlert } from './fabric';
-import { ANNOUNCE_COOLDOWN_MS, ANNOUNCE_MAX_CHARS, NAMES, PRAYERS, type Notification, type Prayer, type Prefs, type Subscriptions, type Vapid, safeEndpoint, sendOne, vapidSubject } from './push';
+import { ANNOUNCE_COOLDOWN_MS, ANNOUNCE_MAX_CHARS, MAX_JUMUAH, NAMES, PRAYERS, type Notifiable, type Notification, type Prefs, type Subscriptions, type Vapid, safeEndpoint, sendOne, vapidSubject } from './push';
 import { formatTimeIn, isHhmm, zonedTimeToEpoch } from './zoned';
 import type { TimetableFeed } from './timetable';
 
@@ -92,13 +92,29 @@ export async function fanOut<T>(items: T[], concurrency: number, work: (item: T)
 const FLEET_FAIL_MIN = 5;
 const FLEET_FAIL_RATIO = 0.5;
 
+/**
+ * What to call the i-th Jumu'ah of a day.
+ *
+ * The masjid's own wording when they gave one. The fallback matches the day view's
+ * (`slotsFor` in web/src/prayerTimes.ts) so a reminder never names a jamā'ah differently from
+ * the row it corresponds to.
+ */
+export function jumuahName(held: { label: string }[], i: number): string {
+  return held[i]?.label || (held.length > 1 ? `Jumuʿah ${i + 1}` : 'Jumuʿah');
+}
+
 /** One thing to send to one subscription. */
 export interface Due {
   at: number;
-  prayer: Prayer;
+  prayer: Notifiable;
   date: string;
   kind: 'adhan' | 'iqamah';
   hhmm: string;
+  /** What to call it. Fixed for the five; the masjid's own wording for a Jumu'ah, which may be
+   *  "First Jumu'ah" or anything else they have typed into Display. */
+  label: string;
+  /** What the notification's tag is built from. Stable, and never the masjid's editable label. */
+  key: string;
 }
 
 /**
@@ -122,24 +138,75 @@ export function dueFor(feed: TimetableFeed, prefs: Prefs, after: number, now: nu
   const from = after - 36 * 60 * 60_000;
   const to = now + 36 * 60 * 60_000;
 
+  /**
+   * One prayer's two possible moments, filtered to the window.
+   *
+   * `key` is what the notification's tag is built from — a STABLE identifier, never the
+   * masjid's own label. Two Jumu'ah jamā'āt that a masjid happens to have named the same thing
+   * would otherwise share a tag, and the second would silently replace the first on the lock
+   * screen. `only` restricts a call to one of the two moments.
+   */
+  const consider = (
+    day: (typeof feed.days)[number],
+    prayer: Notifiable,
+    label: string,
+    adhan: string | null,
+    iqamah: string | null,
+    key = prayer as string,
+    only?: 'adhan' | 'iqamah',
+  ) => {
+    if (prefs.adhan && only !== 'iqamah' && isHhmm(adhan)) {
+      const at = zonedTimeToEpoch(day.date, adhan, feed.timezone);
+      if (at >= from && at <= to && at > after && at <= now) out.push({ at, prayer, date: day.date, kind: 'adhan', hhmm: adhan, label, key });
+    }
+    if (prefs.beforeIqamah !== null && only !== 'adhan' && isHhmm(iqamah)) {
+      const at = zonedTimeToEpoch(day.date, iqamah, feed.timezone) - prefs.beforeIqamah * 60_000;
+      if (at >= from && at <= to && at > after && at <= now) out.push({ at, prayer, date: day.date, kind: 'iqamah', hhmm: iqamah, label, key });
+    }
+  };
+
   for (const day of feed.days) {
+    // **Jumu'ah STANDS IN FOR Dhuhr on the day it is held**, exactly as it does in the day view
+    // (`slotsFor`). A Dhuhr reminder on a Friday would be a reminder about a jamā'ah the masjid
+    // is not holding, at a time nobody is gathering.
+    const jumuah = day.jumuah ?? [];
+    const isJumuahDay = jumuah.length > 0;
+
     for (const prayer of PRAYERS) {
+      if (prayer === 'dhuhr' && isJumuahDay) continue;
       if (!wanted.has(prayer)) continue;
       const p = day.prayers[prayer];
+      consider(day, prayer, NAMES[prayer], p.adhan, p.iqamah);
+    }
 
-      if (prefs.adhan && isHhmm(p.adhan)) {
-        const at = zonedTimeToEpoch(day.date, p.adhan, feed.timezone);
-        if (at >= from && at <= to && at > after && at <= now) {
-          out.push({ at, prayer, date: day.date, kind: 'adhan', hhmm: p.adhan });
-        }
+    if (isJumuahDay && wanted.has('jumuah')) {
+      const held = jumuah.slice(0, MAX_JUMUAH);
+      // `null` means every one the masjid holds — the default, and what a row written before
+      // this choice existed reads as.
+      let pick = held.map((_, i) => i).filter((i) => prefs.jumuah === null || prefs.jumuah.includes(i));
+
+      // **A CHOSEN POSITION THAT IS NOT HELD THIS WEEK.** A masjid that drops from two
+      // Jumu'ah to one would otherwise silence everyone who picked the second — permanently,
+      // and with nothing on any screen to explain it. An explicitly empty list still means
+      // none; it is only a non-empty choice that matched nothing which falls back, and it
+      // falls back to the first, because that is the Jumu'ah the masjid is actually holding.
+      if (pick.length === 0 && held.length > 0 && (prefs.jumuah === null || prefs.jumuah.length > 0)) pick = [0];
+
+      // **ONE ADHAN, ONE REMINDER.** Display carries no per-Jumu'ah adhan — there is a single
+      // adhan that day and it is Dhuhr's — so sending it once per chosen Jumu'ah would put two
+      // or three identical notifications on a lock screen at the same second.
+      if (prefs.adhan) {
+        const anyAdhan = held.find((j) => j.adhan)?.adhan ?? day.prayers.dhuhr.adhan;
+        // With one jamāʿah the adhan can carry its own name; with several it cannot claim any
+        // one of them, because it is the single adhan for the day.
+        const adhanLabel = held.length === 1 ? jumuahName(held, 0) : 'Jumuʿah';
+        consider(day, 'jumuah', adhanLabel, anyAdhan, null, 'jumuah-adhan', 'adhan');
       }
 
-      if (prefs.beforeIqamah !== null && isHhmm(p.iqamah)) {
-        const iqamah = zonedTimeToEpoch(day.date, p.iqamah, feed.timezone);
-        const at = iqamah - prefs.beforeIqamah * 60_000;
-        if (at >= from && at <= to && at > after && at <= now) {
-          out.push({ at, prayer, date: day.date, kind: 'iqamah', hhmm: p.iqamah });
-        }
+      for (const i of pick) {
+        const j = held[i];
+        if (!j) continue;
+        consider(day, 'jumuah', jumuahName(held, i), null, j.iqamah, `jumuah-${i}`);
       }
     }
   }
@@ -155,7 +222,7 @@ export function dueFor(feed: TimetableFeed, prefs: Prefs, after: number, now: nu
  */
 export function notificationFor(due: Due, feed: TimetableFeed, lead: number | null, publicUrl: string): Notification {
   const when = formatTimeIn(due.date, due.hhmm, feed.timezone, feed.hourCycle, feed.language);
-  const name = NAMES[due.prayer];
+  const name = due.label;
   const body =
     due.kind === 'adhan'
       ? `Adhan ${when}`
@@ -165,8 +232,11 @@ export function notificationFor(due: Due, feed: TimetableFeed, lead: number | nu
   return {
     title: `${name} — ${feed.masjidName}`,
     body,
-    // One tag per prayer per day per kind, so a re-delivery replaces rather than stacks.
-    tag: `${due.date}:${due.prayer}:${due.kind}`,
+    // One tag per thing per day per kind, so a re-delivery replaces rather than stacks — but
+    // two DIFFERENT Jumu'ah jamā'āt must not, since they are separate gatherings an hour
+    // apart. Keyed on position rather than the masjid's label, which it may have set to the
+    // same words for both.
+    tag: `${due.date}:${due.key}:${due.kind}`,
     url: publicUrl || '/',
   };
 }

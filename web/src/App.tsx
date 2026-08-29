@@ -18,7 +18,7 @@ import { api, type AppInfo } from './api';
 import { stripBase, withBase } from './base';
 import { useAppearanceSync, setThemeOverride } from './prefs';
 import { PERIOD_SURFACE } from './periodTheme';
-import type { PeriodKey } from './prayerTimes';
+import { jumuahLabels, type PeriodKey } from './prayerTimes';
 import { useInstall, useServiceWorker } from './pwa';
 import { InstallPrompt, UpdateBanner } from './Install';
 import { Scene } from './ui';
@@ -237,7 +237,9 @@ export function App(): JSX.Element {
         {!isAdmin && <Foot />}
       </div>
       {!isAdmin && <TabBar tabs={tabs} route={route} onGo={go} />}
-      {!isAdmin && notifyOpen && <Notify secure={secure} onClose={() => setNotifyOpen(false)} />}
+      {!isAdmin && notifyOpen && (
+        <Notify secure={secure} jumuah={jumuahLabels(times?.days ?? [])} onClose={() => setNotifyOpen(false)} />
+      )}
     </>
   );
 }

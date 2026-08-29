@@ -299,115 +299,117 @@ function TimeRow({ slot, masjid, state, changed }: { slot: Slot; masjid: Masjid;
 /**
  * The day as an arc, with the prayers along it and a marker at now.
  *
- * A cubic Bézier evaluated directly rather than measured through the DOM, so it renders
- * identically on the server-built HTML, in a screenshot, and on a phone. `pathLength="1"`
- * normalises the curve so the travelled portion is a plain fraction.
+ * Computed here rather than measured through the DOM, so it renders identically in the
+ * server-built HTML, in a screenshot and on a phone. `pathLength="1"` normalises the curve so
+ * the travelled portion is a plain fraction of its length.
  *
- * THE GEOMETRY IS THE POINT, and three things about it are deliberate (Hasan, 2026-08-29,
- * matching the reference app in docs/DESIGN_LANGUAGE.md):
+ * Two things about the frame, before the shape below:
  *
- *  - **It runs edge to edge.** The path starts and ends at x = 0 and x = W with no inset, and
- *    the CSS pulls the SVG out through the page's own side padding, so the curve leaves the
- *    screen rather than stopping short of it inside a column of text.
- *  - **A cubic, not a quadratic.** Control points at 0.28W and 0.72W flatten the top and steepen
- *    the shoulders. Worth being honest about the size of this one: normalised to the same
- *    height it is only about three units away from the parabola it replaced, and most of what
- *    reads as a different shape is the band being 0.275 of the width rather than 0.208. The
- *    cubic is here because it is the family that can be tuned toward the reference at all — the
- *    quadratic has one control point and therefore one degree of freedom, which is the height.
- *  - **The viewBox is the path's own bounds.** The old one reserved 71 units of empty space
- *    above the peak, which is the whole of the gap that made the arc sit too far below the
- *    countdown. Only the stroke and the "now" marker's radius are padded for.
+ *  - **It runs edge to edge.** The path spans 0…W with no inset and the CSS pulls the SVG out
+ *    through the page's own side padding, so the curve leaves the screen rather than stopping
+ *    short inside a column of text.
+ *  - **The viewBox is the path's own bounds**, plus the "now" marker's radius and nothing else.
+ *    An earlier one reserved 71 units of empty space above the peak, which was the whole of the
+ *    gap that made the arc sit too far below the countdown.
  */
 const W = 320;
-/** Band height. 0.275 of the width, taken from the reference: a shallower arc reads as a slouch
- *  rather than an arc, and a taller one crowds the times below it. */
+/** Band height. 0.275 of the width: a shallower arc reads as a slouch, a taller one crowds the
+ *  times below it. */
 const H = 88;
 
 /**
- * THE SHAPE, and why it is two segments rather than one.
+ * THE SHAPE: one continuous function, no joined segments.
  *
- * A sunrise-to-sunset trajectory is not symmetric and it is not an arc. Hasan described the
- * reference precisely: flat along the horizon at the far left; a quick, steep climb through the
- * morning; flattening as it approaches the top; almost LEVEL across the middle rather than a
- * peak; then a descent that is gentler and more stretched than the climb was; and a sharper
- * drop again as it reaches the right edge.
+ *     y(x) = H · sin^P( π · (x/W)^K )
  *
- * One cubic cannot do that. A single segment has one tangent at each end and no way to be
- * steeper on one side of its maximum than the other — every symmetric-control cubic, and every
- * quadratic, is a hill with matching flanks. Two segments meeting at the summit have four
- * tangents to spend, which is exactly the number that description needs:
+ * This replaces a pair of cubic Béziers that met at the summit. Two segments could be given
+ * matching TANGENTS there but not matching CURVATURE, and the difference is exactly what Hasan
+ * saw. Two separate measurements on the old pair, and they are not the same number: curvature
+ * STEPPED by 78% across the summit itself, and separately it VARIED by 4.6× within ±12% of the
+ * width around it — the radius at the apex was 96 units while the flattest point beside it was
+ * 268. A curve that goes slack either side of its own peak reads as a table top — a plateau with
+ * a crease in the middle — however smooth the tangents are.
  *
- *   • horizontal at the far left     → "almost flat near the horizon"
- *   • horizontal arriving at the top → "gradually flattens out"
- *   • horizontal leaving the top     → "becomes almost level"
- *   • DESCENDING at the right edge   → "drops more noticeably toward the horizon"
+ * An analytic curve cannot have that fault. It is C-infinity everywhere in (0, W), so "no
+ * visible break between ascent, peak and descent" is true by construction rather than by
+ * tuning. What is left is choosing how round the crest is and how gently it leaves the horizon,
+ * and those are the two exponents:
  *
- * The numbers are a least-squares fit to ten points sampled off the reference screenshot, not a
- * guess: 1.8% RMS against a band of 1.0, worst point 3.8%. The summit sits at 0.436 of the
- * width — left of centre, which is what makes the descent the longer half.
+ *  • **P = 1.6** sets the crest. Curvature varies 1.76× across the crest region, against 4.59×
+ *    for the old pair and 1.06× for the stretched half-ellipse Hasan named as the ideal — so it
+ *    is a dome that keeps doming, not a flat run. Higher P sharpens the crest toward a point;
+ *    lower P rounds it but drags the flanks up steeper, and the gentle start is worth more.
+ *  • **K = 0.835** slides the summit to 0.436 of the width, left of centre. That is what makes
+ *    the descent the longer, gentler half — at 0.2W either side the climb has fallen 0.289 of
+ *    the band and the descent only 0.250.
+ *
+ * Both horizons are approached with a slope that TENDS to zero, which is the "starts low,
+ * gradually accelerates" the description opens with. Only in the limit, though: by the first
+ * few rendered pixels the left edge is already leaving at about 20°, and the honest description
+ * is a curve that starts gently and gathers pace, not one that lies flat for a while.
+ *
+ * Near x = 0 the curve behaves as H − c·(x/W)^(K·P), and since K·P is 1.336 rather than 2 its
+ * CURVATURE is unbounded right at the horizon — real maths, not a bug, confined to about two
+ * pixels where a 2.5-unit round-capped stroke swallows it whole. Checked at 3× zoom: the left
+ * edge draws clean. Worth knowing before anyone "fixes" the sharp angle a sampler reports there. It is also the one thing given up from the earlier
+ * pass, where the right edge dropped away more sharply; a single smooth function cannot both
+ * leave the horizon gently on the left and dive into it on the right, and the seven properties
+ * in the newer description are the ones being built to.
  */
-const PEAK_X = W * 0.436;
-const ARC_SEGS = [
-  // Up: flat at the horizon, steep through the middle, level at the summit.
-  { p0: { x: 0, y: H }, c1: { x: W * 0.126, y: H }, c2: { x: W * 0.253, y: 0 }, p3: { x: PEAK_X, y: 0 } },
-  // Down: a long level top, then a stretched descent that steepens into the right edge.
-  { p0: { x: PEAK_X, y: 0 }, c1: { x: W * 0.769, y: 0 }, c2: { x: W * 0.781, y: H * 0.72 }, p3: { x: W, y: H } },
-];
-
-const ARC_D = ARC_SEGS.map(
-  (g, i) => `${i === 0 ? `M ${g.p0.x} ${g.p0.y} ` : ''}C ${g.c1.x} ${g.c1.y} ${g.c2.x} ${g.c2.y} ${g.p3.x} ${g.p3.y}`,
-).join(' ');
+const CURVE_P = 1.6;
+const CURVE_K = 0.835;
 
 type Pt = { x: number; y: number };
 
-/** A point on one segment, at that segment's own Bézier parameter. */
-function bezier(seg: (typeof ARC_SEGS)[number], t: number): Pt {
-  const u = 1 - t;
-  return {
-    x: u ** 3 * seg.p0.x + 3 * u ** 2 * t * seg.c1.x + 3 * u * t ** 2 * seg.c2.x + t ** 3 * seg.p3.x,
-    y: u ** 3 * seg.p0.y + 3 * u ** 2 * t * seg.c1.y + 3 * u * t ** 2 * seg.c2.y + t ** 3 * seg.p3.y,
-  };
+/** The curve at a fraction of the WIDTH. */
+export function curve(u: number): Pt {
+  const x = Math.min(1, Math.max(0, u));
+  return { x: x * W, y: H - H * Math.sin(Math.PI * x ** CURVE_K) ** CURVE_P };
 }
 
 /**
- * Cumulative chord length along the WHOLE path, sampled once.
+ * Sampled once into a polyline, which is both the drawn path and the table everything is
+ * placed against.
  *
- * **A curve's parameter is not its length**, and with two segments it is not even continuous:
- * the summit is halfway through the path by parameter but not by distance, because the climb is
- * shorter than the descent. Everything visible is placed by length, so this table is what makes
- * the dots and the marker agree with a stroke the browser measures its own way.
+ * A polyline rather than fitted Béziers because it cannot lie: what is measured for the dots is
+ * the same geometry that is stroked.
  *
- * Computed at module load because the geometry is constant — nothing here depends on the day or
- * the clock.
+ * 160 samples is not justified by the chord LENGTH — each chord spans two units of a 320-unit
+ * box, which is about 2.4px on a 390px screen, nowhere near "below a pixel". What matters is how
+ * far a chord departs from the curve it cuts across, and that is measured: **0.038px at the
+ * worst point.** `stroke-linejoin: round` takes care of the joins.
  */
-const ARC_TABLE = (() => {
-  const PER_SEG = 240;
+const ARC = (() => {
+  const N = 160;
   const pts: Pt[] = [];
   const cum: number[] = [0];
-  ARC_SEGS.forEach((seg, i) => {
-    // The join is one point, not two: segment n's end and segment n+1's start are the summit.
-    for (let k = i === 0 ? 0 : 1; k <= PER_SEG; k += 1) pts.push(bezier(seg, k / PER_SEG));
-  });
+  // Rounded to the same two decimals the path string carries. Measuring full-precision samples
+  // against a path the browser parsed from rounded text would leave the dots a hair off the
+  // line they sit on — small, but it is the exact class of drift this table exists to remove.
+  for (let i = 0; i <= N; i += 1) {
+    const q = curve(i / N);
+    pts.push({ x: +q.x.toFixed(2), y: +q.y.toFixed(2) });
+  }
   for (let i = 1; i < pts.length; i += 1) {
     cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
   }
-  return { pts, cum, total: cum[cum.length - 1] };
+  const d = pts.map((q, i) => `${i === 0 ? 'M' : 'L'} ${q.x.toFixed(2)} ${q.y.toFixed(2)}`).join(' ');
+  return { pts, cum, total: cum[cum.length - 1], d };
 })();
 
+export const ARC_D = ARC.d;
+export const ARC_BAND = { W, H };
+
 /**
- * The point a given fraction of the way ALONG the path.
+ * The point a given fraction of the way ALONG the curve.
  *
  * The progress stroke is drawn with `pathLength="1"` and a `stroke-dasharray`, which the
- * browser measures by LENGTH. Placing the dots and the "now" marker at a Bézier parameter
- * instead left the marker floating up to 8px past the end of the very line it caps, and the
- * coral reaching a dot did not mean that prayer had passed.
- *
- * Interpolated between samples rather than solved: the arc length of a cubic has no closed
- * form, and 480 chords is well under a pixel at any size this renders at.
+ * browser measures by LENGTH. Placing the dots and the "now" marker by anything else left the
+ * marker floating past the end of the very line it caps — and length is doubly not the same as
+ * position here, since the climb is shorter than the descent.
  */
-function pointAtFraction(f: number): Pt {
-  const { pts, cum, total } = ARC_TABLE;
+export function pointAtFraction(f: number): Pt {
+  const { pts, cum, total } = ARC;
   const target = Math.min(1, Math.max(0, f)) * total;
   let lo = 0;
   let hi = cum.length - 1;

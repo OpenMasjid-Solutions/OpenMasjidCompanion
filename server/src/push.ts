@@ -34,10 +34,30 @@ const log = makeLog('push');
 
 const KEY_VAPID = 'push.vapid';
 
-/** Prayers a musalli can be reminded about. Jumu'ah rides on the Friday Dhuhr choice — a
- *  separate switch for a prayer that exists one day in seven reads as a bug on the other six. */
+/** The five daily jamā'āt. */
 export const PRAYERS = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
 export type Prayer = (typeof PRAYERS)[number];
+
+/**
+ * What a musalli can ask to be reminded about.
+ *
+ * Jumu'ah is its OWN choice rather than riding on Dhuhr, because on a Friday it is not Dhuhr:
+ * it is at a different time, it is the prayer people plan their week around, and a masjid may
+ * hold two or three of them hours apart. Somebody who wants no Dhuhr reminder on a Tuesday may
+ * very much want one for the Jumu'ah they attend.
+ */
+export const NOTIFIABLE = [...PRAYERS, 'jumuah'] as const;
+export type Notifiable = (typeof NOTIFIABLE)[number];
+
+/**
+ * A ceiling on how many Jumu'ah jamā'āt may be chosen between.
+ *
+ * **16, because that is what `timetable.ts` accepts from Display** (`jumuah: z.array(...).max(16)`).
+ * A smaller number here would not be a safety margin: it would mean a masjid's later jamā'āt
+ * could never be notified, and a tap on one in the picker would fail the whole save with nothing
+ * on screen to say why.
+ */
+export const MAX_JUMUAH = 16;
 
 export const NAMES: Record<Prayer, string> = {
   fajr: 'Fajr',
@@ -58,10 +78,46 @@ export const MAX_SUBSCRIPTIONS = 5000;
 
 // ── What a phone sends us ────────────────────────────────────────────────────
 
-export const PrefsSchema = z.object({
-  /** Which prayers. An empty list is legitimate — it is how someone turns everything off
-   *  without unsubscribing, and the scheduler simply never has anything to send them. */
-  prayers: z.array(z.enum(PRAYERS)).max(PRAYERS.length),
+/**
+ * Carry a pre-Jumu'ah subscription forward rather than silencing it.
+ *
+ * Before Jumu'ah had its own switch, a Friday reminder came from the Dhuhr choice — the
+ * scheduler used the day's Dhuhr jamā'ah whether or not Jumu'ah was held. Now Jumu'ah stands in
+ * for Dhuhr on that day, so a stored row that asks for Dhuhr and knows nothing about Jumu'ah
+ * would get **nothing at all at midday on a Friday**, silently, having been reminded every week
+ * until the update.
+ *
+ * `jumuah === undefined` is the reliable signal: every version of the app that knows about the
+ * field sends it, as `null` or a list. So an absent field means an old row, and an old row that
+ * wanted Dhuhr wanted the midday jamā'ah — which on a Friday is Jumu'ah.
+ */
+function carryForward(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const r = raw as Record<string, unknown>;
+  if (r.jumuah !== undefined) return raw;
+  if (!Array.isArray(r.prayers) || !r.prayers.includes('dhuhr') || r.prayers.includes('jumuah')) return raw;
+  return { ...r, prayers: [...r.prayers, 'jumuah'] };
+}
+
+export const PrefsSchema = z.preprocess(carryForward, z.object({
+  /** Which prayers, Jumu'ah included. An empty list is legitimate — it is how someone turns
+   *  everything off without unsubscribing, and the scheduler simply never has anything to send
+   *  them. */
+  prayers: z.array(z.enum(NOTIFIABLE)).max(NOTIFIABLE.length),
+  /**
+   * WHICH Jumu'ah, by position: 0 is the first the masjid holds that day, 1 the second.
+   *
+   * `null` means every one of them, and it is the default — including for every subscription
+   * written before this field existed, which is what keeps those phones behaving as they did.
+   *
+   * Position rather than the masjid's own label, because a label is editable text ("1st
+   * Jumu'ah" → "Early Jumu'ah") and a stored preference that silently stops matching is worse
+   * than one that is a little blunt. Position is also what somebody means when they say "I go
+   * to the second one".
+   *
+   * Only consulted when 'jumuah' is in `prayers`.
+   */
+  jumuah: z.array(z.number().int().min(0).max(MAX_JUMUAH - 1)).max(MAX_JUMUAH).nullable().default(null),
   /** At the adhan. */
   adhan: z.boolean(),
   /** N minutes before the jamā'ah; 0 = at the jamā'ah itself. Null = not wanted. */
@@ -80,7 +136,7 @@ export const PrefsSchema = z.object({
    * signed up for reminders from their masjid would expect.
    */
   announcements: z.boolean().default(true),
-});
+}));
 export type Prefs = z.infer<typeof PrefsSchema>;
 
 export const SubscribeSchema = z.object({

@@ -139,6 +139,21 @@ const NAMES: Record<Exclude<SlotKey, 'jumuah'>, string> = {
  * `jumuah` is `[]` on every non-Friday and is never carried forward — asserting a jamā'ah on a
  * Tuesday would be worse than showing nothing.
  */
+/**
+ * What this masjid calls each of its Jumu'ah jamā'āt, in order.
+ *
+ * The reminder sheet needs these to offer a choice, and on a Tuesday `day.jumuah` is empty — so
+ * it takes them from the first day in the window that has any. That day may be YESTERDAY, since
+ * the window starts a day early; the labels are a property of the masjid rather than of a date,
+ * so which Friday they come from does not matter. The names are the masjid's own: Display lets
+ * them write "First Jumu'ah", "Arabic Khutbah", anything at all.
+ */
+export function jumuahLabels(days: Day[]): string[] {
+  const day = days.find((d) => d.jumuah.length > 0);
+  if (!day) return [];
+  return day.jumuah.map((j, i) => j.label || (day.jumuah.length > 1 ? `Jumuʿah ${i + 1}` : 'Jumuʿah'));
+}
+
 export function slotsFor(day: Day): Slot[] {
   const p = day.prayers;
   const out: Slot[] = [{ key: 'fajr', label: NAMES.fajr, ...p.fajr }];

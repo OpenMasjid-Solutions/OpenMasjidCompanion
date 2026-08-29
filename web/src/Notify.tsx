@@ -29,26 +29,39 @@ import { isIos, isStandalone } from './pwa';
 export const PRAYERS = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
 export type Prayer = (typeof PRAYERS)[number];
 
-const LABELS: Record<Prayer, string> = {
+/** Jumu'ah is offered alongside the five, because on a Friday it is not Dhuhr — a different
+ *  time, and often two of them hours apart. */
+export type Notifiable = Prayer | 'jumuah';
+
+const LABELS: Record<Notifiable, string> = {
   fajr: 'Fajr',
   dhuhr: 'Dhuhr',
   asr: 'Asr',
   maghrib: 'Maghrib',
   isha: 'Isha',
+  jumuah: 'Jumuʿah',
 };
 
 export interface Prefs {
-  prayers: Prayer[];
+  prayers: Notifiable[];
   adhan: boolean;
   /** Minutes before the jamā'ah; null = not wanted. */
   beforeIqamah: number | null;
+  /** WHICH Jumu'ah, by position. null = all of them, which is the default. */
+  jumuah: number[] | null;
   /** Occasional notices from the masjid. A separate choice from the prayer reminders: someone
    *  who wants silence at prayer times may still want to hear about a funeral. */
   announcements: boolean;
 }
 
 /** Everything on, fifteen minutes before the jamā'ah — enough to leave the house. */
-export const DEFAULTS: Prefs = { prayers: [...PRAYERS], adhan: false, beforeIqamah: 15, announcements: true };
+export const DEFAULTS: Prefs = {
+  prayers: [...PRAYERS, 'jumuah'],
+  adhan: false,
+  beforeIqamah: 15,
+  jumuah: null,
+  announcements: true,
+};
 
 /** The lead times offered. A field would invite "0" and "60" and a lot of thought about a
  *  choice that has three sensible answers. */
@@ -102,7 +115,17 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-export function Notify({ secure, onClose }: { secure: boolean; onClose: () => void }): JSX.Element {
+export function Notify({
+  secure,
+  jumuah,
+  onClose,
+}: {
+  secure: boolean;
+  /** This masjid's Jumu'ah names, in order. Empty when the timetable has none — a masjid that
+   *  publishes no Jumu'ah gets no Jumu'ah switch rather than an empty one. */
+  jumuah: string[];
+  onClose: () => void;
+}): JSX.Element {
   const [env, setEnv] = useState(readState);
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS);
   const [on, setOn] = useState<boolean | null>(null); // null = still finding out
@@ -146,14 +169,35 @@ export function Notify({ secure, onClose }: { secure: boolean; onClose: () => vo
     };
   }, [blocker]);
 
-  /** Push the current choices to the server for the subscription this device already has. */
-  const save = useCallback(async (next: Prefs) => {
-    setPrefs(next);
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    if (!sub) return;
-    await api.post('/api/public/push/subscribe', { subscription: sub.toJSON(), prefs: next });
-  }, []);
+  /**
+   * Push the current choices to the server for the subscription this device already has.
+   *
+   * The chip moves first, because a switch that waits on a round trip feels broken — but a
+   * FAILED save is put back. Leaving the sheet showing a choice the server never received is
+   * the worst of both: the reader believes they have changed something, and their phone goes on
+   * doing what it did before.
+   */
+  const save = useCallback(
+    async (next: Prefs) => {
+      const before = prefs;
+      setPrefs(next);
+      setError('');
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (!sub) return;
+        const r = await api.post('/api/public/push/subscribe', { subscription: sub.toJSON(), prefs: next });
+        if (!r.ok) {
+          setPrefs(before);
+          setError(r.error);
+        }
+      } catch {
+        setPrefs(before);
+        setError('That didn’t save. Your phone may be offline.');
+      }
+    },
+    [prefs],
+  );
 
   const enable = async () => {
     setBusy(true);
@@ -216,9 +260,28 @@ export function Notify({ secure, onClose }: { secure: boolean; onClose: () => vo
     setBusy(false);
   };
 
-  const togglePrayer = (p: Prayer) => {
-    const next = prefs.prayers.includes(p) ? prefs.prayers.filter((x) => x !== p) : [...prefs.prayers, p];
-    void save({ ...prefs, prayers: next });
+  const togglePrayer = (p: Notifiable) => {
+    const on = prefs.prayers.includes(p);
+    const next = on ? prefs.prayers.filter((x) => x !== p) : [...prefs.prayers, p];
+    // **Turning Jumuʿah back ON clears which ones.** Without this, a choice that no longer
+    // matches anything the masjid holds — someone picked the second, the masjid now holds one —
+    // is unreachable: the picker only appears when there is more than one to pick between, so
+    // off-and-on-again re-posts the same dead list and the reminder stays silent for ever. The
+    // server has its own fallback for that case; this is the half a reader can actually see.
+    const jumuahReset = p === 'jumuah' && !on ? { jumuah: null } : {};
+    void save({ ...prefs, prayers: next, ...jumuahReset });
+  };
+
+  /** Which Jumu'ah is chosen. `null` means all, so an unticked one has to become an explicit
+   *  list of the rest — otherwise "all except the second" has no way to be said. */
+  const chosen = (i: number) => prefs.jumuah === null || prefs.jumuah.includes(i);
+  const toggleJumuah = (i: number) => {
+    const all = jumuah.map((_, k) => k);
+    const now = prefs.jumuah ?? all;
+    const next = now.includes(i) ? now.filter((k) => k !== i) : [...now, i].sort((a, b) => a - b);
+    // Back to "all of them" when every one is ticked, so the preference keeps working if the
+    // masjid adds a third Jumu'ah later.
+    void save({ ...prefs, jumuah: next.length === all.length ? null : next });
   };
 
   return (
@@ -257,21 +320,41 @@ export function Notify({ secure, onClose }: { secure: boolean; onClose: () => vo
             <div className="notify__group">
               <div className="notify__label">Remind me for</div>
               <div className="notify__chips">
-                {PRAYERS.map((p) => {
-                  const chosen = prefs.prayers.includes(p);
+                {([...PRAYERS, ...(jumuah.length ? (['jumuah'] as const) : [])] as Notifiable[]).map((p) => {
+                  const on = prefs.prayers.includes(p);
                   return (
-                    <button
-                      key={p}
-                      className={chosen ? 'chip chip--on' : 'chip'}
-                      onClick={() => togglePrayer(p)}
-                      aria-pressed={chosen}
-                    >
-                      {chosen && <Check size={13} aria-hidden="true" />}
+                    <button key={p} className={on ? 'chip chip--on' : 'chip'} onClick={() => togglePrayer(p)} aria-pressed={on}>
+                      {on && <Check size={13} aria-hidden="true" />}
                       {LABELS[p]}
                     </button>
                   );
                 })}
               </div>
+
+              {/* Only when there is a choice to make. One Jumu'ah needs no picker, and a second
+                  row of chips under a single option reads as a decision the reader has to make
+                  about something that has only one answer. */}
+              {prefs.prayers.includes('jumuah') && jumuah.length > 1 && (
+                <div className="notify__sub">
+                  <div className="notify__label">Which Jumuʿah</div>
+                  <div className="notify__chips">
+                    {jumuah.map((label, i) => (
+                      <button
+                        key={label + i}
+                        className={chosen(i) ? 'chip chip--on' : 'chip'}
+                        onClick={() => toggleJumuah(i)}
+                        aria-pressed={chosen(i)}
+                      >
+                        {chosen(i) && <Check size={13} aria-hidden="true" />}
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {prefs.jumuah !== null && prefs.jumuah.length === 0 && (
+                    <p className="notify__hint">None chosen, so no Jumuʿah reminder will be sent.</p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="notify__group">

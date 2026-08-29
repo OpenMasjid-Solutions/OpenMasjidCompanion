@@ -578,8 +578,11 @@ h1, h2, h3, p { margin: 0; }
      to the list below. */
   margin-block-start: 1.1rem;
 }
-.arc__track { fill: none; stroke: color-mix(in srgb, var(--ink-scene) 22%, transparent); stroke-width: 2.5; stroke-linecap: round; }
-.arc__done  { fill: none; stroke: var(--coral-strong); stroke-width: 3; stroke-linecap: round; }
+/* `stroke-linejoin: round` because the path is a polyline sampled from the curve rather than
+   a Bézier — 160 chords over 320 units, so the joins are far below a pixel, but rounding them
+   costs nothing and removes any chance of a mitre spiking at a bend. */
+.arc__track { fill: none; stroke: color-mix(in srgb, var(--ink-scene) 22%, transparent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.arc__done  { fill: none; stroke: var(--coral-strong); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .arc__dot   { fill: color-mix(in srgb, var(--ink-scene) 35%, transparent); }
 .arc__dot--past { fill: var(--ink-scene); }
 .arc__now   { fill: var(--sky-dot-core, #0f2044); stroke: var(--ink-scene); stroke-width: 3; }
@@ -1493,3 +1496,13 @@ h1, h2, h3, p { margin: 0; }
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+
+/* A nested choice under a chip that turns it on — "which Jumuʿah" only exists because
+   "Jumuʿah" is ticked, and the indent says so without a label explaining the relationship. */
+.notify__sub {
+  margin-block-start: 0.7rem;
+  margin-inline-start: 0.9rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 2px solid color-mix(in srgb, var(--ink-scene) 18%, transparent);
+}
+.notify__sub .notify__label { font-size: 0.66rem; margin-block-end: 0.4rem; }

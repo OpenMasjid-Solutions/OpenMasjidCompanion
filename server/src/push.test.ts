@@ -22,7 +22,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Store } from './store';
-import { ANNOUNCE_COOLDOWN_MS, ANNOUNCE_MAX_CHARS, MAX_SUBSCRIPTIONS, type Prefs, type Vapid, PRAYERS, safeEndpoint, sendOne, Subscriptions, vapidKeys } from './push';
+import { ANNOUNCE_COOLDOWN_MS, ANNOUNCE_MAX_CHARS, MAX_JUMUAH, MAX_SUBSCRIPTIONS, type Prefs, type Vapid, PRAYERS, PrefsSchema, safeEndpoint, sendOne, Subscriptions, vapidKeys } from './push';
 import { GRACE_MS, PushScheduler, STALE_LIMIT_MS, announcementFor, dueFor, fanOut, notificationFor } from './pushScheduler';
 import { formatTimeIn, isHhmm, tzOffsetMs, zonedTimeToEpoch } from './zoned';
 import type { TimetableFeed } from './timetable';
@@ -123,7 +123,7 @@ const feed = (over: Partial<TimetableFeed> = {}): TimetableFeed =>
     ...over,
   }) as TimetableFeed;
 
-const prefs = (over: Partial<Prefs> = {}): Prefs => ({ prayers: [...PRAYERS], adhan: false, beforeIqamah: 15, announcements: true, ...over });
+const prefs = (over: Partial<Prefs> = {}): Prefs => ({ prayers: [...PRAYERS], adhan: false, beforeIqamah: 15, jumuah: null, announcements: true, ...over });
 
 test('a reminder fires the right number of minutes before the jamāʿah', () => {
   const f = feed();
@@ -193,7 +193,7 @@ test('a window that has already been covered yields nothing — the same tick tw
 
 test('the words on the phone name the prayer, the time and the masjid, and nothing else', () => {
   const f = feed();
-  const due = { at: 0, prayer: 'maghrib' as const, date: '2026-08-24', kind: 'iqamah' as const, hhmm: '19:50' };
+  const due = { at: 0, prayer: 'maghrib' as const, date: '2026-08-24', kind: 'iqamah' as const, hhmm: '19:50', label: 'Maghrib', key: 'maghrib' };
   const n = notificationFor(due, f, 15, 'https://omos.example.org/companion');
   assert.match(n.title, /Maghrib/);
   assert.match(n.title, /Masjid An-Noor/);
@@ -204,7 +204,7 @@ test('the words on the phone name the prayer, the time and the masjid, and nothi
 
 test('an adhan notification says adhan, and a zero lead does not say "in 0 minutes"', () => {
   const f = feed();
-  const base = { at: 0, prayer: 'fajr' as const, date: '2026-08-24', kind: 'adhan' as const, hhmm: '05:01' };
+  const base = { at: 0, prayer: 'fajr' as const, date: '2026-08-24', kind: 'adhan' as const, hhmm: '05:01', label: 'Fajr', key: 'fajr' };
   assert.match(notificationFor(base, f, 15, '').body, /Adhan/);
   const atJamaah = notificationFor({ ...base, kind: 'iqamah', hhmm: '05:30' }, f, 0, '');
   assert.doesNotMatch(atJamaah.body, /0 minutes/);
@@ -999,4 +999,151 @@ test('and an announcement to sixty phones is something an admin can wait for', a
   } finally {
     s.cleanup();
   }
+});
+
+// ── Jumuʿah ──────────────────────────────────────────────────────────────────
+//
+// The prayer people plan their week around, and the one a masjid is most likely to hold twice.
+// The rule that matters: on the day it is held, **Jumuʿah stands in for Dhuhr** — sending a
+// Dhuhr reminder on a Friday would name a jamāʿah the masjid is not holding, at an hour nobody
+// is gathering.
+
+/** A Friday with two Jumuʿah jamāʿāt, as Display sends one. */
+const friday = (date: string, jum: { label: string; iqamah: string }[]) => ({
+  ...day(date),
+  jumuah: jum.map((j) => ({ label: j.label, adhan: null, iqamah: j.iqamah })),
+});
+
+const fridayFeed = (jum: { label: string; iqamah: string }[] = [
+  { label: 'First Jumuʿah', iqamah: '13:15' },
+  { label: 'Second Jumuʿah', iqamah: '14:15' },
+]) => feed({ days: [day('2026-08-27'), friday('2026-08-28', jum), day('2026-08-29')] });
+
+test('ON A FRIDAY, DHUHR IS NOT SENT — Jumuʿah stands in for it', async () => {
+  const f = fridayFeed();
+  // The Dhuhr jamāʿah in the payload is 13:30 EDT = 17:30Z. Nobody should be told about it.
+  const at = Date.parse('2026-08-28T17:30:00Z');
+  const due = dueFor(f, prefs({ prayers: ['dhuhr'], beforeIqamah: 0 }), at - 60_000, at);
+  assert.deepEqual(due, [], 'the masjid is not holding a Dhuhr jamāʿah that day');
+
+  // And on a day with no Jumuʿah, Dhuhr is sent as usual.
+  const thursday = Date.parse('2026-08-27T17:30:00Z');
+  assert.equal(dueFor(f, prefs({ prayers: ['dhuhr'], beforeIqamah: 0 }), thursday - 60_000, thursday).length, 1);
+});
+
+test('a Jumuʿah reminder carries the masjid’s own name for it', async () => {
+  const f = fridayFeed();
+  // First Jumuʿah 13:15 EDT = 17:15Z, fifteen minutes before is 17:00Z.
+  const at = Date.parse('2026-08-28T17:00:00Z');
+  const due = dueFor(f, prefs({ prayers: ['jumuah'] }), at - 60_000, at);
+  assert.equal(due.length, 1);
+  assert.equal(due[0].prayer, 'jumuah');
+  assert.equal(due[0].label, 'First Jumuʿah');
+  const n = notificationFor(due[0], f, 15, '');
+  assert.match(n.title, /First Jumuʿah/);
+  assert.match(n.body, /1:15/);
+});
+
+test('BOTH JUMUʿAHS ARE OFFERED, and by default both are sent', async () => {
+  const f = fridayFeed();
+  const all = dueFor(f, prefs({ prayers: ['jumuah'] }), Date.parse('2026-08-28T15:00:00Z'), Date.parse('2026-08-28T20:00:00Z'));
+  assert.deepEqual(all.map((d) => d.label), ['First Jumuʿah', 'Second Jumuʿah'], 'null means every one the masjid holds');
+});
+
+test('choosing one Jumuʿah silences the other', async () => {
+  const f = fridayFeed();
+  const window = [Date.parse('2026-08-28T15:00:00Z'), Date.parse('2026-08-28T20:00:00Z')] as const;
+  assert.deepEqual(dueFor(f, prefs({ prayers: ['jumuah'], jumuah: [1] }), ...window).map((d) => d.label), ['Second Jumuʿah']);
+  assert.deepEqual(dueFor(f, prefs({ prayers: ['jumuah'], jumuah: [0] }), ...window).map((d) => d.label), ['First Jumuʿah']);
+  assert.deepEqual(dueFor(f, prefs({ prayers: ['jumuah'], jumuah: [] }), ...window), [], 'none chosen, nothing sent');
+});
+
+test('TWO JUMUʿAH REMINDERS DO NOT COLLAPSE INTO ONE on the lock screen', async () => {
+  // The tag is what a phone uses to replace an earlier notification. Two Jumuʿahs are different
+  // gatherings an hour apart; sharing a tag would mean the second silently replaced the first.
+  const f = fridayFeed();
+  const both = dueFor(f, prefs({ prayers: ['jumuah'] }), Date.parse('2026-08-28T15:00:00Z'), Date.parse('2026-08-28T20:00:00Z'));
+  const tags = both.map((d) => notificationFor(d, f, 15, '').tag);
+  assert.equal(new Set(tags).size, 2, `both should have their own tag, got ${JSON.stringify(tags)}`);
+});
+
+test('ONE ADHAN, ONE REMINDER — not one per Jumuʿah at the same second', async () => {
+  // Display carries no per-Jumuʿah adhan: there is a single adhan that day and it is Dhuhr's.
+  // Sending it once per chosen Jumuʿah put two identical notifications on a lock screen in the
+  // same second, each claiming an adhan for a jamāʿah whose adhan Display sent as null.
+  const f = fridayFeed();
+  const at = Date.parse('2026-08-28T17:05:00Z'); // 13:05 EDT, the Dhuhr adhan
+  const due = dueFor(f, prefs({ prayers: ['jumuah'], adhan: true, beforeIqamah: null }), at - 60_000, at);
+  assert.equal(due.length, 1, 'one adhan that day, however many jamāʿāt follow it');
+  assert.equal(due[0].hhmm, '13:05');
+  assert.equal(due[0].label, 'Jumuʿah', 'it cannot claim to be either one of them');
+});
+
+test('with a single Jumuʿah the adhan reminder carries that jamāʿah’s own name', async () => {
+  const f = fridayFeed([{ label: 'Jumuʿah at the Islamic Centre', iqamah: '13:15' }]);
+  const at = Date.parse('2026-08-28T17:05:00Z');
+  const due = dueFor(f, prefs({ prayers: ['jumuah'], adhan: true, beforeIqamah: null }), at - 60_000, at);
+  assert.equal(due.length, 1);
+  assert.equal(due[0].label, 'Jumuʿah at the Islamic Centre');
+});
+
+test('a subscription written before Jumuʿah existed keeps working', async () => {
+  // No `jumuah` key at all, and 'jumuah' not in `prayers` — a row stored before this shipped.
+  const parsed = PrefsSchema.safeParse({ prayers: ['fajr', 'dhuhr'], adhan: false, beforeIqamah: 15 });
+  assert.ok(parsed.success);
+  assert.equal(parsed.data.jumuah, null, 'null means all, which is the right default');
+
+  const f = fridayFeed();
+  const window = [Date.parse('2026-08-28T15:00:00Z'), Date.parse('2026-08-28T20:00:00Z')] as const;
+  // **AND IT STILL GETS A FRIDAY REMINDER.** Before Jumuʿah had its own switch, a Friday came
+  // from the Dhuhr choice. Now Jumuʿah stands in for Dhuhr that day — so without carrying the
+  // old row forward, somebody reminded every week would have gone silent at midday on Fridays,
+  // with nothing anywhere to say why.
+  assert.ok(parsed.data.prayers.includes('jumuah' as never), 'an old Dhuhr subscriber is carried on to Jumuʿah');
+  assert.deepEqual(dueFor(f, parsed.data, ...window).map((x) => x.label), ['First Jumuʿah', 'Second Jumuʿah']);
+});
+
+test('an EXPLICIT refusal of Jumuʿah is not overturned by the carry-forward', async () => {
+  // The carry-forward keys on the field being absent. A phone that knows about Jumuʿah always
+  // sends it, so an explicit "no" must survive.
+  const said = PrefsSchema.safeParse({ prayers: ['fajr', 'dhuhr'], adhan: false, beforeIqamah: 15, jumuah: null });
+  assert.ok(said.success);
+  assert.equal(said.data.prayers.includes('jumuah' as never), false, 'they told us, so we listen');
+});
+
+test('A CHOSEN JUMUʿAH THAT IS NOT HELD THIS WEEK still gets a reminder', async () => {
+  // A masjid drops from two Jumuʿah to one. Everyone who picked the second would otherwise go
+  // silent — permanently, and with no control anywhere that could fix it, because the picker
+  // only appears when there is more than one to pick between.
+  const one = fridayFeed([{ label: 'Jumuʿah', iqamah: '13:15' }]);
+  const window = [Date.parse('2026-08-28T15:00:00Z'), Date.parse('2026-08-28T20:00:00Z')] as const;
+  const due = dueFor(one, prefs({ prayers: ['jumuah'], jumuah: [1] }), ...window);
+  assert.equal(due.length, 1, 'the one jamāʿah being held is the one they meant');
+  assert.equal(due[0].label, 'Jumuʿah');
+
+  // An explicit "none" is still none — the fallback is for a choice that has been outlived,
+  // not for one that was deliberately emptied.
+  assert.deepEqual(dueFor(one, prefs({ prayers: ['jumuah'], jumuah: [] }), ...window), []);
+});
+
+test('two identically named Jumuʿah jamāʿāt do not collapse into one', async () => {
+  // The tag is keyed on POSITION, not on the masjid's label — which Display does not require to
+  // be distinct. Keyed on the label, the second would silently replace the first.
+  const f = fridayFeed([
+    { label: 'Jumuʿah', iqamah: '13:15' },
+    { label: 'Jumuʿah', iqamah: '14:15' },
+  ]);
+  const both = dueFor(f, prefs({ prayers: ['jumuah'] }), Date.parse('2026-08-28T15:00:00Z'), Date.parse('2026-08-28T20:00:00Z'));
+  assert.equal(both.length, 2);
+  const tags = both.map((d) => notificationFor(d, f, 15, '').tag);
+  assert.equal(new Set(tags).size, 2, `same name, different gatherings: ${JSON.stringify(tags)}`);
+});
+
+test('the Jumuʿah cap matches what Display is allowed to send', () => {
+  // A lower cap here would silently drop a masjid's later jamāʿāt AND make a picker tap on one
+  // fail the whole save with nothing on screen to say why.
+  const schema = fs.readFileSync(path.join(__dirname, 'timetable.ts'), 'utf8');
+  const m = /jumuah:\s*z\.array\([^)]*\)\.max\((\d+)\)/.exec(schema);
+  assert.ok(m, 'could not find the feed’s Jumuʿah cap');
+  assert.equal(MAX_JUMUAH, Number(m[1]), `push.ts caps at ${MAX_JUMUAH}, the feed accepts ${m[1]}`);
 });

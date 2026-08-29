@@ -14,6 +14,11 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Jumuʿah reminders.** Jumuʿah now has its own switch in the reminder settings, separate from
+  Dhuhr &mdash; and if your masjid holds more than one, you can pick which one you want to be
+  reminded about. On a Friday the Dhuhr reminder steps aside for it, since that is the jamāʿah
+  actually being held.
+
 - **Swipe between months** in the month view, the same way you swipe between days.
 - **The day a jamāʿah time changes, that time is shown in a different colour** on the prayer
   times themselves &mdash; so you can see at a glance which one moved, not just that something did.
@@ -58,6 +63,8 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Fixed
 
+- **The arc curves smoothly all the way over the top.** It had gone flat across the middle,
+  like the top of a table; it is now one continuous curve with a rounded crest.
 - **The arc now follows the sun rather than being a plain arch** &mdash; flat along the horizon at
   dawn, a quick climb through the morning, level across the middle of the day, then a longer,
   gentler afternoon and a steeper drop into the evening.

@@ -24,6 +24,7 @@ import {
   formatUntil,
   changedOn,
   iqamahChanges,
+  jumuahLabels,
   prayerChanged,
   momentsFor,
   monthGrid,
@@ -627,4 +628,28 @@ test('ON A FRIDAY A CHANGED DHUHR HAS NO ROW TO COLOUR, and that is the honest a
     'but there is no Dhuhr row on a Friday',
   );
   assert.ok(slotsFor(friday).some((s) => s.key === 'jumuah'));
+});
+
+test('the Jumuʿah names offered come from the next Friday, not from today', () => {
+  // On a Tuesday there is no Jumuʿah in ; the reminder sheet still has to offer the
+  // choice, so it looks forward through the window rather than at the day on screen.
+  const friday = { ...day('2026-08-28'), jumuah: [
+    { label: 'First Jumuʿah', adhan: null, iqamah: '13:15' },
+    { label: 'Second Jumuʿah', adhan: null, iqamah: '14:15' },
+  ] };
+  assert.deepEqual(jumuahLabels([day('2026-08-25'), day('2026-08-26'), friday]), ['First Jumuʿah', 'Second Jumuʿah']);
+});
+
+test('a masjid that publishes no Jumuʿah gets no Jumuʿah switch at all', () => {
+  assert.deepEqual(jumuahLabels([day('2026-08-25'), day('2026-08-26')]), []);
+});
+
+test('an unlabelled Jumuʿah is numbered, and a lone one is not', () => {
+  const two = { ...day('2026-08-28'), jumuah: [
+    { label: '', adhan: null, iqamah: '13:15' },
+    { label: '', adhan: null, iqamah: '14:15' },
+  ] };
+  assert.deepEqual(jumuahLabels([two]), ['Jumuʿah 1', 'Jumuʿah 2']);
+  const one = { ...day('2026-08-28'), jumuah: [{ label: '', adhan: null, iqamah: '13:15' }] };
+  assert.deepEqual(jumuahLabels([one]), ['Jumuʿah']);
 });
