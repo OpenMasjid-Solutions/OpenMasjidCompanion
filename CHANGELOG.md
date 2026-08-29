@@ -58,6 +58,11 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Fixed
 
+- **The arc now follows the sun rather than being a plain arch** &mdash; flat along the horizon at
+  dawn, a quick climb through the morning, level across the middle of the day, then a longer,
+  gentler afternoon and a steeper drop into the evening.
+- **The month view slides when you change month**, the same way the day view does.
+- The Adhan and Iqamah headings sit with the times they label rather than with the date above them.
 - **The marker showing where you are in the day now sits exactly on the end of the line**
   rather than a little ahead of it.
 - **The arc above the prayer times now runs to the edges of the screen**, sits closer under the

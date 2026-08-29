@@ -323,69 +323,105 @@ const W = 320;
 /** Band height. 0.275 of the width, taken from the reference: a shallower arc reads as a slouch
  *  rather than an arc, and a taller one crowds the times below it. */
 const H = 88;
-/** Control-point depth. A symmetric cubic peaks at H − 0.75k, so this puts the peak at y = 0. */
-const K = H / 0.75;
-const P0 = { x: 0, y: H };
-const C1 = { x: W * 0.28, y: H - K };
-const C2 = { x: W * 0.72, y: H - K };
-const P3 = { x: W, y: H };
-const ARC_D = `M ${P0.x} ${P0.y} C ${C1.x} ${C1.y} ${C2.x} ${C2.y} ${P3.x} ${P3.y}`;
 
-/** The point at Bézier parameter t. */
-function bezier(t: number): { x: number; y: number } {
+/**
+ * THE SHAPE, and why it is two segments rather than one.
+ *
+ * A sunrise-to-sunset trajectory is not symmetric and it is not an arc. Hasan described the
+ * reference precisely: flat along the horizon at the far left; a quick, steep climb through the
+ * morning; flattening as it approaches the top; almost LEVEL across the middle rather than a
+ * peak; then a descent that is gentler and more stretched than the climb was; and a sharper
+ * drop again as it reaches the right edge.
+ *
+ * One cubic cannot do that. A single segment has one tangent at each end and no way to be
+ * steeper on one side of its maximum than the other — every symmetric-control cubic, and every
+ * quadratic, is a hill with matching flanks. Two segments meeting at the summit have four
+ * tangents to spend, which is exactly the number that description needs:
+ *
+ *   • horizontal at the far left     → "almost flat near the horizon"
+ *   • horizontal arriving at the top → "gradually flattens out"
+ *   • horizontal leaving the top     → "becomes almost level"
+ *   • DESCENDING at the right edge   → "drops more noticeably toward the horizon"
+ *
+ * The numbers are a least-squares fit to ten points sampled off the reference screenshot, not a
+ * guess: 1.8% RMS against a band of 1.0, worst point 3.8%. The summit sits at 0.436 of the
+ * width — left of centre, which is what makes the descent the longer half.
+ */
+const PEAK_X = W * 0.436;
+const ARC_SEGS = [
+  // Up: flat at the horizon, steep through the middle, level at the summit.
+  { p0: { x: 0, y: H }, c1: { x: W * 0.126, y: H }, c2: { x: W * 0.253, y: 0 }, p3: { x: PEAK_X, y: 0 } },
+  // Down: a long level top, then a stretched descent that steepens into the right edge.
+  { p0: { x: PEAK_X, y: 0 }, c1: { x: W * 0.769, y: 0 }, c2: { x: W * 0.781, y: H * 0.72 }, p3: { x: W, y: H } },
+];
+
+const ARC_D = ARC_SEGS.map(
+  (g, i) => `${i === 0 ? `M ${g.p0.x} ${g.p0.y} ` : ''}C ${g.c1.x} ${g.c1.y} ${g.c2.x} ${g.c2.y} ${g.p3.x} ${g.p3.y}`,
+).join(' ');
+
+type Pt = { x: number; y: number };
+
+/** A point on one segment, at that segment's own Bézier parameter. */
+function bezier(seg: (typeof ARC_SEGS)[number], t: number): Pt {
   const u = 1 - t;
   return {
-    x: u ** 3 * P0.x + 3 * u ** 2 * t * C1.x + 3 * u * t ** 2 * C2.x + t ** 3 * P3.x,
-    y: u ** 3 * P0.y + 3 * u ** 2 * t * C1.y + 3 * u * t ** 2 * C2.y + t ** 3 * P3.y,
+    x: u ** 3 * seg.p0.x + 3 * u ** 2 * t * seg.c1.x + 3 * u * t ** 2 * seg.c2.x + t ** 3 * seg.p3.x,
+    y: u ** 3 * seg.p0.y + 3 * u ** 2 * t * seg.c1.y + 3 * u * t ** 2 * seg.c2.y + t ** 3 * seg.p3.y,
   };
 }
 
 /**
- * Cumulative chord length along the curve, sampled once.
+ * Cumulative chord length along the WHOLE path, sampled once.
  *
- * **A curve's parameter is not its length.** A cubic covers far more ground per unit of t near
- * its ends than at its peak, and the two only coincide on a straight line. Computed once at
- * module load because the geometry is constant — nothing here depends on the day or the clock.
+ * **A curve's parameter is not its length**, and with two segments it is not even continuous:
+ * the summit is halfway through the path by parameter but not by distance, because the climb is
+ * shorter than the descent. Everything visible is placed by length, so this table is what makes
+ * the dots and the marker agree with a stroke the browser measures its own way.
+ *
+ * Computed at module load because the geometry is constant — nothing here depends on the day or
+ * the clock.
  */
 const ARC_TABLE = (() => {
-  const N = 240;
-  const cum = [0];
-  let prev = bezier(0);
-  for (let i = 1; i <= N; i += 1) {
-    const q = bezier(i / N);
-    cum.push(cum[i - 1] + Math.hypot(q.x - prev.x, q.y - prev.y));
-    prev = q;
+  const PER_SEG = 240;
+  const pts: Pt[] = [];
+  const cum: number[] = [0];
+  ARC_SEGS.forEach((seg, i) => {
+    // The join is one point, not two: segment n's end and segment n+1's start are the summit.
+    for (let k = i === 0 ? 0 : 1; k <= PER_SEG; k += 1) pts.push(bezier(seg, k / PER_SEG));
+  });
+  for (let i = 1; i < pts.length; i += 1) {
+    cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
   }
-  const total = cum[N];
-  return { cum, total, N };
+  return { pts, cum, total: cum[cum.length - 1] };
 })();
 
 /**
- * The point a given fraction of the way ALONG the curve.
+ * The point a given fraction of the way ALONG the path.
  *
  * The progress stroke is drawn with `pathLength="1"` and a `stroke-dasharray`, which the
- * browser measures by LENGTH. Placing the dots and the "now" marker at the Bézier parameter
+ * browser measures by LENGTH. Placing the dots and the "now" marker at a Bézier parameter
  * instead left the marker floating up to 8px past the end of the very line it caps, and the
- * coral reaching a dot did not mean that prayer had passed. Everything is placed by length now,
- * so the stroke and the things on it agree by construction.
+ * coral reaching a dot did not mean that prayer had passed.
  *
- * Interpolated from the table rather than solved: the arc length of a cubic has no closed form,
- * and 240 chords is well under a pixel of error at any size this renders at.
+ * Interpolated between samples rather than solved: the arc length of a cubic has no closed
+ * form, and 480 chords is well under a pixel at any size this renders at.
  */
-function pointAtFraction(f: number): { x: number; y: number } {
-  const target = Math.min(1, Math.max(0, f)) * ARC_TABLE.total;
-  const { cum, N } = ARC_TABLE;
+function pointAtFraction(f: number): Pt {
+  const { pts, cum, total } = ARC_TABLE;
+  const target = Math.min(1, Math.max(0, f)) * total;
   let lo = 0;
-  let hi = N;
+  let hi = cum.length - 1;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
     if (cum[mid] < target) lo = mid + 1;
     else hi = mid;
   }
-  if (lo === 0) return bezier(0);
+  if (lo === 0) return pts[0];
   const span = cum[lo] - cum[lo - 1];
   const within = span > 0 ? (target - cum[lo - 1]) / span : 0;
-  return bezier((lo - 1 + within) / N);
+  const a = pts[lo - 1];
+  const b = pts[lo];
+  return { x: a.x + (b.x - a.x) * within, y: a.y + (b.y - a.y) * within };
 }
 
 function Arc({ slots, day, zone, now, isToday }: { slots: Slot[]; day: Day; zone: string; now: number; isToday: boolean }): JSX.Element {

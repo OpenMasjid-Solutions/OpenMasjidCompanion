@@ -1019,7 +1019,10 @@ h1, h2, h3, p { margin: 0; }
  * A fixed column template on BOTH the heading row and the data rows, so the two line up — a
  * grid whose columns are `auto` would size each row independently and the headings would sit
  * over nothing in particular. */
-.times { margin-block-start: 0.35rem; }
+/* The headings sat 45px under the Hijri date and 84px above the row they label, so they read
+   as part of the date block rather than as the top of the table. More room above, a little less
+   below: they belong to what is under them. */
+.times { margin-block-start: 1.35rem; }
 
 /* The Iqamah column is the wider of the two, and the Adhan sits a little further left than it
    used to. "10:15 PM" at the Iqamah's size is the longest thing this grid ever has to hold, and
@@ -1034,7 +1037,7 @@ h1, h2, h3, p { margin: 0; }
 }
 
 .time-head {
-  padding: 0 0.9rem 0.4rem;
+  padding: 0 0.9rem 0.3rem;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -1151,18 +1154,25 @@ h1, h2, h3, p { margin: 0; }
  * vertical scrolling native — only horizontal panning is ours to interpret. */
 .today { touch-action: pan-y; }
 
-.times[data-slide="next"] { animation: dayInFromRight 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
-.times[data-slide="prev"] { animation: dayInFromLeft 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
-@keyframes dayInFromRight {
+/* One motion, two views. The day's table and the month's grid slide the same way for the same
+   gesture, because from the reader's side it IS the same gesture — the only difference is how
+   much of the calendar moves. Named for what it does rather than for the day view it started
+   in. */
+.times[data-slide="next"],
+.month__grid[data-slide="next"] { animation: slideInFromRight 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+.times[data-slide="prev"],
+.month__grid[data-slide="prev"] { animation: slideInFromLeft 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+@keyframes slideInFromRight {
   from { opacity: 0; transform: translate3d(14px, 0, 0); }
   to   { opacity: 1; transform: none; }
 }
-@keyframes dayInFromLeft {
+@keyframes slideInFromLeft {
   from { opacity: 0; transform: translate3d(-14px, 0, 0); }
   to   { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .times[data-slide] { animation: none; }
+  .times[data-slide],
+  .month__grid[data-slide] { animation: none; }
 }
 
 /* ── "Today" ─────────────────────────────────────────────────────────────────

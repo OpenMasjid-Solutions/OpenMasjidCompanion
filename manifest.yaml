@@ -5,7 +5,7 @@ id: companion
 name: OpenMasjid Companion
 tagline: Prayer times and giving, on every musalli's phone
 category: community
-version: 0.1.0-dev.13
+version: 0.1.0-dev.14
 author: OpenMasjid-Solutions
 license: AGPL-3.0-only
 icon: icon.png

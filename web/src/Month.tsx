@@ -14,6 +14,7 @@
  * tap into a day this app has no times for would be inviting them to a blank page — so days
  * outside the window are visibly inert rather than quietly broken.
  */
+import { useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useSwipe } from './swipe';
 import {
@@ -66,8 +67,16 @@ export function Month({
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`;
   };
   const canGo = (by: number) => monthsWithData.has(monthOf(shift(by)));
+
+  /** Which way the last month change went, so the new grid slides in from the side it came
+   *  from — the same gesture and the same motion as the day view, because to a thumb it is the
+   *  same action. Held here rather than passed down: only this component knows which of its own
+   *  controls was used. */
+  const [slide, setSlide] = useState<'next' | 'prev' | null>(null);
   const step = (by: number) => {
-    if (canGo(by)) onAnchor(shift(by));
+    if (!canGo(by)) return;
+    setSlide(by === 1 ? 'next' : 'prev');
+    onAnchor(shift(by));
   };
 
   // The same gesture as the day view, because a month grid is the same kind of thing to a
@@ -81,11 +90,11 @@ export function Month({
   return (
     <main className="month" {...swipe}>
       <div className="month__bar">
-        <button className="datebar__btn" onClick={() => onAnchor(shift(-1))} disabled={!canGo(-1)} aria-label="Previous month">
+        <button className="datebar__btn" onClick={() => step(-1)} disabled={!canGo(-1)} aria-label="Previous month">
           <ChevronLeft size={22} aria-hidden="true" />
         </button>
         <div className="month__title">{formatMonth(anchor, masjid.language)}</div>
-        <button className="datebar__btn" onClick={() => onAnchor(shift(1))} disabled={!canGo(1)} aria-label="Next month">
+        <button className="datebar__btn" onClick={() => step(1)} disabled={!canGo(1)} aria-label="Next month">
           <ChevronRight size={22} aria-hidden="true" />
         </button>
         <button className="datebar__btn" onClick={onClose} aria-label="Back to the day">
@@ -93,7 +102,15 @@ export function Month({
         </button>
       </div>
 
-      <div className="month__grid" role="grid" aria-label={formatMonth(anchor, masjid.language)}>
+      {/* Keyed on the month so a change remounts the grid and replays the slide, exactly as the
+          day view keys its table on the date. */}
+      <div
+        className="month__grid"
+        key={anchor.slice(0, 7)}
+        data-slide={slide ?? undefined}
+        role="grid"
+        aria-label={formatMonth(anchor, masjid.language)}
+      >
         <div className="month__week month__week--head" role="row">
           {labels.map((l, i) => (
             <div key={i} className="month__wd" role="columnheader">

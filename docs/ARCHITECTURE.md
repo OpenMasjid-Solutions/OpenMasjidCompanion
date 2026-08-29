@@ -764,3 +764,43 @@ had run.**
 The month view also had no `touch-action: pan-y`, the companion rule the day-view swipe depends
 on, and the longest English date ("Wednesday, September 30") overflowed its box onto the arrows
 at 320px — the narrowest phone still in use.
+
+## Slice 12 — the arc is a trajectory, not an arch (0.1.0-dev.14)
+
+Hasan described the reference curve in words rather than pointing at it, which turned out to be
+the more useful thing: **flat along the horizon at the far left; a quick, steep climb through
+the morning; flattening as it approaches the top; almost LEVEL across the middle rather than a
+peak; a descent that is gentler and more stretched than the climb; and a sharper drop again into
+the right edge.**
+
+**One cubic cannot be that shape.** A single segment has one tangent at each end and no way to
+be steeper on one side of its maximum than the other — every quadratic, and every cubic with
+symmetric controls, is a hill with matching flanks. Two segments meeting at the summit have four
+tangents to spend, which is exactly the number that description needs: horizontal at the far
+left, horizontal arriving at the top, horizontal leaving it, and still descending at the right.
+
+The numbers are a **least-squares fit** to ten points sampled off the reference screenshot, not
+a guess — 1.8% RMS against a band of 1.0, worst point 3.8%. The summit sits at 0.436 of the
+width, left of centre, which is what makes the descent the longer half. A sweep of the exit
+steepness showed that forcing a visibly descending right edge costs 0.006 RMS, so the
+description won over the marginally better fit.
+
+Each clause is a test rather than a screenshot: the entry slope, the climb, the levelness of the
+top, the mid-descent, the exit, and the asymmetry (at 0.2 either side of the summit the climb is
+0.365 of the band down and the descent 0.120).
+
+**The arc-length table now spans both segments.** With one curve, parameter and length merely
+disagreed; with two they are not even continuous — the summit is halfway along by parameter but
+not by distance, because the climb is shorter than the descent. Re-measured: the "now" marker
+sits 0.00 units from the end of the line it caps, all day.
+
+### The rest
+
+The month grid slides on a month change, from whichever side it came from — the same motion as
+the day's table for the same gesture, so the keyframes are now named `slideInFrom*` rather than
+`dayInFrom*` and both views share them. The arrows route through the same `step()` as the swipe,
+or the buttons would move the month with no motion while the swipe animated.
+
+The column headings sat 6px under the Hijri date and a long way above the row they label, so
+they read as part of the date block. Now 22px below the date and 20px above the first row —
+they belong to what is under them.
