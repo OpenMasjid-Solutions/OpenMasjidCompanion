@@ -21,9 +21,20 @@
  */
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { api } from './api';
+import type { SkyMode } from './periodTheme';
 
 export interface Prefs {
   theme: 'system' | 'dark' | 'light';
+  /**
+   * The MUSALLI page's own light/dark choice, which is a different question from `theme`.
+   *
+   * `theme` is the family's setting: it follows the browser, and the admin panel obeys it. The
+   * musalli page does not — it themes itself by the time of day (docs/DESIGN_LANGUAGE.md), so
+   * "follow my phone" is not one of the answers on offer there. This is the reader's say over
+   * that: keep the day, or hold one polarity. Never sent anywhere, never inherited from the
+   * dashboard, and deliberately absent from `appearancePatch` for that reason.
+   */
+  sky: SkyMode;
   wallpaper: string;
   /** Optional custom wallpaper image URL — overrides the preset when set. */
   wallpaperImage: string;
@@ -51,7 +62,7 @@ export interface Prefs {
 export const OPENED_FROM_DASHBOARD = typeof location !== 'undefined' && /(?:^|[#&])omos=/.test(location.hash);
 
 const KEY = 'omc-prefs';
-const DEFAULTS: Prefs = { theme: 'system', wallpaper: 'aurora', wallpaperImage: '', accent: 'cyan', followOmos: false };
+const DEFAULTS: Prefs = { theme: 'system', sky: 'period', wallpaper: 'aurora', wallpaperImage: '', accent: 'cyan', followOmos: false };
 
 /** Accent palette — mirrors OpenMasjidOS so the app matches the dashboard's accent.
  *  cyan is the tokens' built-in primary, so selecting it just clears the overrides. */
@@ -132,6 +143,13 @@ function normTheme(v: unknown): Prefs['theme'] {
   return (THEME_VALUES as readonly string[]).includes(String(v)) ? (v as Prefs['theme']) : 'system';
 }
 
+/** localStorage is a string somebody can edit. A value this does not recognise — including one
+ *  written by a newer build and then rolled back — falls to the design's own default. */
+const SKY_VALUES = ['period', 'dark', 'light'] as const;
+export function normSky(v: unknown): SkyMode {
+  return (SKY_VALUES as readonly string[]).includes(String(v)) ? (v as SkyMode) : 'period';
+}
+
 /** Appearance handed over by OpenMasjidOS. Presentation only — never identity. */
 export interface OmosAppearance {
   theme?: string;
@@ -190,7 +208,9 @@ function readOmosFragment(): OmosAppearance | null {
 function load(): Prefs {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Prefs>) } : { ...DEFAULTS };
+    if (!raw) return { ...DEFAULTS };
+    const stored = JSON.parse(raw) as Partial<Prefs>;
+    return { ...DEFAULTS, ...stored, sky: normSky(stored.sky) };
   } catch {
     return { ...DEFAULTS };
   }

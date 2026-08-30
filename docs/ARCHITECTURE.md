@@ -904,3 +904,148 @@ claims in its comments were also wrong and are corrected — "each chord spans t
 below a pixel" (2 units is 2.4px; it is the DEPARTURE that is sub-pixel), "near-zero slope at
 both horizons" (true only in the limit — by the first rendered pixels it is already 20°), and a
 sentence that ran two different measurements together as if they were one.
+
+## Slice 14 — the QR lands somewhere useful (0.1.0-dev.17)
+
+Three things Hasan asked for on 2026-08-29: an onboarding page behind the QR code, a device and
+browser breakdown for the admin, and a Settings screen holding a theme choice and the
+notification switches.
+
+### One user-agent table, and why there has to be exactly one
+
+`web/src/platform.ts` is now the only place in the repository that reads a user agent, and
+`pwa.ts` re-expresses its answers rather than sniffing again. Two tables that disagree is not a
+tidiness problem: the onboarding page would tell somebody to press a button the install code has
+already decided not to offer, and each would be right about a different set of browsers.
+
+Sniffing at all is a last resort, used because there is nothing to feature-detect. **Every
+browser on iOS is WebKit**, so Chrome, Firefox and the in-app browser that opens inside Instagram
+are indistinguishable from Safari to any API a page can call — and only Safari's own Share sheet
+installs a web app. The absence of `beforeinstallprompt` says nothing either: a Chromium browser
+that will fire it in a second looks exactly like one that never will.
+
+`installRoute` collapses all of it into the seven answers a screen can act on, and the ORDER of
+its checks is the content:
+
+- `standalone` first, before everything — already installed beats every other consideration.
+- `secure` next: on the masjid's own wifi there is no install API at all, and a kiosk on the LAN
+  is a legitimate way to open this app rather than a fault.
+- **`inapp` before `prompt`**, which is the one that is not obvious. Some in-app webviews *do*
+  fire `beforeinstallprompt`, and taking it adds a home-screen icon that opens back inside that
+  app. That is worse than failing, because it looks like it worked.
+- Then iOS (Safari → instructions, anything else → switch browser), then the prompt, then
+  Android's menu, then desktop.
+
+`menu` and `desktop` are new answers to cases that used to be silent. A Chromium browser that has
+not offered a prompt still has "Install app" in its own menu, and saying so beats the nothing
+this used to show. Neither is `ASKABLE` — the modal over the prayer times still only interrupts
+for the three cases it always did, because `menu` cannot be told apart from "already installed,
+opened in a tab" and nobody adds a masjid timetable to a laptop.
+
+### The onboarding page
+
+`/onboarding`, and the QR code and poster now point at it (`onboardingUrl` in `base.ts`, so the
+admin chunk gets the string without importing a musalli-facing component).
+
+The argument for it in one line: **a printed poster has to give instructions that suit every
+phone that will ever scan it, and a web page does not.** It knows which phone and which browser
+is reading it, so it can say the one true sentence — including the one no poster could ever
+print, which is *"this browser can't; open it in Safari."*
+
+- The in-app-browser screen is the one that saves the most people, and it **names the app**
+  ("inside Instagram") rather than saying "in-app browser", which is a phrase somebody would have
+  to be told the meaning of first. It cannot open the other browser for us — no web page can hand
+  itself to another app on either platform, and a `googlechrome://` link would fail silently on
+  the phones that matter — so it offers the address, on the clipboard, and prints it in full
+  underneath because a clipboard is refused more often inside a webview than anywhere else.
+- Notifications are a second step, offered after the install and **never on load**. A page that
+  asks on arrival is how a browser learns to block a site permanently, and it would burn the one
+  chance the masjid gets.
+- The Share-sheet hint is **our own drawing**, not a screenshot: every real screenshot of an iOS
+  Share sheet is Apple's, and this repository can only ship assets it can license under AGPL-3.0.
+  It has no letters in it either, so it mirrors under RTL with one CSS rule and needs no
+  translating — the caption below already says what it is.
+- Launched standalone it redirects into the app with `replace`, not `push`: somebody who has
+  already done the thing must never be shown the instructions for doing it, and a pushed entry
+  would make the back gesture bounce off the instructions and forward again.
+
+An earlier draft greyed the notification step out until the app was installed. That rule is only
+TRUE on iOS — and on iOS the step already says so in its own words, because the platform rule is
+what produces that text. On Android, notifications work in a browser tab, so dimming the step
+refused something real to make a funnel look tidy. Dropped, along with the `later` state.
+
+### Settings, and what a pinned theme actually means
+
+`/settings`, and the tab bar is now unconditional as a result. The rule in `Tabs.tsx` — draw
+nothing below two — is unchanged and simply no longer fires, and `landing.test.ts` says so, so
+the guard comes back if Settings ever goes.
+
+The reminders moved out of the sheet that opened over the prayer times. They are SETTINGS — six
+switches somebody sets once and revisits twice a year — and a modal is a shape for a question.
+The bell in the header stays as a shortcut *to* them, because notifications are the one feature a
+musalli has to find on purpose; it is hidden on the Settings tab, where it would point at the
+screen already open. `reminders.ts` holds the state and the subscribe flow, because the
+onboarding page can turn them on too and two copies of that flow is two chances to get the order
+wrong (tell the server to forget the row BEFORE unsubscribing at the browser, or a failure leaves
+a row nothing can reach again).
+
+**"Always dark" does not mean one night sky.** The obvious implementation pins a single period
+and throws away what this page is: the sun crosses it. So each mode keeps moving through the day
+inside the polarity it was given — always-dark runs Fajr → Maghrib → Isha, always-light runs
+Duha → Dhuhr → Asr. `periodTheme.test.ts` asserts the property rather than the table: every
+period in every mode lands on a sky of the right polarity, and neither mode may collapse to one.
+
+The appearance options are **real radios inside a fieldset**, not chips and not buttons carrying
+`role="radio"`. Chips would be wrong twice over — three answers to one question where only one
+can be true, in the shape this app uses for "pick as many as you like". And a `<button
+role="radio">` looks right to a screen reader while behaving wrongly for a keyboard: the group
+should be one tab stop that the arrows move within, which is a dozen lines to implement badly and
+free from a real `<input>`. Verified: one tab stop, arrows move the selection, the theme changes
+live.
+
+### A shipped contrast bug, found by looking at a light-mode screenshot
+
+`surfaceFor` exists because of it. When the period is unknown — a fresh install with no timetable
+chosen, Display not granted, or simply any page opened before the day view has mounted — the app
+removed `data-period` and set no theme override, so `data-theme` fell back to the reader's own
+light/dark preference. But the fallback sky in `app.css` is the NIGHT gradient ("dark is the safe
+unknown", as the stylesheet puts it). On a phone set to light mode that is near-black ink on a
+midnight background: **on the fresh-install screen an admin sees first, and on every deep link
+into the app.**
+
+The fix is that the sky and the ink are now decided together, by one pure function, with a test
+asserting they can never disagree for any (period, mode) pair including the unknown one. The bug
+was reachable before this slice; the onboarding page only made it easy to photograph.
+
+### Analytics, built as a schema rather than a promise
+
+CLAUDE.md §4 had "analytics beyond a plain count of push subscriptions" out of scope. The reason
+was to stop this app growing a visitor log, and that reason has not gone away — so what was built
+is the shape that answers a masjid's question without one ever existing.
+
+**The entire schema is a counter.** One row per (day, device, browser, mode), holding a number.
+No row per visit, no session, no id, no IP, no user agent, no path, no timestamp finer than the
+date. "How many iPhones opened this in September" is answerable; "did Yusuf open it" is not, and
+cannot be made to be without adding a column — which is a thing a reviewer can see, so
+`analytics.test.ts` asserts the column list **exhaustively**, as an allowlist rather than a
+denylist. Retention is 90 days and pruning happens on every write, so it is a property of writing
+rather than of remembering to.
+
+The three fields are closed enums, duplicated in `web/src/platform.ts` and asserted equal by a
+test that parses that file. Two lists in two languages that must agree: one decides what is sent
+and the other what is accepted, and a value only one of them knows is silently dropped at the 400
+— a whole category of phone missing from the figures with nothing anywhere saying so.
+
+Counting is **once a day per browser**, not once per page load; the signature includes the mode,
+so installing the app shows up in both columns on the same day, which is the transition that
+answers "did the poster work?". The signature lives in that browser's own localStorage and never
+leaves it. It is written only on a successful report, so a phone that was offline is counted
+tomorrow rather than never.
+
+Two things the panel says out loud rather than leaving to be discovered: it counts **phones,
+roughly**, never people (a cleared cache counts twice, a shared phone counts once); and the
+endpoint is public, like every page a musalli opens, so the counts are **inflatable by anyone
+holding the link**. That is inherent to counting a public page. The visit limiter is 600/min
+rather than sharing the push budget of 30, because behind the tunnel every request arrives from
+cloudflared's address — a per-peer limit is really a per-masjid limit, and 429ing a busy Jumuʿah
+would drop counts on precisely the day worth counting.

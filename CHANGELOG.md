@@ -14,6 +14,34 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **A page that walks people through putting the app on their phone**, and the QR code now points
+  at it. A printed poster has to give instructions that suit every phone that will ever scan it;
+  this page knows which phone and which browser is actually reading it, so it says the one thing
+  that is true — the buttons to press on an iPhone, a real "Add to home screen" button on
+  Android, and, for anyone who tapped the link inside WhatsApp or Instagram, that they need to
+  open it in Safari or Chrome first, with the address ready to paste. It offers reminders as a
+  second step, and skips itself entirely once the app is on the home screen.
+
+- **A Settings tab**, with two things in it. **Appearance**: keep the way the app follows the
+  time of day, or hold it dark or light all day &mdash; and even held one way it still moves
+  through the day, so an "always dark" evening still looks like the evening. **Prayer reminders**
+  have moved here from the sheet that used to open over the times, which is where anyone would
+  look for them; the bell at the top now takes you straight to them.
+
+- **"Who's using it" in the admin panel** &mdash; how many phones have opened your app in the
+  last month, whether they are iPhones or Android, which browsers, and how many opened it from
+  their **home screen** rather than a browser. That last number is the one that tells you whether
+  the poster on your noticeboard is working. **It counts phones, never people**: nothing is
+  stored about anybody who opens the app &mdash; no name, no number, no address, no record of a
+  visit &mdash; only these totals, and only for 90 days.
+
+### Fixed
+
+- **Light-coloured text on a night sky.** If your phone was set to light mode, any screen the app
+  reached before it knew your masjid's prayer times &mdash; a fresh install with no timetable
+  chosen yet, or a link straight to the appeals page &mdash; drew dark text on the dark
+  background it falls back to. It now keeps the two in step.
+
 - **Jumuʿah reminders.** Jumuʿah now has its own switch in the reminder settings, separate from
   Dhuhr &mdash; and if your masjid holds more than one, you can pick which one you want to be
   reminded about. On a Friday the Dhuhr reminder steps aside for it, since that is the jamāʿah

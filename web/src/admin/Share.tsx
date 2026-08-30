@@ -8,22 +8,33 @@
  * was worth doing. Everything before this happens on a screen; this is the piece that leaves the
  * building and goes onto a wall.
  *
- * **The QR encodes the public URL exactly** (CLAUDE.md §10) — never the address the volunteer
- * happens to be looking at. A poster carrying `http://192.168.1.20:7880` is a QR code that
- * works for everybody standing inside the masjid on its wifi and for nobody at all outside it,
- * and posters do not get reprinted.
+ * **The QR is built from the public URL exactly** (CLAUDE.md §10) — never the address the
+ * volunteer happens to be looking at. A poster carrying `http://192.168.1.20:7880` is a QR code
+ * that works for everybody standing inside the masjid on its wifi and for nobody at all outside
+ * it, and posters do not get reprinted.
+ *
+ * **It points at the onboarding page, not the app's front door** (Hasan, 2026-08-29). A poster
+ * has to print instructions that are right for every phone that will ever scan it, so it prints
+ * the generic ones; the page it lands on knows which phone and which browser is reading it and
+ * can say the one true sentence — including "this browser can't, open it in Safari", which no
+ * printed poster could ever have said. Somebody who wants the times and nothing else is one tap
+ * from them.
  */
 import { useState } from 'react';
 import { Check, Copy, Printer, QrCode, TriangleAlert } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { onboardingUrl } from '../base';
 import { Note } from '../ui';
 
 export function Share({ publicUrl, enabled, masjidName, onPoster }: { publicUrl: string; enabled: boolean; masjidName: string; onPoster: () => void }): JSX.Element {
   const [copied, setCopied] = useState(false);
+  /** What the code and the copy button both carry. One value, so the address on screen can
+   *  never disagree with the one that was printed. */
+  const link = onboardingUrl(publicUrl);
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(publicUrl);
+      await navigator.clipboard.writeText(link);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -57,19 +68,19 @@ export function Share({ publicUrl, enabled, masjidName, onPoster }: { publicUrl:
           ) : (
             <>
               <p className="card-body">
-                Print this and put it up. Anyone who scans it gets your prayer times, and can keep them on their home
-                screen.
+                Print this and put it up. Anyone who scans it is walked through putting your prayer times on their
+                home screen, in whatever browser they happen to be using &mdash; and can skip straight to the times.
               </p>
 
               <div className="share">
                 <div className="share__qr">
                   {/* SVG rather than canvas: a poster is printed, and an SVG stays crisp at
                       whatever resolution the printer works at. */}
-                  <QRCodeSVG value={publicUrl} size={132} level="M" marginSize={2} bgColor="#ffffff" fgColor="#000000" />
+                  <QRCodeSVG value={link} size={132} level="M" marginSize={2} bgColor="#ffffff" fgColor="#000000" />
                 </div>
                 <div className="share__side">
                   <div className="label">This is what it points at</div>
-                  <p className="url-chip">{publicUrl}</p>
+                  <p className="url-chip">{link}</p>
                   <div className="card-actions">
                     <button className="btn btn--primary" onClick={onPoster}>
                       <Printer size={15} aria-hidden="true" />
@@ -110,6 +121,7 @@ export function Share({ publicUrl, enabled, masjidName, onPoster }: { publicUrl:
  */
 export function Poster({ publicUrl, masjidName, appName, onBack }: { publicUrl: string; masjidName: string; appName: string; onBack: () => void }): JSX.Element {
   const heading = masjidName || appName || 'Prayer times';
+  const link = onboardingUrl(publicUrl);
   return (
     <>
       <div className="poster-bar no-print">
@@ -131,7 +143,7 @@ export function Poster({ publicUrl, masjidName, appName, onBack }: { publicUrl: 
         <div className="poster__qr">
           {/* Big, black on white, with a wide quiet zone — the three things that decide whether
               a phone camera reads it off a wall in bad light. */}
-          <QRCodeSVG value={publicUrl} size={340} level="M" marginSize={4} bgColor="#ffffff" fgColor="#000000" />
+          <QRCodeSVG value={link} size={340} level="M" marginSize={4} bgColor="#ffffff" fgColor="#000000" />
         </div>
 
         <ol className="poster__steps">
@@ -142,7 +154,10 @@ export function Poster({ publicUrl, masjidName, appName, onBack }: { publicUrl: 
             <b>Tap the link</b> that appears.
           </li>
           <li>
-            <b>Add it to your home screen</b> so it is always one tap away.
+            <b>Follow the two steps on screen</b> to keep it on your phone.
+            {/* Kept, smaller, as the fallback. The page says the right one of these for the
+                phone actually reading it — but a poster is read by people whose browser has
+                just refused something, and the printed line is the only thing left then. */}
             <div className="poster__hints">
               <span>
                 <b>iPhone:</b> tap Share, then Add to Home Screen
@@ -154,7 +169,7 @@ export function Poster({ publicUrl, masjidName, appName, onBack }: { publicUrl: 
           </li>
         </ol>
 
-        <p className="poster__url">{publicUrl}</p>
+        <p className="poster__url">{link}</p>
       </main>
     </>
   );

@@ -1402,9 +1402,6 @@ h1, h2, h3, p { margin: 0; }
 /* ── Prayer reminders (musalli sheet) ────────────────────────────────────────
  * A sheet rather than the install dialog's card: this one has choices in it, so it wants the
  * room and the choices want to be reachable with a thumb. */
-.modal--sheet { width: min(26rem, 100%); text-align: start; }
-.modal--sheet .modal__title { text-align: start; }
-
 .notify__group { margin-block-start: 1.1rem; }
 .notify__label {
   font-size: 0.7rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
@@ -1506,3 +1503,302 @@ h1, h2, h3, p { margin: 0; }
   border-inline-start: 2px solid color-mix(in srgb, var(--ink-scene) 18%, transparent);
 }
 .notify__sub .notify__label { font-size: 0.66rem; margin-block-end: 0.4rem; }
+
+/* ── Settings, and the onboarding page ──────────────────────────────────────
+ *
+ * Both are musalli-facing, so both live on the sky and use `--ink-scene*` rather than the
+ * admin panel's ink tokens. The rule from the sky's own header applies to every line below:
+ * `--ink-scene-faint` cannot clear 4.5:1 against any of these skies and is a LARGE-TEXT token
+ * only — every hint and caption here is `--ink-scene-muted`, which can.
+ */
+
+.settings {
+  flex: 1;
+  width: 100%;
+  max-width: 34rem;
+  margin-inline: auto;
+  padding: 0.5rem 1.15rem 1.5rem;
+}
+.settings__title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  margin-block-end: 0.9rem;
+}
+
+/* Nearly opaque for the same reason the install dialog is: these cards always have a sky
+   behind them, and a translucent card over a gradient shows the sky through the text. */
+.set-card {
+  margin-block-end: 0.85rem;
+  padding: 1.05rem 1.1rem 1.15rem;
+  border-radius: 1.1rem;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 14%, transparent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+.set-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.set-title svg { flex: none; color: var(--coral); }
+.set-lead {
+  margin-block-start: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink-scene-muted);
+}
+.set-card .btn { margin-block-start: 0.9rem; }
+.set-card .notify__group:first-of-type { margin-block-start: 0.95rem; }
+
+/* One question, three answers. Full-width rows rather than chips, because each one needs a
+   line of explanation under it and a chip cannot carry one. */
+/* A <fieldset>, so the group is one thing to a screen reader and the radios inside it are one
+   tab stop the arrow keys move within. Its default border, padding and min-inline-size are all
+   removed — the last one is the one that catches people out: a fieldset will not shrink below
+   its content without it, and a long hint would push the card wider than the phone. */
+.set-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-block-start: 0.85rem;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+.set-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  text-align: start;
+  cursor: pointer;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+}
+/* The border carries the state as well as the tint, so the chosen row is still obvious in
+   forced-colours mode and to anyone who cannot separate the two grounds. `aria-checked` on
+   the element is what actually announces it. */
+.set-option--on {
+  border-color: var(--color-btn);
+  background: color-mix(in srgb, var(--color-btn) 16%, color-mix(in srgb, var(--scene-base) 70%, transparent));
+  box-shadow: inset 0 0 0 1px var(--color-btn);
+}
+.set-option__ico { flex: none; margin-block-start: 0.1rem; color: var(--ink-scene-muted); }
+.set-option--on .set-option__ico { color: var(--coral); }
+.set-option__main { display: flex; flex-direction: column; gap: 0.12rem; min-width: 0; }
+.set-option__label { font-size: 0.92rem; font-weight: 650; }
+.set-option__hint { font-size: 0.78rem; line-height: 1.45; color: var(--ink-scene-muted); }
+.set-option:active { transform: scale(0.995); }
+/* The input is visually hidden, so the ring has to be drawn on the row it labels — otherwise
+   keyboard focus lands somewhere nothing on screen reacts to. */
+.set-option:focus-within { outline: 2px solid var(--color-btn); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .set-option:active { transform: none; } }
+
+/* ── Onboarding ─────────────────────────────────────────────────────────────
+ *
+ * The page behind the QR code. A wider measure than the prayer times and a much larger first
+ * tap target: it is read once, standing up, by somebody who has just pointed a camera at a
+ * noticeboard and does not yet know what this is.
+ */
+.ob {
+  flex: 1;
+  width: 100%;
+  max-width: 30rem;
+  margin-inline: auto;
+  padding: 1.5rem 1.15rem 2rem;
+}
+.ob__head { text-align: center; margin-block-end: 1.4rem; }
+.ob__head .brand-mark { margin-inline: auto; }
+.ob__title {
+  margin-block-start: 0.7rem;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  overflow-wrap: anywhere;
+}
+.ob__lead {
+  margin-block-start: 0.3rem;
+  font-size: 0.94rem;
+  color: var(--ink-scene-muted);
+  text-shadow: var(--text-shadow-scene);
+}
+
+.ob__step {
+  display: flex;
+  gap: 0.8rem;
+  margin-block-end: 0.7rem;
+  padding: 1rem 1.05rem 1.1rem;
+  border-radius: 1.1rem;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 14%, transparent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+.ob__step--warn { border-color: color-mix(in srgb, var(--color-warning) 55%, transparent); }
+
+.ob__num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  inline-size: 1.85rem;
+  block-size: 1.85rem;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--ink-scene) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 22%, transparent);
+}
+.ob__num--done { color: var(--color-on-primary); background: var(--color-btn); border-color: var(--color-btn); }
+.ob__num--warn {
+  color: var(--color-warning);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--color-warning) 55%, transparent);
+}
+
+.ob__body { min-width: 0; flex: 1; }
+.ob__step-title { font-family: var(--font-display); font-size: 1.02rem; font-weight: 700; line-height: 1.3; }
+.ob__text {
+  margin-block-start: 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--ink-scene-muted);
+}
+.ob__text--small { font-size: 0.82rem; }
+.ob__body .set-lead { margin-block-start: 0.4rem; }
+.ob__body .btn { margin-block-start: 0.85rem; }
+
+.ob__steps {
+  margin-block-start: 0.6rem;
+  padding-inline-start: 1.15rem;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: var(--ink-scene-muted);
+}
+.ob__steps li::marker { color: var(--coral); font-weight: 700; }
+
+/* An icon or a phrase quoted exactly as it appears on the reader's own screen, so "tap this"
+   points at something they can match by shape rather than by name. */
+.ob__glyph {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.35rem;
+  margin-inline: 0.1rem;
+  border-radius: 0.4rem;
+  vertical-align: -0.2em;
+  font-weight: 650;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--ink-scene) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 18%, transparent);
+}
+
+/* Our own drawing of a browser bar, not a screenshot — see the note in Onboarding.tsx: every
+   real screenshot of an iOS Share sheet is Apple's, and this repository can only ship assets
+   it is able to license under AGPL-3.0. */
+.ob__hint { margin-block-start: 0.85rem; text-align: center; }
+.ob__hint-svg { inline-size: 100%; max-inline-size: 15rem; block-size: auto; }
+.ob__hint-bar {
+  fill: color-mix(in srgb, var(--ink-scene) 8%, transparent);
+  stroke: color-mix(in srgb, var(--ink-scene) 20%, transparent);
+}
+.ob__hint-blank { fill: color-mix(in srgb, var(--ink-scene) 22%, transparent); }
+/* Safari's own toolbar mirrors in Arabic and Urdu, so the drawing of it has to as well. This is
+   the one thing on the page a logical property cannot do for us: SVG coordinates are absolute.
+   It is safe to flip wholesale only because there is no text left inside it. */
+[dir='rtl'] .ob__hint-svg { transform: scaleX(-1); }
+.ob__hint-ring { fill: none; stroke: var(--coral); stroke-width: 2; }
+.ob__hint-glyph { fill: none; stroke: var(--ink-scene); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ob__hint-glyph--dim { stroke: color-mix(in srgb, var(--ink-scene) 40%, transparent); }
+.ob__hint-cap { display: block; margin-block-start: 0.35rem; font-size: 0.76rem; color: var(--ink-scene-muted); }
+
+/* The address in full. Wraps rather than overflowing: it is here to be read aloud or retyped
+   when an in-app browser refuses the clipboard, so every character has to be on screen. */
+.ob__addr {
+  margin-block-start: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--ink-scene-muted);
+}
+
+/* Deliberately plain, and last. Somebody who does not want to install anything should be able
+   to leave without feeling they failed a form — but it must not compete with the step above
+   it, or nobody installs anything. */
+.ob__skip {
+  display: block;
+  margin: 1.1rem auto 0;
+  padding: 0.5rem 0.9rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0.6rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  color: var(--ink-scene-muted);
+  cursor: pointer;
+}
+.ob__skip:hover { color: var(--ink-scene); }
+
+/* ── The admin's breakdown bars ──────────────────────────────────────────────
+ *
+ * A count and a percentage BESIDE every bar, never a bar alone. A bar communicates a share at
+ * a glance and nothing at all about how big the sample is — three phones and three hundred
+ * draw the same picture — and this panel's whole problem is that a masjid will believe a
+ * number it is shown. The bar is the ornament; the figure is the content, which is also why
+ * the bar is `aria-hidden` and the row reads out as "Safari 12 (40%)".
+ */
+.bars { margin-block-start: 1rem; }
+.bars .label { margin-block-end: 0.35rem; }
+.bars__row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 9rem) 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding-block: 0.22rem;
+  font-size: 0.86rem;
+}
+.bars__label { color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bars__track {
+  block-size: 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-ink) 10%, transparent);
+  overflow: hidden;
+}
+.bars__fill {
+  display: block;
+  block-size: 100%;
+  border-radius: 999px;
+  background: var(--color-primary);
+  /* A share of zero still has to be a row rather than nothing, so the fill can legitimately be
+     0% wide. min-inline-size would draw a lie at that width. */
+  min-inline-size: 0;
+}
+.bars__n { font-variant-numeric: tabular-nums; color: var(--color-ink); white-space: nowrap; }
+.bars__pct { color: var(--color-ink-muted); }
+
+/* Narrow phones: the label needs the full width or every row ellipsises to "Samsung In…". */
+@media (max-width: 26rem) {
+  .bars__row { grid-template-columns: 1fr auto; }
+  .bars__track { grid-column: 1 / -1; order: 3; }
+}

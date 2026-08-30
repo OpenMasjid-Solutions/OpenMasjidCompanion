@@ -54,3 +54,22 @@ export const stripBase = (pathname: string): string => {
  *  happened to type, and a LAN address on a poster is a QR code that works for nobody. */
 export const pageOrigin = (): string =>
   typeof window === 'undefined' ? '' : window.location.origin + BASE;
+
+/**
+ * The onboarding route, and the address a QR code has to carry to reach it.
+ *
+ * Here rather than beside the page it opens, because the two callers are on opposite sides of
+ * the app: the musalli bundle routes to it, and the ADMIN chunk prints it onto a poster. Having
+ * the poster import the page component would drag a musalli-facing screen into the lazy admin
+ * chunk for the sake of one string.
+ *
+ * `publicUrl` already carries the base path — it is what the platform reports for this app —
+ * so this only appends. The trailing-slash strip matters more than it looks: a poster is
+ * PRINTED, and "https://x/companion//onboarding" is not a URL anyone can fix afterwards.
+ */
+export const ONBOARDING_PATH = '/onboarding';
+
+export function onboardingUrl(publicUrl: string): string {
+  const base = (publicUrl || '').trim().replace(/\/+$/, '');
+  return base ? base + ONBOARDING_PATH : '';
+}

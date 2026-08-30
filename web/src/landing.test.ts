@@ -49,18 +49,31 @@ test('the Donate tab exists only when the masjid has appeals', async () => {
   const { tabsFor } = await import('./App');
   // null is "we have not asked yet" and must not draw a tab on a maybe — the bar would appear a
   // moment after the page settled, moving the thing under someone's thumb.
-  assert.deepEqual(tabsFor(null).map((t) => t.route), ['/'], 'before the answer arrives, one place to go');
-  assert.deepEqual(tabsFor(0).map((t) => t.route), ['/'], 'no appeals, no tab');
-  assert.deepEqual(tabsFor(2).map((t) => t.route), ['/', '/give']);
+  assert.deepEqual(tabsFor(null).map((t) => t.route), ['/', '/settings'], 'before the answer arrives, no Donate tab');
+  assert.deepEqual(tabsFor(0).map((t) => t.route), ['/', '/settings'], 'no appeals, no tab');
+  assert.deepEqual(tabsFor(2).map((t) => t.route), ['/', '/give', '/settings']);
 });
 
-test('ONE TAB IS NOT A TAB BAR', async () => {
-  // Tabs.tsx draws nothing below two. A masjid with no appeals — most masjids, most of the year
-  // — would otherwise get a bar with a single lit tab on it, which is a label taking up the most
-  // valuable strip of a phone screen.
+test('SETTINGS IS LAST, WHATEVER ELSE IS THERE', async () => {
+  // On a phone the outer edges of a tab bar are where a thumb lands by accident, and Settings is
+  // the tab nobody wants to open twice. Donate must never be the one that moves, either — a tab
+  // that changes position when the masjid starts an appeal is a tab people mis-tap for a week.
   const { tabsFor } = await import('./App');
-  assert.ok(tabsFor(0).length < 2, 'the bar has nothing to draw');
-  assert.ok(tabsFor(1).length >= 2, 'one appeal is enough to be worth a tab');
+  for (const appeals of [null, 0, 1, 9]) {
+    const routes = tabsFor(appeals).map((t) => t.route);
+    assert.equal(routes[0], '/', `Salah first (appeals=${appeals})`);
+    assert.equal(routes[routes.length - 1], '/settings', `Settings last (appeals=${appeals})`);
+  }
+});
+
+test('the bar is drawn on every install, because Settings is always a place to go', async () => {
+  // Tabs.tsx still draws nothing below two, and that rule has not changed — a single lit tab
+  // over the only screen there is would be a label taking up the most valuable strip of a phone.
+  // What changed is that there is now genuinely a second place on every install, so the guard no
+  // longer fires. If Settings is ever removed, this is the test that says the guard matters again.
+  const { tabsFor } = await import('./App');
+  assert.ok(tabsFor(0).length >= 2, 'Salah and Settings');
+  assert.ok(tabsFor(1).length >= 2);
 });
 
 test('the appeals page is a route of its own, and unknown paths still are not', async () => {
@@ -68,6 +81,27 @@ test('the appeals page is a route of its own, and unknown paths still are not', 
   assert.equal(routeOf('/give/'), '/give');
   assert.equal(routeOf('/give/anything'), 'unknown');
   assert.equal(routeOf('/donate'), 'unknown');
+});
+
+test('THE QR CODE ROUTE RESOLVES, and only in the exact shape', async () => {
+  // The single most load-bearing route in the app: it is what is PRINTED on a noticeboard, and
+  // a poster that lands on the not-found page cannot be fixed by pushing a build.
+  assert.equal(routeOf('/onboarding'), '/onboarding');
+  assert.equal(routeOf('/onboarding/'), '/onboarding', 'a trailing slash is the same page');
+  assert.equal(routeOf('/onboarding/extra'), 'unknown');
+  assert.equal(routeOf('/settings'), '/settings');
+  assert.equal(routeOf('/settings/'), '/settings');
+});
+
+test('the printed link is built once and carries the base path', async () => {
+  const { onboardingUrl, ONBOARDING_PATH } = await import('./base');
+  assert.equal(onboardingUrl('https://omos.example.org/companion'), 'https://omos.example.org/companion/onboarding');
+  // A public URL with a trailing slash is what the platform reports for a root-mounted app, and
+  // "…//onboarding" on a printed poster is not something anybody can fix afterwards.
+  assert.equal(onboardingUrl('https://omos.example.org/'), 'https://omos.example.org/onboarding');
+  assert.equal(onboardingUrl(''), '', 'no public URL means no link to print, not a broken one');
+  // And the router has to agree with what was printed. This is the composition that matters.
+  assert.equal(routeOf(ONBOARDING_PATH), '/onboarding');
 });
 
 test('a musalli opening the Donate tab is never landed on the admin panel', async () => {

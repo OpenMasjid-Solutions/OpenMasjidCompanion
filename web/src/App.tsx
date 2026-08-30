@@ -13,19 +13,22 @@
  * this code reasons about, and every link goes back through `withBase`.
  */
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
-import { Clock3, Github, HandCoins } from 'lucide-react';
+import { Bell, Clock3, Github, HandCoins, Settings2 } from 'lucide-react';
 import { api, type AppInfo } from './api';
-import { stripBase, withBase } from './base';
-import { useAppearanceSync, setThemeOverride } from './prefs';
-import { PERIOD_SURFACE } from './periodTheme';
+import { ONBOARDING_PATH, stripBase, withBase } from './base';
+import { useAppearanceSync, usePrefs, setThemeOverride } from './prefs';
+import { surfaceFor } from './periodTheme';
 import { jumuahLabels, type PeriodKey } from './prayerTimes';
 import { useInstall, useServiceWorker } from './pwa';
+import { useTelemetry } from './telemetry';
 import { InstallPrompt, UpdateBanner } from './Install';
 import { Scene } from './ui';
 import { MasjidHeader, Today, type Timetable } from './Today';
 import { Give, useCampaigns } from './Give';
-import { Notify, NotifyButton } from './Notify';
+import { Onboarding } from './Onboarding';
+import { Settings } from './Settings';
 import { TabBar, type Tab } from './Tabs';
+import { blockerFor, readEnv } from './reminders';
 
 /**
  * The admin panel is LAZY, and this line is the reason the musalli bundle stays small.
@@ -39,12 +42,14 @@ const Admin = lazy(() => import('./admin/Admin'));
 
 /** The routes this app answers. Anything else renders the not-found state rather than a
  *  blank page — a mistyped or stale link should say so. */
-export type Route = '/' | '/give' | '/admin' | 'unknown';
+export type Route = '/' | '/give' | '/settings' | '/onboarding' | '/admin' | 'unknown';
 
 export function routeOf(pathname: string): Route {
   const p = stripBase(pathname).replace(/\/+$/, '') || '/';
   if (p === '/') return '/';
   if (p === '/give') return '/give';
+  if (p === '/settings') return '/settings';
+  if (p === ONBOARDING_PATH) return '/onboarding';
   if (p === '/admin' || p.startsWith('/admin/')) return '/admin';
   return 'unknown';
 }
@@ -70,22 +75,41 @@ export function dashboardLanding(route: Route, openedFromDashboard: boolean): st
 /**
  * The tabs, which are only the places there are to go.
  *
- * Salah always. Donate only once we know the masjid has appeals — `null` is "we have not asked
- * yet", and drawing a tab on a maybe would make it flicker in a moment after the page settles.
- * Qibla joins this list when it is built; the bar is deliberately data-driven so that is one
- * entry rather than a layout change.
+ * Salah always, Settings always. Donate only once we know the masjid has appeals — `null` is
+ * "we have not asked yet", and drawing a tab on a maybe would make it flicker in a moment after
+ * the page settles. Qibla joins this list when it is built; the bar is deliberately data-driven
+ * so that is one entry rather than a layout change.
+ *
+ * **Settings is what made the bar unconditional** (2026-08-29). Until it existed a masjid with
+ * no appeals had exactly one page, and a single lit tab over the only screen there is is a
+ * label taking up the most valuable strip of a phone. Now there are genuinely two places to go
+ * on every install, so the rule in Tabs.tsx — draw nothing below two — is unchanged; it simply
+ * no longer fires.
+ *
+ * Order is deliberate. Settings is last because it is the one nobody opens twice, and on a
+ * phone the outer edges of a bar are where a thumb lands by accident.
  *
  * Pure, so the rule can be tested without a browser.
  */
 export function tabsFor(appeals: number | null): Tab[] {
   const tabs: Tab[] = [{ route: '/', label: 'Salah', icon: Clock3 }];
   if (appeals && appeals > 0) tabs.push({ route: '/give', label: 'Donate', icon: HandCoins });
+  tabs.push({ route: '/settings', label: 'Settings', icon: Settings2 });
   return tabs;
 }
 
-/** Client-side navigation that keeps the base path on the URL bar. */
-export function navigate(to: string): void {
-  history.pushState(null, '', withBase(to));
+/**
+ * Client-side navigation that keeps the base path on the URL bar.
+ *
+ * `replace` is for a REDIRECT rather than a move — the onboarding page sending an already
+ * installed reader into the app. Pushing there would put the instructions in the history, so
+ * the back gesture from the prayer times would land on them and immediately bounce forward
+ * again, which on a phone reads as the app refusing to close.
+ */
+export function navigate(to: string, replace = false): void {
+  const url = withBase(to);
+  if (replace) history.replaceState(null, '', url);
+  else history.pushState(null, '', url);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
@@ -109,6 +133,8 @@ export function App(): JSX.Element {
   }, []);
 
   useAppearanceSync();
+  /** The reader's own say over the sky — "follow the day", or hold one polarity. See Settings. */
+  const { sky } = usePrefs();
 
   const isAdmin = route === '/admin';
 
@@ -126,7 +152,18 @@ export function App(): JSX.Element {
   // Donate tab at all — and because doing it per page would re-request on every switch.
   const appeals = useCampaigns(!isAdmin);
   const tabs = useMemo(() => tabsFor(appeals && appeals.length), [appeals]);
-  const [notifyOpen, setNotifyOpen] = useState(false);
+
+  /**
+   * The onboarding page is its own world: its own header, no tabs, and no install modal over
+   * the install instructions. Everything the shell would normally draw is a distraction from
+   * the one thing somebody who just scanned a QR code is here to do.
+   */
+  const bare = route === '/onboarding';
+
+  // What kind of phone opened this, once a day, as three enum values and nothing else. Never on
+  // the admin panel — a volunteer opening their own settings is not a musalli, and counting
+  // them would put one laptop in every masjid's numbers. See telemetry.ts.
+  useTelemetry(!isAdmin);
 
   /**
    * The MUSALLI surface has its own fixed palette (coral on navy, from the reference design),
@@ -150,14 +187,19 @@ export function App(): JSX.Element {
    */
   useEffect(() => {
     const el = document.documentElement;
-    if (isAdmin || !period) {
+    if (isAdmin) {
       el.removeAttribute('data-period');
       setThemeOverride(null);
       return;
     }
-    el.setAttribute('data-period', period);
-    setThemeOverride(PERIOD_SURFACE[period]);
-  }, [isAdmin, period]);
+    // The whole rule, including what to do when we do not know the time at this masjid yet, is
+    // in `surfaceFor` — where it can be tested, and where the sky and the ink that has to stay
+    // legible on it are decided together rather than in two places that can disagree.
+    const { period: shown, surface } = surfaceFor(period, sky);
+    if (shown) el.setAttribute('data-period', shown);
+    else el.removeAttribute('data-period');
+    setThemeOverride(surface);
+  }, [isAdmin, period, sky]);
 
   // The timetable is only needed by the musalli half, so the admin panel does not pay for it.
   useEffect(() => {
@@ -184,7 +226,8 @@ export function App(): JSX.Element {
     navigate(to);
   }, []);
 
-  const showTabs = !isAdmin && tabs.length > 1;
+  const showTabs = !isAdmin && !bare && tabs.length > 1;
+  const jumuah = useMemo(() => jumuahLabels(times?.days ?? []), [times]);
 
   return (
     <>
@@ -193,10 +236,15 @@ export function App(): JSX.Element {
           thing scrolled to. Fixed, so it does not shove the page down under a reading thumb. */}
       {!isAdmin && updateReady && <UpdateBanner onApply={applyUpdate} />}
       <div className={showTabs ? 'shell shell--tabs' : 'shell'}>
-        {!isAdmin && (
+        {!isAdmin && !bare && (
           <MasjidHeader
             name={times?.masjid?.name || 'Prayer times'}
-            action={<NotifyButton secure={secure} onOpen={() => setNotifyOpen(true)} />}
+            /* The bell is a SHORTCUT to the reminders, not a second copy of them: the switches
+               themselves live in Settings, where somebody looks for a setting. It is here
+               because notifications are the one feature a musalli has to find on purpose, and
+               a tab labelled "Settings" is not where anyone looks for a bell. Hidden on the
+               Settings tab itself, where it would point at the screen already open. */
+            action={route === '/settings' ? undefined : <NotifyShortcut secure={secure} onOpen={() => navigate('/settings')} />}
           />
         )}
 
@@ -210,6 +258,12 @@ export function App(): JSX.Element {
           ))}
 
         {route === '/give' && <Give tiles={appeals} language={times?.masjid?.language ?? 'en'} />}
+
+        {route === '/settings' && <Settings secure={secure} jumuah={jumuah} installed={install.installed} />}
+
+        {route === '/onboarding' && (
+          <Onboarding install={install} secure={secure} name={info?.installName || times?.masjid?.name || 'Prayer times'} />
+        )}
 
         {isAdmin && (
           <Suspense
@@ -226,7 +280,8 @@ export function App(): JSX.Element {
 
         {!isAdmin && route === '/' && times?.masjid && (
           <InstallPrompt
-            kind={install.kind}
+            route={install.route}
+            os={install.os}
             name={info?.installName || times.masjid.name}
             dismissed={install.dismissed}
             onInstall={() => void install.install()}
@@ -236,11 +291,27 @@ export function App(): JSX.Element {
 
         {!isAdmin && <Foot />}
       </div>
-      {!isAdmin && <TabBar tabs={tabs} route={route} onGo={go} />}
-      {!isAdmin && notifyOpen && (
-        <Notify secure={secure} jumuah={jumuahLabels(times?.days ?? [])} onClose={() => setNotifyOpen(false)} />
-      )}
+      {showTabs && <TabBar tabs={tabs} route={route} onGo={go} />}
     </>
+  );
+}
+
+/**
+ * The bell in the header.
+ *
+ * Hidden entirely when it could do nothing at all — no secure context, or a browser with no
+ * notification API — because a bell that opens a screen saying "your browser can't" is worse
+ * than no bell. `ios-not-installed` and `denied` DO keep it: both have a next step, and a
+ * musalli wondering why they get no reminders deserves to be able to find out why.
+ */
+function NotifyShortcut({ secure, onOpen }: { secure: boolean; onOpen: () => void }): JSX.Element | null {
+  const [env] = useState(readEnv);
+  const blocker = blockerFor({ secure, ...env });
+  if (blocker === 'insecure' || blocker === 'unsupported') return null;
+  return (
+    <button className="icon-btn" onClick={onOpen} aria-label="Prayer reminders">
+      <Bell size={19} aria-hidden="true" />
+    </button>
   );
 }
 

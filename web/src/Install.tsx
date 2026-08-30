@@ -25,26 +25,39 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpFromLine, Compass, Copy, Plus, RefreshCw, Share, X } from 'lucide-react';
 import { withBase } from './base';
-import type { InstallKind } from './pwa';
+import { preferredBrowser, type InstallRoute, type Os } from './platform';
 
 /** Long enough for the page to have painted and been read, short enough to still feel like part
  *  of arriving rather than an ambush half a minute later. */
 const APPEAR_AFTER_MS = 1400;
 
+/**
+ * The routes worth interrupting somebody for.
+ *
+ * Deliberately NOT every route this app understands. `menu` and `desktop` are real answers —
+ * an Android browser whose install lives behind its own menu, a laptop — but neither is worth
+ * a modal over a page of prayer times: `menu` cannot be told apart from "already installed,
+ * opened in a tab", and nobody adds a masjid timetable to a desktop. Both are handled properly
+ * on the onboarding page, which somebody reached by choosing to.
+ */
+const ASKABLE: InstallRoute[] = ['prompt', 'ios-safari', 'switch'];
+
 export function InstallPrompt({
-  kind,
+  route,
+  os,
   name,
   dismissed,
   onInstall,
   onDismiss,
 }: {
-  kind: InstallKind;
+  route: InstallRoute;
+  os: Os;
   name: string;
   dismissed: boolean;
   onInstall: () => void;
   onDismiss: () => void;
 }): JSX.Element | null {
-  const eligible = !dismissed && kind !== 'installed' && kind !== 'unavailable';
+  const eligible = !dismissed && ASKABLE.includes(route);
   const [shown, setShown] = useState(false);
   const card = useRef<HTMLDivElement>(null);
 
@@ -119,11 +132,11 @@ export function InstallPrompt({
           Keep {name} on your phone
         </h2>
 
-        {kind === 'prompt' ? (
+        {route === 'prompt' ? (
           <p className="modal__text">
             Add it to your home screen and today&rsquo;s times are one tap away, even with no signal.
           </p>
-        ) : kind === 'ios' ? (
+        ) : route === 'ios-safari' ? (
           // iOS Safari: no API exists, so the only honest thing is to say which buttons to press.
           <p className="modal__text">
             Tap <Share size={15} aria-label="the Share button" style={{ verticalAlign: '-0.15em' }} /> at the bottom of
@@ -133,7 +146,7 @@ export function InstallPrompt({
             </b>
             .
           </p>
-        ) : (
+        ) : os === 'ios' ? (
           // iOS, but not in Safari. Adding to the Home Screen is a SAFARI feature, not an iOS
           // one — in Chrome, or in the in-app browser that opens when you tap a link in
           // WhatsApp, the button simply is not in the Share sheet. Telling someone to look for
@@ -146,10 +159,18 @@ export function InstallPrompt({
             </b>
             .
           </p>
+        ) : (
+          // An in-app browser on Android — a link tapped inside Instagram or WhatsApp. It can
+          // sometimes install, into a container the person will never find again, so the only
+          // useful advice is the same one: open it in a real browser first.
+          <p className="modal__text">
+            You&rsquo;re reading this inside another app, which can&rsquo;t add it to your home screen. Open this page in{' '}
+            <b>{preferredBrowser(os)}</b> and it will offer to.
+          </p>
         )}
 
         <div className="modal__actions">
-          {kind === 'prompt' && (
+          {route === 'prompt' && (
             <button className="btn btn--primary modal__go" onClick={onInstall}>
               <ArrowUpFromLine size={15} aria-hidden="true" />
               Add to home screen
@@ -157,14 +178,14 @@ export function InstallPrompt({
           )}
           {/* "Open this in Safari" cannot be done from a web page — no browser lets one page
               hand itself to another. So the useful thing is the ADDRESS, ready to paste. */}
-          {kind === 'ios-other' && <CopyLink />}
+          {route === 'switch' && <CopyLink />}
           {/* On iOS there is no button that installs anything, so the only control here is the
               one that closes it — and the only action on a dialog should look like the action. */}
           <button
-            className={kind === 'prompt' || kind === 'ios-other' ? 'btn modal__later' : 'btn btn--primary modal__later'}
+            className={route === 'prompt' || route === 'switch' ? 'btn modal__later' : 'btn btn--primary modal__later'}
             onClick={onDismiss}
           >
-            {kind === 'prompt' ? 'Not now' : 'Got it'}
+            {route === 'prompt' ? 'Not now' : 'Got it'}
           </button>
         </div>
       </div>

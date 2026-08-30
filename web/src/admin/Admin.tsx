@@ -29,6 +29,7 @@ import { Appearance, type PwaStatus } from './Appearance';
 import { Poster, Share } from './Share';
 import { Appeals } from './Appeals';
 import { Notifications } from './Notifications';
+import { Insights } from './Insights';
 
 interface AdminStatus {
   remote: RemoteStatus;
@@ -167,6 +168,10 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
           {/* After the PWA card on purpose: reminders need the app on a phone, and the card
               above is where the admin is thinking about that. */}
           <Notifications />
+
+          {/* After Share, deliberately. It is the answer to "did the poster work?", and it
+              reads as that question only when it sits under the poster. */}
+          {remote?.enabled && <Insights />}
 
           {remote && (
             <Share

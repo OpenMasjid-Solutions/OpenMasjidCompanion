@@ -34,6 +34,7 @@ import { buildManifest, installName } from './webmanifest';
 import { parseChangelog, readChangelog } from './changelog';
 import { Campaigns, MAX_LINKS, parseShareLink } from './campaigns';
 import { ANNOUNCE_MAX_CHARS, SubscribeSchema, Subscriptions, type Vapid, sendOne, vapidKeys, vapidSubject } from './push';
+import { Analytics, VisitSchema } from './analytics';
 import { PushScheduler } from './pushScheduler';
 
 const log = makeLog('server');
@@ -96,6 +97,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // fail in a way that matters to the prayer times, which is why it is constructed here with
   // no ceremony and no readiness check.
   const campaigns = new Campaigns(store);
+  // How many phones, of what kind — counters only, never a visitor. See analytics.ts for the
+  // whole of what the schema can express, which is the point of it.
+  const analytics = new Analytics(store);
   // Notifications. The keypair is generated on first boot and kept for the life of the volume
   // — see push.ts for why it is never rotated. The TIMER is index.ts's, so a test can drive
   // the scheduler a tick at a time with nothing running in the background.
@@ -157,6 +161,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
    * (subscribe, read back, and a few switch flips), mean enough that a loop cannot fill a Pi.
    */
   const pushWriteOk = makeRateLimiter(30);
+  /**
+   * The visit counter's own budget, and a much larger one.
+   *
+   * Behind the tunnel EVERY request arrives from the same peer — cloudflared's — so a per-peer
+   * limit here is really a per-masjid limit. A busy Jumuʿah puts a few hundred phones through
+   * this in a couple of minutes, and 429ing them would drop counts on precisely the day worth
+   * counting. The table can only ever hold a few dozen rows a day whatever happens (the three
+   * fields are short enums), so the thing this bounds is write load, not growth.
+   */
+  const visitOk = makeRateLimiter(600);
 
   // ── Health check ────────────────────────────────────────────────────────────
   app.get('/healthz', async () => ({ ok: true }));
@@ -581,6 +595,27 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
    * `secure` is the server's answer, not the browser's guess: over plain HTTP on the LAN there
    * is no PushManager, and a page that offered the switch anyway would fail at the tap.
    */
+  /**
+   * "A phone opened this app."
+   *
+   * Unauthenticated, so: rate-limited, and the body is three enums with no free text in it at
+   * all — there is nothing here that could carry a user agent, a URL or an identifier even by
+   * accident. A body that does not parse is dropped with a 400 and no detail; nothing on the
+   * page is waiting on the answer, and telling a prober which field it got wrong is a courtesy
+   * this endpoint does not owe anyone.
+   */
+  app.post('/api/public/visit', async (req, reply) => {
+    if (!visitOk(peerOf(req))) return reply.code(429).send({ error: 'Too many requests.' });
+    const parsed = VisitSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'That could not be read.' });
+    analytics.record(parsed.data);
+    return { data: { ok: true } };
+  });
+
+  /** The breakdown behind the admin panel's Insights card. Counts, and nothing that could be
+   *  turned back into a person — see analytics.ts. */
+  app.get('/api/admin/analytics', { preHandler: requireAdmin }, async () => ({ data: analytics.breakdown() }));
+
   app.get('/api/public/push/key', async (_req, reply) => {
     reply.header('cache-control', 'no-store'); // it never changes, but a cached "not ready" would
     return { data: { key: vapid.publicKey, enabled: getSite().enabled } };

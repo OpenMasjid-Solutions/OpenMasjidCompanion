@@ -197,10 +197,37 @@ before and during the build; mirror them.**
 
 ### ✅ In scope (v1.0)
 
-- **Bottom tab bar:** Salah, Donate (only when the masjid has appeals), and Qibla when it
-  lands. Drawn only when there are two or more places to go — one lit tab over the only page
-  there is is a label, not navigation. `/give` is a real route, so it is bookmarkable, so it
-  needs a real empty state.
+- **Bottom tab bar:** Salah, Donate (only when the masjid has appeals), Settings, and Qibla
+  when it lands. Drawn only when there are two or more places to go — one lit tab over the only
+  page there is is a label, not navigation. That rule is unchanged and simply no longer fires:
+  Settings (added 2026-08-29) means every install has a second place to go. `/give` is a real
+  route, so it is bookmarkable, so it needs a real empty state.
+
+- **Settings, a musalli's own** (`/settings`, added by Hasan 2026-08-29): the two things a
+  reader may want to change, and nothing else. **Appearance** — keep the time-of-day look, or
+  hold it dark or light all day; a pinned polarity still moves through the day inside it
+  (always-dark runs Fajr → Maghrib → Isha), because "always dark" was a request about contrast,
+  not a request to switch the design off. **Prayer reminders**, moved here from the sheet over
+  the prayer times: these are settings, and a modal is a shape for a question. The bell in the
+  header stays as a shortcut *to* this screen, because notifications are the one feature a
+  musalli has to find on purpose. Everything here is per-browser, in localStorage, and never
+  leaves the phone — except the reminder switches, which have to reach the server because the
+  server is what sends them.
+
+- **The onboarding page** (`/onboarding`, added by Hasan 2026-08-29) — **what the QR code
+  points at.** A poster has to print instructions that are right for every phone that will ever
+  scan it, so it prints the generic ones; a web page knows which phone and which browser is
+  reading it and can say the one true sentence, including the one no poster could ever print:
+  *"this browser can't — open it in Safari."* It detects the OS and the browser (`platform.ts`,
+  the only user-agent table in the repo), offers the real `beforeinstallprompt` where there is
+  one, names the buttons on iOS Safari, sends an in-app webview to a real browser with the
+  address on the clipboard, and then offers notifications as a second step — never on load,
+  which is how a browser learns to block a site for good. Launched standalone it redirects
+  straight into the app: somebody who has already done the thing must never be shown the
+  instructions for doing it.
+
+- **Who's using it** (admin, added by Hasan 2026-08-29) — see the amended out-of-scope line
+  below, and `server/src/analytics.ts` for why the schema is the constraint.
 - **Musalli home (public, no login):** today's Adhan + Iqamah times for the five prayers,
   Jumuʿah, the Hijri and Gregorian dates, a live next-prayer countdown, and the masjid's name
   and logo. Big, calm, one-hand-usable, tabular numerals.
@@ -226,8 +253,10 @@ before and during the build; mirror them.**
   than an error. See `docs/DESIGN_LANGUAGE.md`.
 - **Installability:** a server-generated web manifest + service worker, correct under the
   tunnel's base path, named and iconed for the masjid. §10.
-- **QR + printable poster:** the admin panel renders a QR of the app's public URL and a
-  print-ready poster page ("Scan → Add to Home Screen", with iPhone/Android hints).
+- **QR + printable poster:** the admin panel renders a QR of the app's public URL **plus
+  `/onboarding`** and a print-ready poster page ("Scan → Add to Home Screen", with iPhone/Android
+  hints kept as the printed fallback). One value builds the code and the copy button, so the
+  address on screen can never disagree with the one that was printed.
 - **Admin panel** (login-protected; OpenMasjidOS SSO with a local-password fallback, mirroring
   Donations): guided first-run setup, timetable picker (via the broker), campaign curation, app
   name + icon, notification defaults + status, Share (QR/poster), and an account menu with the
@@ -248,7 +277,18 @@ before and during the build; mirror them.**
 - Chat, feeds, event RSVPs, or community features.
 - Native iOS/Android apps.
 - Modifying OpenMasjidOS, Display, Donations, or the catalog (work orders only).
-- Analytics beyond a plain count of push subscriptions shown to the admin.
+- ~~Analytics beyond a plain count of push subscriptions shown to the admin.~~ **Amended
+  2026-08-29** (Hasan asked for a device/browser breakdown). The reason this line existed was to
+  stop the app growing a visitor log, and that reason has not gone away — so what was built is
+  the shape that answers a masjid's question without one ever existing: **the entire schema is a
+  counter.** One row per (day, device, browser, mode), holding a number. No row per visit, no
+  session, no id, no IP, no user agent, no path, no timestamp finer than the date; 90 days and
+  then gone. The three fields are closed enums duplicated in `web/src/platform.ts` and asserted
+  equal by `analytics.test.ts`, so an unauthenticated endpoint that lands in an admin panel has
+  no free text in it anywhere. `analytics.test.ts` asserts the column list **exhaustively** — a
+  future column has to be argued for in that test first. What stays out of scope is everything
+  the old line was about: per-visitor records, paths, referrers, dwell time, or anything that
+  could be joined against a push subscription.
 
 ### 🔭 Later (design for, don't build now)
 
@@ -570,7 +610,9 @@ the one secret that *does* belong on the volume; never log the private key).
 
 Screens (keep it this small): **Setup** (first-run wizard: tunnel check → pick timetable → paste
 campaign links → app name + icon → Share), **Home** (status: tunnel, timetable freshness,
-campaigns health, subscriber count, last push), **Timetable** (picker + preview + refresh now),
+campaigns health, subscriber count, last push), **Who's using it** (the device/browser/installed
+breakdown — under Share on purpose, because it is the answer to "did the poster work?" and reads
+as that question only when it sits under the poster), **Timetable** (picker + preview + refresh now),
 **Donations** (link list, reorder, per-link health, test-mode warnings), **Notifications**
 (enabled state, defaults, subscriber count, "send a test notification to this device"),
 **Share** (QR + poster), **Settings** (app name/icon, local password management, language), and
@@ -633,6 +675,14 @@ musalli half; it refines this section rather than replacing it.
 - **Outbound fetch posture everywhere:** `redirect: 'error'`, `AbortController` timeouts,
   https-only for anything crossing the tunnel domain, response-size caps on the campaign and
   timetable fetches, and no URL ever built from a request's `Host` header.
+- **The visit counter is the third unauthenticated write** (`POST /api/public/visit`), and it
+  gets its own, much larger budget rather than sharing the push one. Behind the tunnel every
+  request arrives from the same peer — cloudflared's — so a per-peer limit is really a
+  per-masjid limit, and 429ing a busy Jumuʿah would drop counts on precisely the day worth
+  counting. The table can only ever hold a few dozen rows a day whatever happens, so what the
+  limit bounds is write load, not growth. It follows that the counts are **inflatable by anyone
+  holding the public link**, which is inherent to counting a public page and is said out loud on
+  the admin's own screen rather than left to be discovered when a number looks wrong.
 - **Unauthenticated writes are rate-limited and validated** (push subscribe/unsubscribe; the
   login endpoint gets attempt limiting like Donations). Everything external is parsed with
   **zod**; cross-app content (campaign JSON, timetable payloads) is sanitised before rendering.

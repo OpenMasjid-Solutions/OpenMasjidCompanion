@@ -18,6 +18,9 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { withBase } from './base';
+import { browserOf, currentEnv, inAppOf, installRoute, isStandalone, osOf, type BrowserId, type InstallRoute, type Os } from './platform';
+
+export { isStandalone };
 
 /** `BeforeInstallPromptEvent` is Chromium-only and not in the DOM lib. */
 interface InstallPromptEvent extends Event {
@@ -25,57 +28,29 @@ interface InstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-export type InstallKind =
-  /** Chromium: the browser will show a real prompt when asked. */
-  | 'prompt'
-  /** iOS Safari: no API — the musalli must use the Share sheet. */
-  | 'ios'
-  /** iOS, but in Chrome / Firefox / an in-app browser, where Add to Home Screen is not
-   *  available at all. The only useful thing to say is "open this in Safari". */
-  | 'ios-other'
-  /** Already running from the home screen. */
-  | 'installed'
-  /** Not offerable: no secure context, or a browser that cannot. */
-  | 'unavailable';
-
-/** Are we running as an installed app rather than in a browser tab? */
-export function isStandalone(): boolean {
-  if (typeof window === 'undefined') return false;
-  const iosStandalone = (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-  return iosStandalone || window.matchMedia('(display-mode: standalone)').matches;
-}
-
-/** iOS or iPadOS, including iPadOS pretending to be a Mac. Detected because there is genuinely
- *  no feature to detect: the absence of `beforeinstallprompt` is indistinguishable from a
- *  browser that simply has not fired it yet. */
+/**
+ * iOS or iPadOS, including an iPad claiming to be a Mac.
+ *
+ * Kept as its own name because three unrelated places ask exactly this question — the install
+ * prompt, the reminders screen (iOS cannot subscribe outside a Home Screen app) and the
+ * onboarding page. The rule itself lives in platform.ts, which is the only user-agent table
+ * in this repository; this is a reading of it, not a second copy.
+ */
 export function isIos(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent;
-  const iOS = /iPad|iPhone|iPod/.test(ua);
-  const iPadOS = navigator.platform === 'MacIntel' && (navigator as unknown as { maxTouchPoints: number }).maxTouchPoints > 1;
-  return iOS || iPadOS;
+  return osOf(currentEnv()) === 'ios';
 }
 
 /**
  * On iOS, is this Safari itself?
  *
- * **Add to Home Screen is a Safari feature, not an iOS one.** Every browser on iOS is WebKit
- * underneath, which makes them look identical to feature detection, but only Safari's own share
- * sheet installs a web app. Someone in Chrome, or in the in-app browser that opens when they tap
- * a link in WhatsApp or Instagram, can follow "Share → Add to Home Screen" for as long as they
- * like and never find it — so the app has to say "open this in Safari first" instead.
- *
- * A DENYLIST, not an allowlist of Safari. Every one of these puts its own token in the user
- * agent while also carrying "Safari/605", so testing FOR Safari matches all of them; testing
- * for each impostor does not. An unrecognised browser is therefore assumed to be Safari, which
- * is the safer way round: the worst case is the Share-sheet instructions, which are at least
- * true of iOS in general.
+ * **Add to Home Screen is a Safari feature, not an iOS one.** Someone in Chrome, or in the
+ * in-app browser that opens when they tap a link in WhatsApp, can follow "Share → Add to Home
+ * Screen" for as long as they like and never find it — so the app says "open this in Safari"
+ * instead. See platform.ts for why this can only be a user-agent test.
  */
-const NOT_SAFARI = /(CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|YaBrowser|DuckDuckGo|FBAN|FBAV|FB_IAB|Instagram|Twitter|Snapchat|LinkedInApp|Pinterest|MicroMessenger|Line\/|GSA\/)/i;
-
 export function isIosSafari(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return isIos() && !NOT_SAFARI.test(navigator.userAgent);
+  const env = currentEnv();
+  return osOf(env) === 'ios' && browserOf(env) === 'safari';
 }
 
 /**
@@ -137,14 +112,34 @@ export function useServiceWorker(secure: boolean): { updateReady: boolean; apply
   return { updateReady: !!waiting, applyUpdate };
 }
 
+/** What `useInstall` reports. `os` and `browser` ride along because the pages that ask this
+ *  also have to NAME the browser in a sentence, and re-detecting it there is how two answers
+ *  start disagreeing. */
+export interface Install {
+  route: InstallRoute;
+  os: Os;
+  browser: BrowserId;
+  /** The app holding this page inside itself ("Instagram", "WhatsApp"), or '' for a real
+   *  browser. Named rather than lumped together because "you tapped this link inside Instagram"
+   *  is advice somebody can act on and "you are in an in-app browser" is jargon. */
+  inApp: string;
+  install: () => Promise<void>;
+  dismissed: boolean;
+  dismiss: () => void;
+  /** True from the moment the browser reports the app was added, so a step can tick itself
+   *  without a reload — `appinstalled` fires while the page is still open. */
+  installed: boolean;
+}
+
 /**
  * Whether and how this app can be added to the home screen.
  *
  * `secure` comes from the server (see above). Everything else is browser state.
  */
-export function useInstall(secure: boolean): { kind: InstallKind; install: () => Promise<void>; dismissed: boolean; dismiss: () => void } {
+export function useInstall(secure: boolean): Install {
   const [event, setEvent] = useState<InstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(() => isStandalone());
+  const [env] = useState(currentEnv);
   const [dismissed, setDismissed] = useState(() => {
     try {
       return localStorage.getItem('omc-install-dismissed') === '1';
@@ -170,17 +165,8 @@ export function useInstall(secure: boolean): { kind: InstallKind; install: () =>
     };
   }, [secure]);
 
-  const kind: InstallKind = installed
-    ? 'installed'
-    : !secure
-      ? 'unavailable'
-      : event
-        ? 'prompt'
-        : isIos()
-          ? isIosSafari()
-            ? 'ios'
-            : 'ios-other'
-          : 'unavailable';
+  const os = osOf(env);
+  const route = installRoute({ os, browser: browserOf(env), secure, standalone: installed, prompt: !!event });
 
   const dismiss = useCallback(() => {
     setDismissed(true);
@@ -200,5 +186,5 @@ export function useInstall(secure: boolean): { kind: InstallKind; install: () =>
     if (choice.outcome === 'dismissed') dismiss();
   }, [event, dismiss]);
 
-  return { kind, install, dismissed, dismiss };
+  return { route, os, browser: browserOf(env), inApp: inAppOf(env.ua), install, dismissed, dismiss, installed };
 }
