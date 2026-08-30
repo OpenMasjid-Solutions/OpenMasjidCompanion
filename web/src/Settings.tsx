@@ -107,8 +107,7 @@ export function Settings({
             Vibration
           </h2>
           <p className="set-lead">
-            A small buzz when you tap something, swipe between days, or line up the Qibla. Your phone&rsquo;s own
-            vibration setting still comes first.
+            A small buzz when you tap something. Your phone&rsquo;s own vibration setting still comes first.
           </p>
           <div className="notify__chips">
             <button
@@ -135,7 +134,7 @@ export function Settings({
             Keep it on your phone
           </h2>
           <p className="set-lead">
-            Added to your home screen it opens like any other app, and today&rsquo;s times are there even with no signal.
+            Added to your home screen it opens like any other app, and today&rsquo;s times are there.
           </p>
           <button className="btn" onClick={() => navigate(ONBOARDING_PATH)}>
             Show me how

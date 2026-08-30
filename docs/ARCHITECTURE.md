@@ -1299,3 +1299,66 @@ regardless.
 ### Test count
 
 Server 373, web 163.
+
+## Slice 17 — the compass face, after the reference (0.1.0-dev.20)
+
+A second pass over yesterday's work, from a reference image and a list of small corrections.
+
+### The Kaaba faces the Qibla
+
+Three versions of one line, and the two wrong ones are worth keeping because they were each a
+reasonable-looking answer to a differently-framed question.
+
+The tile sits inside two rotations: the pointer's own `bearing`, and the rose's `rose`. The first
+version cancelled the inner one, so it stayed square to a card that was itself turning and leaned
+by however far the reader had turned — that read as a mistake, and it was. The second cancelled
+both, standing it up on screen — which was what "it's not straight up" asked for, and which made
+it a picture of a box rather than of a building somebody is facing. The third cancels neither:
+the Kaaba turns with the bearing, so its face is towards the Qibla. That is what the reference
+does, and it is also the more truthful drawing.
+
+Asserted by reading the element's real `getScreenCTM()` rather than by looking at a screenshot —
+59° of tile rotation at 59° of bearing offset, which is a claim a picture cannot make.
+
+### The needle
+
+The thin ray from the centre to the Kaaba said "the Kaaba is over there", which was already said
+by the Kaaba being over there. What the screen was missing is the other half: **where the reader
+is pointing.** So it is one leaf-shaped needle, fixed to the screen outside the rotating group,
+and lining the two up is the whole gesture. It is drawn only with a live compass — with no
+heading there is no "you" to mark, and a needle would be claiming a direction the phone does not
+know.
+
+The face itself is now an object: a pale bezel and a near-white card, with the colours hardcoded
+in app.css. That is a deliberate exception to §12's "never hardcode a colour", and the reason is
+that a compass whose card inverted between Fajr and Duha would stop reading as a compass at all —
+you would not know whether you were looking at an object or at a hole in the screen. Checked on
+both skies.
+
+### The gap nobody put there
+
+The Directions button sat 30px under the address when the CSS asked for 14. Neither
+`.contact__maps` nor `.set-card .btn` was wrong: a `<ul>` carries a 1em bottom margin by default
+and this app's reset only zeroes the body's. It is the kind of gap you tune the wrong rule to fix
+twice before measuring the pieces, so the pieces were measured.
+
+### Two maps, because an iPhone has two
+
+Sending an iPhone straight to Google Maps is a guess about somebody else's phone: a large share of
+them do not have it installed and land on a web page asking them to, having pressed a button that
+promised directions. Which to open is a question only the reader can answer, so on iOS it is
+asked — expanding in place rather than opening a dialog, because two links are not worth stopping
+the page for and the reader has already said what they want by pressing. Everywhere else there is
+one answer and it is not worth asking.
+
+Both links are built from one `mapQuery`, so the choice can never become a trap where the two
+apps search for different things — which is the one way an offered choice is worse than no
+choice. Asserted, including that an `&` in an address cannot start a second URL parameter.
+
+### The phone field
+
+`type`, `inputMode` and `autoComplete` are three different things doing three different jobs, and
+only the first was set. The type is what the browser validates and what a keyboard reads, the
+input mode is which keyboard actually appears — a keypad, not a QWERTY somebody has to switch out
+of — and the autocomplete token is what lets a volunteer fill their own masjid's details with one
+tap instead of typing a postcode from memory.

@@ -275,15 +275,18 @@ function Dial({ bearing, rose, live, aligned }: { bearing: number; rose: number;
     [180, 'S'],
     [270, 'W'],
   ];
-  const tip = at(bearing, 78);
 
   return (
     <div className={aligned ? 'qibla__dial qibla__dial--on' : 'qibla__dial'} aria-hidden="true">
       <svg viewBox="-110 -110 220 220" className="qibla__svg">
-        {/* Fixed to the SCREEN, not to the rose: it is where the phone is pointing, which is up
-            by definition. Only drawn with a live compass, because without one there is no
-            "where you are pointing" to mark. */}
-        {live && <path d="M0 -103 l7 13 h-14 z" className="qibla__you" />}
+        {/* A physical compass face: a pale bezel with a near-white card inside it, after the
+            reference Hasan supplied on 2026-08-30. Drawn as an OBJECT rather than in the page's
+            ink tokens, which is a deliberate exception to "never hardcode a colour" — a compass
+            is a thing sitting on the page, and one whose face inverted with the sky would stop
+            reading as a thing at all. The colours are in app.css all the same, so they are not
+            loose in the component. */}
+        <circle r="100" className="qibla__bezel" />
+        <circle r="92" className="qibla__face" />
 
         {/* Rotated by the SVG ATTRIBUTE, not by CSS.
          *
@@ -298,16 +301,15 @@ function Dial({ bearing, rose, live, aligned }: { bearing: number; rose: number;
          * heading is what makes this move smoothly, and it runs at the magnetometer's own rate.
          * A transition on top would be a second smoothing fighting the first. */}
         <g className="qibla__rose" transform={`rotate(${rose})`}>
-          <circle r="92" className="qibla__ring" />
-          {/* A tick every 15°, longer on the cardinals. Enough to read an angle off, few enough
-              not to become a texture. */}
-          {Array.from({ length: 24 }, (_, i) => i * 15).map((d) => (
+          {/* A tick every 6°, longer on the cardinals — the density of the reference, and close
+              enough that a reader can count round to an angle if they want one. */}
+          {Array.from({ length: 60 }, (_, i) => i * 6).map((d) => (
             <line
               key={d}
               x1="0"
-              y1="-92"
+              y1="-86"
               x2="0"
-              y2={d % 90 === 0 ? '-78' : '-85'}
+              y2={d % 90 === 0 ? '-72' : '-79'}
               transform={`rotate(${d})`}
               className={d % 90 === 0 ? 'qibla__tick qibla__tick--card' : 'qibla__tick'}
             />
@@ -316,9 +318,9 @@ function Dial({ bearing, rose, live, aligned }: { bearing: number; rose: number;
           {/* Placed by trig rather than by a rotate-and-counter-rotate, which is how the letters
               ended up on their sides: nesting an SVG rotation inside another puts the pivot
               somewhere neither of them meant. They still turn WITH the rose, as the printed card
-              of a real compass does. */}
+              of a real compass does — and as the reference does. */}
           {marks.map(([deg, label]) => {
-            const p = at(deg, 68);
+            const p = at(deg, 62);
             return (
               <text key={label} x={p.x} y={p.y} className="qibla__card" dominantBaseline="central">
                 {label}
@@ -326,28 +328,48 @@ function Dial({ bearing, rose, live, aligned }: { bearing: number; rose: number;
             );
           })}
 
-          {/* One pointer, not two pieces. A line out of the middle with the Kaaba on the end of
-              it: the earlier version had a wedge at the rim and a cube floating halfway in, and
-              they read as two unrelated marks rather than as "this way". */}
-          <g>
-            <line x1="0" y1="0" x2={tip.x} y2={tip.y} className="qibla__ray" />
-            <circle r="5" className="qibla__hub" />
-            <g transform={`rotate(${norm360(bearing)}) translate(0 -78)`}>
-              {/* The Kaaba, drawn rather than lettered: a small black cube with its band is
-                  recognised instantly and needs no translating.
-               *
-               * Counter-rotated by the WHOLE screen rotation, not just by the bearing. It sits
-               * inside two turns — the pointer's `bearing`, and the rose's own `rose` — and
-               * cancelling only the inner one left it upright relative to a card that was itself
-               * tilted, so on screen it leaned by however far the reader had turned. A cube that
-               * is not sitting flat does not read as a building. */}
-              <g transform={`rotate(${-(norm360(bearing) + rose)})`}>
-                <rect x="-11" y="-11" width="22" height="22" rx="3" className="qibla__kaaba" />
-                <line x1="-11" y1="-2" x2="11" y2="-2" className="qibla__kiswa" />
-              </g>
-            </g>
+          {/**
+           * The Kaaba, at the bearing, TURNED TO FACE IT (Hasan, 2026-08-30).
+           *
+           * There is no counter-rotation here at all any more, and the two earlier versions were
+           * both wrong in ways worth recording. The first cancelled the pointer's own turn, so
+           * the tile stayed square to a card that was itself rotating and leaned by however far
+           * the reader had turned. The second cancelled the whole screen rotation, which stood it
+           * up — and standing it up is what made it a picture of a box rather than a building
+           * somebody is facing.
+           *
+           * Turning with the bearing is what the reference does and it is also the more truthful
+           * drawing: the Kaaba is a cube with a face towards you, not an icon pinned to a map.
+           */}
+          <g transform={`rotate(${norm360(bearing)}) translate(0 -72)`}>
+            <rect x="-13" y="-13" width="26" height="26" rx="4" className="qibla__kaaba" />
+            {/* The kiswa's band, and the door below it. Two shapes, because the band alone reads
+                as a stripe on a square and the pair reads as a building — at this size that is
+                the whole of the difference between an icon and a flag. */}
+            <rect x="-13" y="-4" width="26" height="3.5" className="qibla__kiswa" />
+            <rect x="-4.5" y="2" width="6" height="8" rx="0.8" className="qibla__door" />
           </g>
         </g>
+
+        {/**
+         * Where the phone is pointing. Fixed to the SCREEN, outside the rose, because "the way
+         * you are facing" is up by definition — the card turns underneath it.
+         *
+         * A leaf rather than the thin line and hub this replaced (Hasan, 2026-08-30, after the
+         * reference). The line ran from the middle out to the Kaaba, which said "the Kaaba is
+         * over there" — true, and already said by the Kaaba being over there. What the screen was
+         * missing is the other half of the sentence: where YOU are pointing. Lining the two up is
+         * the whole gesture.
+         *
+         * Only with a live compass. Without one the card cannot turn, so there is no "you" to
+         * mark and a needle would be claiming a direction the phone does not know.
+         */}
+        {live && (
+          <path
+            d="M0 -46 C 6 -28 13 -10 13 4 C 13 26 7 42 0 42 C -7 42 -13 26 -13 4 C -13 -10 -6 -28 0 -46 Z"
+            className="qibla__needle"
+          />
+        )}
       </svg>
     </div>
   );

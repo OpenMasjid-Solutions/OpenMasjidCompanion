@@ -13,7 +13,7 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { SOCIALS, hasContact, mailHref, mapsHref, safeUrl, socialsOf, telHref, type Contact } from './contactLinks';
+import { SOCIALS, appleMapsHref, hasContact, mailHref, mapsHref, safeUrl, socialsOf, telHref, type Contact } from './contactLinks';
 
 const blank: Contact = {
   phone: '',
@@ -75,6 +75,25 @@ test('directions are a search, not a pin', () => {
   assert.match(href, /Example%20Road/);
   assert.ok(!href.includes('\n'), 'the newlines are collapsed, not encoded into the URL raw');
   assert.equal(mapsHref('   '), '');
+});
+
+test('BOTH MAPS GET THE SAME ADDRESS, encoded the same way', () => {
+  // An iPhone is offered a choice, so the two links have to be the same journey — the one thing
+  // that would make the choice a trap is the two apps searching for different things.
+  const addr = '12 Example Road\nLondon\nE1 1AA';
+  const q = '12%20Example%20Road%20London%20E1%201AA';
+  assert.equal(mapsHref(addr), `https://www.google.com/maps/search/?api=1&query=${q}`);
+  assert.equal(appleMapsHref(addr), `https://maps.apple.com/?q=${q}`);
+  assert.equal(appleMapsHref('   '), '', 'and neither invents a destination out of nothing');
+});
+
+test('an ampersand in an address cannot start a second parameter', () => {
+  // "Church & King Street" is a real address shape, and an unencoded & would end the query and
+  // begin something else — which in a URL is not a typo, it is a different request.
+  const href = mapsHref('1 Church & King St');
+  assert.ok(!href.includes('& King'), href);
+  assert.match(href, /%26/);
+  assert.match(appleMapsHref('1 Church & King St'), /%26/);
 });
 
 test('a link this app will not render is not counted as one it has', () => {

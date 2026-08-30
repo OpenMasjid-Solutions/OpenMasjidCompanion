@@ -100,10 +100,30 @@ export function mailHref(email: string): string {
  * the masjid's address to a mapping service, which is fine — it is a public address and the
  * musalli chose to — but it should be a choice, not something that happens because somebody
  * pressed the text to select it.
+ *
+ * **Two of them, because an iPhone has two** (Hasan, 2026-08-30). Sending an iPhone straight to
+ * Google Maps is a guess about somebody else's phone: half of them do not have it installed and
+ * land in a browser page asking them to, having pressed a button that said "Directions". Which
+ * to open is a question only the reader can answer, so on iOS it is asked. Everywhere else there
+ * is one answer and it is not worth asking.
  */
 export function mapsHref(address: string): string {
+  const v = mapQuery(address);
+  return v ? `https://www.google.com/maps/search/?api=1&query=${v}` : '';
+}
+
+/** Apple's own. `?q=` is a search, matching the Google form above — and on an iPhone this opens
+ *  the Maps app itself rather than a web page pretending to be it. */
+export function appleMapsHref(address: string): string {
+  const v = mapQuery(address);
+  return v ? `https://maps.apple.com/?q=${v}` : '';
+}
+
+/** The address as one encoded line. The newlines a masjid typed are meaningful on the card and
+ *  meaningless to a search box, so they are collapsed here and only here. */
+function mapQuery(address: string): string {
   const v = (address ?? '').replace(/\s+/g, ' ').trim();
-  return v ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v)}` : '';
+  return v ? encodeURIComponent(v) : '';
 }
 
 /** The links that are actually set, in the order they are drawn. */

@@ -16,10 +16,12 @@
  * Every link is `rel="noopener noreferrer"` and opens away from the app. The app's own
  * `referrer-policy: no-referrer` means none of them carries which masjid's page it came from.
  */
+import { useState } from 'react';
 import { Facebook, Globe, Instagram, Mail, MapPin, MessageCircle, Navigation, Phone, Send, X, Youtube } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
   SOCIAL_LABEL,
+  appleMapsHref,
   mailHref,
   mapsHref,
   safeUrl,
@@ -28,6 +30,7 @@ import {
   type Contact as ContactInfo,
   type Social,
 } from './contactLinks';
+import { currentEnv, osOf } from './platform';
 
 /**
  * Icons for the networks.
@@ -100,12 +103,7 @@ export function ContactCard({ contact, name }: { contact: ContactInfo; name: str
         )}
       </ul>
 
-      {address && (
-        <a className="btn" href={mapsHref(address)} target="_blank" rel="noopener noreferrer">
-          <Navigation size={15} aria-hidden="true" />
-          Directions
-        </a>
-      )}
+      {address && <Directions address={address} />}
 
       {socials.length > 0 && (
         <div className="contact__socials">
@@ -121,6 +119,55 @@ export function ContactCard({ contact, name }: { contact: ContactInfo; name: str
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * "Directions" — and on an iPhone, directions in WHICH app.
+ *
+ * Everywhere else there is one sensible answer and the button just goes. On iOS there are two
+ * real ones and picking for somebody is a guess about their phone: an iPhone without Google Maps
+ * installed lands on a web page asking them to install it, having pressed a button that promised
+ * directions.
+ *
+ * It expands in place rather than opening a dialog. Two links are not worth stopping the page
+ * for, and the reader has already told us what they want by pressing — the second press is
+ * choosing between two things, not confirming the first.
+ */
+function Directions({ address }: { address: string }): JSX.Element {
+  const [choosing, setChoosing] = useState(false);
+  const ios = osOf(currentEnv()) === 'ios';
+
+  if (!ios) {
+    return (
+      <a className="btn contact__maps" href={mapsHref(address)} target="_blank" rel="noopener noreferrer">
+        <Navigation size={15} aria-hidden="true" />
+        Directions
+      </a>
+    );
+  }
+
+  if (!choosing) {
+    return (
+      <button className="btn contact__maps" onClick={() => setChoosing(true)} aria-expanded={false}>
+        <Navigation size={15} aria-hidden="true" />
+        Directions
+      </button>
+    );
+  }
+
+  return (
+    <div className="contact__maps contact__choose">
+      <p className="contact__choose-ask">Open in</p>
+      <div className="contact__choose-row">
+        <a className="btn btn--primary" href={appleMapsHref(address)} target="_blank" rel="noopener noreferrer">
+          Apple Maps
+        </a>
+        <a className="btn" href={mapsHref(address)} target="_blank" rel="noopener noreferrer">
+          Google Maps
+        </a>
+      </div>
+    </div>
   );
 }
 

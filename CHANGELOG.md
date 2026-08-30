@@ -26,6 +26,10 @@ only what a masjid would actually notice. A released section is never rewritten.
   screen. There's a switch to turn it off in Settings. **This only works on Android**: iPhones
   give web apps no way to vibrate at all, so nothing on screen ever depends on it.
 
+- **On an iPhone, Directions asks which map.** Sending an iPhone straight to Google Maps is a
+  guess about somebody else's phone; half of them land on a page asking them to install it. Every
+  other phone still goes straight there, because there is only one answer.
+
 ### Changed
 
 - **Reminders now say "Iqamah"** rather than "Jamāʿah", matching the column heading on your own
@@ -40,7 +44,10 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Fixed
 
-- **The Kaaba on the compass sat at an angle** once you turned the phone, instead of upright.
+- **The compass has been redrawn** as a proper compass face &mdash; a white card with a fine
+  bezel, a marked ring, and the Kaaba turned to face the Qibla rather than to face the top of
+  your phone. The long line across the dial is now a single needle showing which way you are
+  pointing: turn until the Kaaba sits under it.
 
 - **Qibla.** A new tab showing which way Makkah is from wherever you are standing &mdash; the
   direction in degrees, in words, and how far away the Kaaba is, with a dial you can line up.

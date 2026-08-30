@@ -34,11 +34,25 @@ const EMPTY = {
 type Contact = typeof EMPTY;
 type Field = keyof Contact;
 
-/** The order they are asked for, which is roughly the order a masjid knows them in. */
-const DETAILS: { id: Field; label: string; hint: string; type?: string }[] = [
-  { id: 'phone', label: 'Phone', hint: 'Written however you say it — “020 7946 0000”.', type: 'tel' },
-  { id: 'email', label: 'Email', hint: 'The one somebody should write to.', type: 'email' },
-  { id: 'website', label: 'Website', hint: 'Just the address — “masjid.org” is enough.' },
+/**
+ * The order they are asked for, which is roughly the order a masjid knows them in.
+ *
+ * `type`, `inputMode` and `autoComplete` are all set, and they are three different things doing
+ * three different jobs: the type is what the browser validates and what a phone's keyboard reads,
+ * the input mode is what that keyboard actually shows (a keypad, not a QWERTY somebody has to
+ * switch out of), and the autocomplete token is what lets a volunteer fill their own masjid's
+ * details in with one tap instead of typing a postcode from memory.
+ */
+const DETAILS: { id: Field; label: string; hint: string; type: string; mode: string; auto: string }[] = [
+  { id: 'phone', label: 'Phone', hint: 'Written however you say it — “+44 20 7946 0000”.', type: 'tel', mode: 'tel', auto: 'tel' },
+  { id: 'email', label: 'Email', hint: 'The one somebody should write to.', type: 'email', mode: 'email', auto: 'email' },
+  // `type: 'text'`, NOT 'url', and the hint above it is the reason. The server deliberately
+  // accepts a bare domain and puts the https:// on itself (`coerceUrl`), so "masjid.org" is a
+  // correct answer — and `type="url"` marks it `:invalid`. Nothing validates today, because
+  // these inputs are not inside a <form>; the day somebody wraps them in one for keyboard
+  // submit, this field would start refusing the exact answer the hint asks for. `inputMode`
+  // gives the same keyboard without the claim.
+  { id: 'website', label: 'Website', hint: 'Just the address — “masjid.org” is enough.', type: 'text', mode: 'url', auto: 'url' },
 ];
 
 const LINKS: { id: Field; label: string; hint: string }[] = [
@@ -118,10 +132,11 @@ export function ContactForm(): JSX.Element {
                   <input
                     id={`contact-${f.id}`}
                     className="input"
-                    type={f.type ?? 'text'}
+                    type={f.type}
+                    inputMode={f.mode as 'tel' | 'email' | 'url'}
+                    autoComplete={f.auto}
                     value={form[f.id]}
                     onChange={(e) => set(f.id, e.target.value)}
-                    autoComplete="off"
                   />
                   {f.hint && <p className="hint">{f.hint}</p>}
                 </div>
@@ -153,10 +168,13 @@ export function ContactForm(): JSX.Element {
                   <label className="label" htmlFor={`contact-${f.id}`}>
                     {f.label}
                   </label>
+                  {/* `type="text"` for the same reason as the website field above: the server
+                      accepts "instagram.com/masjid" and completes it, so a browser marking that
+                      invalid would be contradicting the app it is a form for. */}
                   <input
                     id={`contact-${f.id}`}
                     className="input"
-                    type="url"
+                    type="text"
                     inputMode="url"
                     value={form[f.id]}
                     onChange={(e) => set(f.id, e.target.value)}

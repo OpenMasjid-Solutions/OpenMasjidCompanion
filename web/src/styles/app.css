@@ -1934,47 +1934,46 @@ h1, h2, h3, p { margin: 0; }
 .qibla__dial { margin-block: 0.4rem 1rem; display: grid; place-items: center; }
 .qibla__svg { inline-size: 100%; max-inline-size: 17rem; block-size: auto; }
 
-/* The rose turns; the wedge marking where the PHONE points does not. Both are inside the same
-   SVG so they share a coordinate system and cannot drift apart.
- *
- * `transform-box` is SPELT OUT, and it is not a formality. Its default for an SVG element is not
- * agreed between engines, and where it resolves to the element's own box rather than the viewBox
- * the pivot lands on the top-left corner of the viewport instead of the middle of the dial — so
- * the compass swung the whole rose off the bottom of the card the moment a heading arrived, and
- * did it only when a heading arrived, which is why the still screenshot looked perfect. With
- * `view-box`, 50% 50% of "-110 -110 220 220" is user-space (0, 0), which is the centre by
- * construction. */
+/* The rose turns; the needle marking where the PHONE points does not. Both are inside the same
+   SVG so they share a coordinate system and cannot drift apart. */
 .qibla__rose { will-change: transform; }
 
-.qibla__ring { fill: none; stroke: color-mix(in srgb, var(--ink-scene) 22%, transparent); stroke-width: 1.5; }
-.qibla__tick { stroke: color-mix(in srgb, var(--ink-scene) 28%, transparent); stroke-width: 1.5; stroke-linecap: round; }
-.qibla__tick--card { stroke: color-mix(in srgb, var(--ink-scene) 55%, transparent); stroke-width: 2.5; }
+/* ── The face, as an object rather than as page ink ──────────────────────────
+ *
+ * A deliberate exception to CLAUDE.md §12's "never hardcode a colour in a component": these are
+ * the colours of a THING sitting on the page, not of the page. A compass whose card inverted
+ * between Fajr and Duha would stop reading as a compass — you would not know whether you were
+ * looking at an object or at a hole in the screen — and the whole point of drawing one is that
+ * somebody already knows what it is. They live here rather than inline so a component still has
+ * no hex in it, and they are the same in both themes on purpose.
+ */
+.qibla__bezel { fill: #e7dfe0; }
+.qibla__face { fill: #fdfcfb; }
+.qibla__tick { stroke: #c3bcb8; stroke-width: 2; stroke-linecap: round; }
+.qibla__tick--card { stroke: #a49c97; stroke-width: 2.5; }
 .qibla__card {
-  fill: var(--ink-scene-muted);
-  font-size: 13px;
+  fill: #a49c97;
+  font-size: 15px;
   font-weight: 700;
   text-anchor: middle;
-  /* Tabular numerals do nothing for letters, but the family is set here so the cardinal letters
-     match the rest of the app rather than falling back to the SVG default serif. */
   font-family: var(--font-display);
 }
 
-/* Where the reader is pointing. Coral, like every other "this is you" in the app. */
-.qibla__you { fill: var(--coral); }
+/* Where the reader is pointing. Pale, as the reference is — it is a confirmation of the words
+   underneath it rather than the only thing saying which way to turn, and a saturated wedge in
+   the middle of the card would shout over the Kaaba, which is the thing worth finding. The
+   hairline is what gives it a defined edge against a near-white face. */
+.qibla__needle { fill: #f3b083; stroke: #e08a55; stroke-width: 1; }
 
-/* The pointer: one line from the middle to the Kaaba, so it reads as a direction rather than
-   as two marks that happen to be on the same radius. */
-.qibla__ray { stroke: var(--color-btn); stroke-width: 4; stroke-linecap: round; }
-.qibla__hub { fill: var(--color-btn); }
-/* The Kaaba itself, drawn rather than lettered: a small black cube with its band is recognised
-   instantly and needs no translating. */
-.qibla__kaaba { fill: #14100c; stroke: color-mix(in srgb, var(--ink-scene) 45%, transparent); stroke-width: 1.5; }
-.qibla__kiswa { stroke: var(--coral-strong); stroke-width: 2.5; }
+/* The Kaaba. Drawn rather than lettered: recognised instantly, and needs no translating. */
+.qibla__kaaba { fill: #17130f; }
+.qibla__kiswa { fill: #c9a227; }
+.qibla__door { fill: #5a4d3c; }
 
-/* Aligned. A ring rather than a colour change on the needle, so the confirmation is visible in
-   the corner of the eye of somebody who is looking at the room and not at the phone. */
-.qibla__dial--on .qibla__ring { stroke: var(--color-btn); }
-.qibla__dial--on .qibla__you { fill: var(--color-btn); }
+/* Aligned. The bezel, because it rings the whole thing and is therefore visible in the corner of
+   the eye of somebody who is looking at the room rather than at the phone. */
+.qibla__dial--on .qibla__bezel { fill: var(--color-btn); }
+.qibla__dial--on .qibla__needle { fill: var(--color-btn); stroke: var(--color-btn); }
 
 .qibla__read { text-align: center; }
 .qibla__deg {
@@ -2010,7 +2009,11 @@ h1, h2, h3, p { margin: 0; }
  * Rows a thumb can hit rather than a definition list: every one of these is a link, and the
  * whole row is the target because a phone number set in body text is a 14px tap area.
  */
-.contact { list-style: none; margin-block-start: 0.8rem; display: flex; flex-direction: column; gap: 0.15rem; }
+/* `margin-block: … 0` — the END is the load-bearing half. A <ul> carries a 1em bottom margin by
+   default and the app's reset only zeroes the body's, so the Directions button underneath sat
+   16px further down than anything in this file asked for. That is the kind of gap you tune the
+   wrong rule to fix twice before measuring it. */
+.contact { list-style: none; margin-block: 0.8rem 0; display: flex; flex-direction: column; gap: 0.15rem; }
 .contact__row {
   display: flex;
   align-items: flex-start;
@@ -2040,6 +2043,18 @@ a.contact__row:active { background: color-mix(in srgb, var(--ink-scene) 14%, tra
 }
 /* The lines the masjid typed, kept. This is the one field somebody may copy onto an envelope. */
 .contact__val--address { white-space: pre-line; }
+
+/* Close under the address it is about. `.set-card .btn` gives every button in a card a 0.9rem
+   lead, which is right for a button that follows a paragraph and far too much for one that is
+   the second half of the line above it — a gap that size read as two unrelated things. */
+.contact__maps { margin-block-start: 0.35rem; }
+.set-card .btn.contact__maps { margin-block-start: 0.35rem; }
+.contact__choose { display: flex; flex-direction: column; gap: 0.35rem; }
+.contact__choose-ask { font-size: 0.8rem; font-weight: 600; color: var(--ink-scene-muted); }
+.contact__choose-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+/* The two choices are already spaced by the row; the card's blanket button margin would stack a
+   second gap on top of it. */
+.set-card .contact__choose-row .btn { margin-block-start: 0; }
 
 .contact__socials { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-block-start: 0.9rem; }
 /* The chips here are links, not switches. Same shape — they are the same size of thing to a
