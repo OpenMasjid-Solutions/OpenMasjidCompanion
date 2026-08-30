@@ -40,6 +40,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { navigate } from './App';
+import { withBase } from './base';
 import { MasjidLogo } from './ui';
 import { Blocked } from './Notify';
 import { useReminders } from './reminders';
@@ -189,6 +190,11 @@ function InstallStep({ install }: { install: Install }): JSX.Element {
           <ArrowUpFromLine size={15} aria-hidden="true" />
           Add to home screen
         </button>
+        {/* What happens NEXT, shown before it happens. The system dialog is the moment somebody
+            hesitates — an unexpected "Install app" box on a phone looks like the thing everyone
+            is told to be careful of — and having already seen the picture is what carries them
+            through it. */}
+        <Shot name="install-android-1.jpg" w={560} h={349} caption="Your phone will ask. Tap Install." />
       </>
     );
   }
@@ -203,18 +209,22 @@ function InstallStep({ install }: { install: Install }): JSX.Element {
             <Plus size={14} aria-hidden="true" /> Add to Home Screen
           </Glyph>
         </p>
-        <SafariHint />
+        <Shot name="install-ios-1-share.jpg" w={560} h={604} caption="Scroll down the Share sheet to find it." />
+        <MissingRow />
       </>
     );
   }
 
   if (install.route === 'menu') {
     return (
-      <p className="ob__text">
-        Open your browser&rsquo;s menu &mdash;{' '}
-        <Glyph label="the menu button"><EllipsisVertical size={15} aria-hidden="true" /></Glyph> in the corner &mdash;
-        and choose <b>Install app</b>, or <b>Add to Home screen</b>.
-      </p>
+      <>
+        <p className="ob__text">
+          Open your browser&rsquo;s menu &mdash;{' '}
+          <Glyph label="the menu button"><EllipsisVertical size={15} aria-hidden="true" /></Glyph> in the corner &mdash;
+          and choose <b>Install app</b>, or <b>Add to Home screen</b>.
+        </p>
+        <Shot name="install-android-1.jpg" w={560} h={349} caption="Then tap Install when your phone asks." />
+      </>
     );
   }
 
@@ -238,36 +248,70 @@ function InstallStep({ install }: { install: Install }): JSX.Element {
 }
 
 /**
- * A drawn hint rather than a screenshot.
+ * A screenshot of the thing being described.
  *
- * Every real screenshot of a Share sheet belongs to Apple, and CLAUDE.md §2 forbids adding an
- * asset this repository cannot license under AGPL-3.0. So it is our own drawing of a browser
- * bar with the one button circled — which is also the version that stays right when iOS moves
- * things next year, since it points at a shape rather than claiming to be a photograph.
+ * Real photographs of real phones (Hasan supplied them on 2026-08-30), which replaced a drawing
+ * of a browser toolbar this file used to carry. The drawing was defensible when there was
+ * nothing to license — every screenshot of an iOS Share sheet on the internet is Apple's — and
+ * it is simply worse: somebody hunting for a row in a long grey list matches a photograph of
+ * that list instantly and an abstraction of it not at all.
+ *
+ * They are the masjid's own images now, contributed under the CLA and therefore AGPL like the
+ * rest of the repository. The other masjid's name and address are BLURRED out of them, which is
+ * not about branding: somebody installing "Masjid An-Noor" who reads a different masjid's URL in
+ * the instructions reasonably concludes they are installing the wrong thing.
+ *
+ * `width`/`height` are given so the page does not jump when the image lands — on a step-by-step
+ * page, content moving under a thumb mid-read is how somebody taps the wrong thing. `lazy`
+ * because on iOS the second and third are inside a closed disclosure most people never open.
  */
-function SafariHint(): JSX.Element {
+function Shot({ name, w, h, caption }: { name: string; w: number; h: number; caption: string }): JSX.Element {
   return (
-    <div className="ob__hint" aria-hidden="true">
-      {/* NO LETTERS IN IT. The address bar is drawn as two blocks rather than the words "aa"
-          and "your masjid", for two reasons that are the same reason: the caption underneath
-          already says what this is, and a drawing with no text mirrors correctly under RTL and
-          needs no translating. The whole thing is flipped by CSS for Arabic and Urdu, where
-          Safari's own toolbar is mirrored too. */}
-      <svg viewBox="0 0 220 46" className="ob__hint-svg" role="presentation">
-        <rect x="0.5" y="0.5" width="219" height="45" rx="12" className="ob__hint-bar" />
-        <rect x="16" y="18" width="14" height="10" rx="2" className="ob__hint-blank" />
-        <rect x="40" y="19" width="72" height="8" rx="4" className="ob__hint-blank" />
-        {/* The Share glyph: a box with an arrow rising out of it. Circled, because "the one in
-            the middle" is not something anybody can find on a row of identical icons. */}
-        <circle cx="150" cy="23" r="17" className="ob__hint-ring" />
-        <path d="M150 13v14M150 13l-5 5M150 13l5 5" className="ob__hint-glyph" />
-        <path d="M143 22v8h14v-8" className="ob__hint-glyph" />
-        {/* The tabs button beside it, dimmed — one neighbour is enough to say "this is a row of
-            buttons", and a second bright glyph would compete with the circled one. */}
-        <rect x="180" y="17" width="12" height="12" rx="2.5" className="ob__hint-glyph ob__hint-glyph--dim" />
-      </svg>
-      <span className="ob__hint-cap">The Share button, at the bottom of Safari</span>
-    </div>
+    <figure className="ob__shot">
+      <img
+        src={withBase(`/${name}`)}
+        width={w}
+        height={h}
+        loading="lazy"
+        decoding="async"
+        // Decorative: the caption below and the instruction above say everything the picture
+        // does. A screen reader that also described it would read the same step three times.
+        alt=""
+      />
+      <figcaption>{caption}</figcaption>
+    </figure>
+  );
+}
+
+/**
+ * "It isn't there" — the dead end that ends the most installs.
+ *
+ * **Add to Home Screen can be missing from the Share sheet entirely.** It lives in the sheet's
+ * actions list, that list is editable, and on a phone where somebody once tidied it — or where
+ * enough share extensions are installed to push it under the fold — the row the instructions
+ * name is genuinely absent. Somebody following our directions in good faith then scrolls a list
+ * that does not contain the thing they were told to tap, twice, and gives up.
+ *
+ * Behind a disclosure rather than in the step, because it is wrong for most people and a step
+ * with two branches in it is a step nobody reads. `<details>` rather than our own toggle: it is
+ * keyboard-operable, screen-reader-announced and findable by the browser's own in-page search
+ * for free, and this is exactly the content somebody searches a page for.
+ */
+function MissingRow(): JSX.Element {
+  return (
+    <details className="ob__more">
+      <summary>Can&rsquo;t see &ldquo;Add to Home Screen&rdquo;?</summary>
+      <p className="ob__text">
+        It can be switched off in the Share sheet. Scroll to the very bottom of the sheet and tap{' '}
+        <b>Edit Actions</b>.
+      </p>
+      <Shot name="install-ios-2-actions.jpg" w={560} h={539} caption="Right at the bottom, under everything else." />
+      <p className="ob__text">
+        Find <b>Add to Home Screen</b> in the list, add it to your <b>Favorites</b>, then tap the tick. It will be in
+        the Share sheet from then on.
+      </p>
+      <Shot name="install-ios-3-add.jpg" w={560} h={596} caption="Add it to Favorites, then tap ✓." />
+    </details>
   );
 }
 

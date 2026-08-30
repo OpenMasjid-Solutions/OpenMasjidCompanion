@@ -1,13 +1,13 @@
 {
   "name": "openmasjid-companion-web",
   "private": true,
-  "version": "0.1.0-dev.17",
+  "version": "0.1.0-dev.18",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "node --import tsx --test src/prayerTimes.test.ts src/periodTheme.test.ts src/swipe.test.ts src/pwa.test.ts src/arc.test.ts src/base.test.ts src/landing.test.ts src/platform.test.ts src/telemetry.test.ts src/testFileCoverage.test.ts",
+    "test": "node --import tsx --test src/prayerTimes.test.ts src/periodTheme.test.ts src/swipe.test.ts src/pwa.test.ts src/arc.test.ts src/base.test.ts src/landing.test.ts src/platform.test.ts src/telemetry.test.ts src/admin/scheduleText.test.ts src/bearing.test.ts src/testFileCoverage.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

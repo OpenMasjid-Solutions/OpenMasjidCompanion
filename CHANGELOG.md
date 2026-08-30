@@ -14,6 +14,32 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Qibla.** A new tab showing which way Makkah is from wherever you are standing &mdash; the
+  direction in degrees, in words, and how far away the Kaaba is, with a dial you can line up.
+  Tap **Use my compass** and the dial follows your phone, telling you which way to turn until it
+  says *Facing the Qibla*. **Your location never leaves your phone**: the masjid never sees it,
+  nothing is sent anywhere, and the only thing kept is the direction itself, on your own device.
+  Saying no to the location prompt is a normal answer and gets a proper explanation rather than
+  an error.
+
+- **Announcements that send themselves.** In the admin panel you can now set a notice to go out
+  once on a date, every day, or on chosen days of the week at a chosen time &mdash; a Jumuʿah
+  reminder every Friday morning, a nightly notice through Ramadan. It uses **your masjid's own
+  clock**, shows you when each one will next go out, and can be paused and started again without
+  retyping it. Before saving it reads the schedule back to you (&ldquo;Every Friday at
+  11:00&rdquo;) and says it will keep going until you pause it. If this app has been off, a
+  missed one is skipped rather than delivered late.
+
+- **Real photographs in the "add to your home screen" steps**, instead of a drawing &mdash;
+  including what to do when **Add to Home Screen isn't in your Share sheet at all**, which is the
+  point most people give up at.
+
+### Fixed
+
+- **The Qibla and the compass button could fail to appear** on a perfectly capable phone, because
+  the page decided what it was capable of a fraction of a second before it knew whether the app
+  was reachable from the internet.
+
 - **A page that walks people through putting the app on their phone**, and the QR code now points
   at it. A printed poster has to give instructions that suit every phone that will ever scan it;
   this page knows which phone and which browser is actually reading it, so it says the one thing

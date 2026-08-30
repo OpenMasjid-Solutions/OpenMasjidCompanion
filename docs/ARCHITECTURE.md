@@ -1049,3 +1049,154 @@ holding the link**. That is inherent to counting a public page. The visit limite
 rather than sharing the push budget of 30, because behind the tunnel every request arrives from
 cloudflared's address — a per-peer limit is really a per-masjid limit, and 429ing a busy Jumuʿah
 would drop counts on precisely the day worth counting.
+
+## Slice 15 — Qibla, and notices that send themselves (0.1.0-dev.18)
+
+Three things, and two bugs of the same shape found by opening the pages rather than by reading
+them.
+
+### Real screenshots, and what had to happen to them
+
+Hasan supplied four phone captures on 2026-08-30, which replaced the drawing of a browser
+toolbar the onboarding page carried. The drawing was defensible when there was nothing to
+license — every screenshot of an iOS Share sheet on the internet is Apple's — and it was simply
+worse: somebody hunting for a row in a long grey list matches a photograph of that list
+instantly and an abstraction of it not at all.
+
+They needed three things doing to them, none cosmetic. **Cropped**, because a full-height Share
+sheet is mostly rows nobody is being asked to tap and the one that matters ends up eight pixels
+tall. **Downscaled** — 553 KB of PNG for one instruction on a page opened on mobile data is a
+reason to close the tab; the four are 9–25 KB now. And **the other masjid's name and address
+blurred out**, which is not about branding: somebody installing "Masjid An-Noor" who reads
+`app.rifusa.org` in the instructions reasonably concludes they are installing the wrong thing.
+There was no image library on the machine, so the processing ran through Chromium's canvas — the
+outputs are committed, not built.
+
+The third and fourth carry the case that ends the most installs: **Add to Home Screen can be
+missing from the Share sheet entirely.** It lives in the sheet's editable actions list, and on a
+phone where somebody once tidied it, the row our instructions name is genuinely absent. It is
+behind a `<details>` rather than in the step — wrong for most people, and a step with two
+branches in it is a step nobody reads — and native rather than a toggle of ours, so the
+browser's own in-page search can find it, which is exactly how somebody looks for this.
+
+### Standing announcements
+
+Every guard in `schedules.ts` is load-bearing rather than defensive, because a scheduled notice
+reaches a congregation again next week without anybody deciding to.
+
+- **The masjid's clock, never the container's.** "Every Friday at 11:00" is a wall-clock time in
+  the masjid's own zone; the container runs in UTC. There is deliberately **no fallback**: with
+  no timetable there is no IANA zone, so nothing is scheduled and the panel says why. A masjid in
+  New York whose notice went out at 6am would not report it as a bug — they would turn
+  notifications off.
+- **Never a backlog.** A box off from Thursday to Sunday must not deliver three days of "reminder:
+  halaqa tonight" when it comes back. A missed occurrence is marked as dealt with *without*
+  sending. The grace window is 20 minutes rather than the prayer scheduler's five, and that
+  difference is the point: a prayer reminder is about a moment that has passed, so five minutes
+  late makes it wrong; an announcement is about a fact, which is as true twenty minutes later.
+- **`firedThrough` holds the OCCURRENCE, not the time we noticed.** Storing "now" would drift the
+  window forward on every tick.
+- **Marked before the send, not after.** A crash part-way through a broadcast must not leave the
+  occurrence looking undelivered: re-running it would send the same notice to everyone who
+  already had it, and that is the half that cannot be taken back. Under-delivering to some phones
+  is recoverable; double-sending is not.
+- **A new or resumed schedule starts with `firedThrough = now`**, so setting "every day at 08:00"
+  at nine in the morning does not fire immediately, and coming back from a pause does not deliver
+  what the pause skipped.
+
+Two decisions about where it sits in the tick:
+
+**Standing announcements run BEFORE the staleness gate.** Rule 1 exists because a prayer reminder
+computed from two-day-old times may be wrong by minutes and somebody acts on it. An announcement
+is not computed from the times at all — "the masjid is closed on Saturday" is exactly as true
+when Display has been unreachable since Thursday — so applying that rule to both would silence
+the masjid's own voice at the moment it has lost its other one. The feed is still *required*,
+for its `timezone` and nothing else.
+
+**A schedule is not blocked by the manual cooldown.** `announce()` was split, with `broadcast()`
+underneath it: the cooldown is about a human pressing Send twice in a second, and a schedule
+firing forty seconds after somebody pressed Send is two intentions. Swallowing the second would
+be a notice that silently never went out, which is the failure scheduling exists to prevent.
+
+The admin's confirm step names the **repetition**, not just the audience — "send this to 40
+phones" is the wrong question for something that will do it again every Friday. The sentence it
+reads back ("Every Friday at 11:00") is the only chance anybody has to notice they meant
+Thursday, which is why `scheduleText.ts` is a module with tests rather than JSX. Days are sorted
+into week order before being named, because the picker appends in tap order. The hour's padding
+follows the locale's own clock: a 12-hour locale wants "8:00 PM", a 24-hour one wants "00:05",
+and neither answer is right for both, so `hour12` is asked rather than assumed.
+
+`Intl.ListFormat` brought `ES2021.Intl` into the web tsconfig's `lib`. Declared rather than cast
+around, for one API, so "Friday and Sunday" is joined in the reader's own language instead of
+with a comma this app would then have to translate.
+
+### Qibla
+
+`docs/DESIGN_LANGUAGE.md` set the ordering on 2026-08-24 and the ordering is the whole screen:
+**the bearing and a north-up dial first, the compass offered as a button afterwards.** Not a
+fallback arrangement — a compass needs a magnetometer, a permission on iOS, a user gesture and
+somewhere that is not next to a steel door frame, where "119°, east-southeast, 4,794 km" needs
+only a position and can be checked against a room somebody already knows.
+
+The bearing is the initial **great-circle** heading, and `bearing.test.ts` pins ten cities against
+their published Qibla directions to a tenth of a degree — because this is the one part that
+cannot be checked by holding the phone up. A flat-map bearing from New York is 96°; the great
+circle is 58.5°, and the wrong one looks perfectly reasonable while being wrong for every masjid
+in North America. There is a test asserting the two must *disagree*, so the intuitive version
+cannot quietly replace this one.
+
+Details that are decisions:
+
+- **`enableHighAccuracy: false`**, and the cheap option is the better one: GPS is slower, flatter
+  on the battery, and fails indoors, which is where a prayer hall is. A few hundred metres of
+  error moves this bearing by about a thousandth of a degree.
+- **The BEARING is remembered, never the position.** One number, on the reader's own phone, kept
+  for a month so a congregation is not asked for their location every Friday. Refusing to write
+  the coordinates down is cheaper than protecting them.
+- **`absolute` is checked on the orientation event**, and that check is the difference between a
+  compass and a decoration: a non-absolute reading is relative to wherever the phone was pointing
+  when the page loaded, so an arrow built on it turns correctly and points at nothing. The worst
+  possible failure here, because it looks like it is working.
+- **The heading is smoothed through `angleDelta`.** Averaging raw numbers would swing the dial
+  the long way round every time the reading crossed north — 359° and 1° are two degrees apart and
+  their mean is not 180.
+- Apple's `webkitCompassAccuracy` of −1 means "needs calibrating" and is treated as **no reading**
+  rather than as a number, so the screen can ask for the figure-of-eight instead of pointing due
+  north and meaning nothing.
+- `qiblaBearing` returns **null at the Kaaba and at its antipode** rather than the 0 that
+  `atan2(0, 0)` gives, which would confidently claim "due north".
+
+Two things went wrong in the drawing and both were only visible on a real page:
+
+The cardinal letters were placed with a rotation nested inside another rotation, which puts the
+pivot somewhere neither of them meant — E and W came out on their sides. They are positioned by
+trig now. And the rose was rotated with a **CSS** transform, whose `transform-origin` for an SVG
+group depends on a `transform-box` default that is not agreed between engines: the pivot landed
+on the viewport's corner and swung the whole dial off the bottom of the card *only once a heading
+arrived*, which is why every still screenshot looked perfect. Spelling out `transform-box:
+view-box` moved it somewhere else again. It rotates by the SVG **attribute** now, which has had
+exactly one meaning since SVG 1.1 — about user-space (0, 0), which this viewBox is centred on by
+construction. The CSS transition went with it: the low-pass filter already runs at the
+magnetometer's rate, and a transition on top would be a second smoothing fighting the first.
+
+### The bug that appeared twice
+
+`secure` comes from `/api/app`, so on the first render it is false for **everybody**. Two pieces
+of Qibla state were decided at that moment and never revisited:
+
+1. The phase, set to `unsupported` in a mount effect, so the tab opened onto "this browser can't
+   work out where you are" on a perfectly capable phone.
+2. `blocked`, seeded in a `useState` initialiser — and initialisers run exactly once — so the
+   **"Use my compass" button would never have appeared on any device at all.**
+
+Neither is visible to a typechecker, and neither would have been caught by a unit test of the
+functions involved, which are all correct. Both were found by loading the page. The first is
+fixed with a functional update that leaves any state the reader reached by acting (a refusal must
+not be quietly reset into a fresh prompt); the second by deriving the value at render time
+instead of seeding it.
+
+### Test count
+
+Server 335 → 363: 19 for the schedule arithmetic in its own file, 9 more driving them through a
+real tick. Web 128 → 155: 14 for the bearing, 11 for the wording a schedule is confirmed by, and
+the tab-bar rules.

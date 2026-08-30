@@ -241,16 +241,26 @@ before and during the build; mirror them.**
   from the prayer reminders — someone who wants silence at prayer times may still want to hear
   about a funeral — and the only thing in this app that reaches a musalli unbidden, so it is
   admin-only, needs an explicit `confirm`, and is cooldown-guarded against a double-tap.
+  **Standing announcements** (added 2026-08-30) let one be set to send itself — once on a date,
+  every day, or on chosen weekdays at a chosen time. The masjid's own wall clock, from the
+  timetable's IANA zone, with no fallback: with no timetable there is no hour, so nothing is
+  scheduled rather than something being sent at the wrong one. A missed occurrence is written
+  off rather than delivered late, and they are the one thing a **stale** timetable does not
+  silence — Rule 1 exists because a prayer reminder computed from old times may be wrong, and
+  "we are closed on Saturday" is not computed from the times at all.
 - **Donation appeals:** admin-curated tiles (title, cover image, goal/raised progress) fetched
   from the **Donations app's public campaign API**, each linking out to the Donations donor page
   to actually give. §8.
-- **Qibla (added to v1 by Hasan, 2026-08-24):** a compass pointing to Makkah, from the
-  **device's own geolocation** — no Display change, and work order #3 was withdrawn on the same
-  day rather than ask for the masjid's coordinates. This is **not** a prayer-time calculation
-  and does not touch the §2 rule: a bearing is self-evidently right or wrong the moment you hold
-  the phone up, where a wrong prayer time is silent. It needs a secure context, so it is a
-  tunnel-only feature like install and push, and "location declined" is a designed screen rather
-  than an error. See `docs/DESIGN_LANGUAGE.md`.
+- **Qibla (added to v1 by Hasan 2026-08-24; built 2026-08-30):** a compass pointing to Makkah,
+  from the **device's own geolocation** — no Display change, and work order #3 was withdrawn on
+  the same day rather than ask for the masjid's coordinates. This is **not** a prayer-time
+  calculation and does not touch the §2 rule: a bearing is self-evidently right or wrong the
+  moment you hold the phone up, where a wrong prayer time is silent. It needs a secure context,
+  so the tab is drawn only over the tunnel, like install and push, and "location declined" is a
+  designed screen rather than an error. **The bearing leads and the compass is offered second**
+  — a magnetometer needs a permission, a gesture and somewhere that is not a basement, where
+  "119°, east-southeast, 4,794 km" needs only a position. Only the BEARING is remembered on the
+  phone, never the position. See `docs/DESIGN_LANGUAGE.md`.
 - **Installability:** a server-generated web manifest + service worker, correct under the
   tunnel's base path, named and iconed for the masjid. §10.
 - **QR + printable poster:** the admin panel renders a QR of the app's public URL **plus
@@ -614,7 +624,8 @@ campaigns health, subscriber count, last push), **Who's using it** (the device/b
 breakdown — under Share on purpose, because it is the answer to "did the poster work?" and reads
 as that question only when it sits under the poster), **Timetable** (picker + preview + refresh now),
 **Donations** (link list, reorder, per-link health, test-mode warnings), **Notifications**
-(enabled state, defaults, subscriber count, "send a test notification to this device"),
+(enabled state, defaults, subscriber count, "send a test notification to this device", the
+one-off announcement, and the **standing announcements** list with its next-send times),
 **Share** (QR + poster), **Settings** (app name/icon, local password management, language), and
 the account menu (version, **What's new** from the changelog, **Source code** link).
 

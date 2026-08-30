@@ -13,7 +13,7 @@
  * this code reasons about, and every link goes back through `withBase`.
  */
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, Clock3, Github, HandCoins, Settings2 } from 'lucide-react';
+import { Bell, Clock3, Compass, Github, HandCoins, Settings2 } from 'lucide-react';
 import { api, type AppInfo } from './api';
 import { ONBOARDING_PATH, stripBase, withBase } from './base';
 import { useAppearanceSync, usePrefs, setThemeOverride } from './prefs';
@@ -27,6 +27,7 @@ import { MasjidHeader, Today, type Timetable } from './Today';
 import { Give, useCampaigns } from './Give';
 import { Onboarding } from './Onboarding';
 import { Settings } from './Settings';
+import { Qibla } from './Qibla';
 import { TabBar, type Tab } from './Tabs';
 import { blockerFor, readEnv } from './reminders';
 
@@ -42,12 +43,13 @@ const Admin = lazy(() => import('./admin/Admin'));
 
 /** The routes this app answers. Anything else renders the not-found state rather than a
  *  blank page — a mistyped or stale link should say so. */
-export type Route = '/' | '/give' | '/settings' | '/onboarding' | '/admin' | 'unknown';
+export type Route = '/' | '/give' | '/qibla' | '/settings' | '/onboarding' | '/admin' | 'unknown';
 
 export function routeOf(pathname: string): Route {
   const p = stripBase(pathname).replace(/\/+$/, '') || '/';
   if (p === '/') return '/';
   if (p === '/give') return '/give';
+  if (p === '/qibla') return '/qibla';
   if (p === '/settings') return '/settings';
   if (p === ONBOARDING_PATH) return '/onboarding';
   if (p === '/admin' || p.startsWith('/admin/')) return '/admin';
@@ -91,9 +93,13 @@ export function dashboardLanding(route: Route, openedFromDashboard: boolean): st
  *
  * Pure, so the rule can be tested without a browser.
  */
-export function tabsFor(appeals: number | null): Tab[] {
+export function tabsFor(appeals: number | null, secure = false): Tab[] {
   const tabs: Tab[] = [{ route: '/', label: 'Salah', icon: Clock3 }];
   if (appeals && appeals > 0) tabs.push({ route: '/give', label: 'Donate', icon: HandCoins });
+  // **Only over the tunnel.** A browser will not hand a plain-HTTP page a location at all, so on
+  // the masjid's own wifi this tab is a screen that can never do anything — the same rule as
+  // install and notifications (docs/DESIGN_LANGUAGE.md). Hidden rather than shown-and-broken.
+  if (secure) tabs.push({ route: '/qibla', label: 'Qibla', icon: Compass });
   tabs.push({ route: '/settings', label: 'Settings', icon: Settings2 });
   return tabs;
 }
@@ -151,7 +157,7 @@ export function App(): JSX.Element {
   // Fetched here rather than in the page, because the TAB BAR needs to know whether there is a
   // Donate tab at all — and because doing it per page would re-request on every switch.
   const appeals = useCampaigns(!isAdmin);
-  const tabs = useMemo(() => tabsFor(appeals && appeals.length), [appeals]);
+  const tabs = useMemo(() => tabsFor(appeals && appeals.length, secure), [appeals, secure]);
 
   /**
    * The onboarding page is its own world: its own header, no tabs, and no install modal over
@@ -258,6 +264,8 @@ export function App(): JSX.Element {
           ))}
 
         {route === '/give' && <Give tiles={appeals} language={times?.masjid?.language ?? 'en'} />}
+
+        {route === '/qibla' && <Qibla secure={secure} />}
 
         {route === '/settings' && <Settings secure={secure} jumuah={jumuah} installed={install.installed} />}
 

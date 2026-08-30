@@ -27,6 +27,7 @@ import { makeLog } from './logger';
 import { raiseAlert } from './fabric';
 import { ANNOUNCE_COOLDOWN_MS, ANNOUNCE_MAX_CHARS, MAX_JUMUAH, NAMES, PRAYERS, type Notifiable, type Notification, type Prefs, type Subscriptions, type Vapid, safeEndpoint, sendOne, vapidSubject } from './push';
 import { formatTimeIn, isHhmm, zonedTimeToEpoch } from './zoned';
+import { dueAction, type Schedules } from './schedules';
 import type { TimetableFeed } from './timetable';
 
 const log = makeLog('push');
@@ -306,6 +307,9 @@ export class PushScheduler {
     private readonly vapid: Vapid,
     private readonly snapshot: () => TimetableSnapshot,
     private readonly publicUrl: () => string,
+    /** Standing announcements. Optional so every existing test builds a scheduler without one
+     *  and gets exactly the behaviour it had before. */
+    private readonly schedules: Schedules | null = null,
     /** Injectable so a test drives it without real network or real waiting. */
     private readonly send = sendOne,
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -346,6 +350,23 @@ export class PushScheduler {
       result.skipped = 'no-timetable';
       return result;
     }
+
+    /**
+     * **Standing announcements go out BEFORE the staleness gate, and that is deliberate.**
+     *
+     * Rule 1 exists because a prayer reminder computed from two-day-old times may be wrong by
+     * minutes and somebody acts on it. An announcement is not computed from the times at all —
+     * "the masjid is closed on Saturday" is exactly as true when Display has been unreachable
+     * since Thursday. Silencing it would be applying a rule to something the rule was not about,
+     * and the thing it would silence is the masjid's own voice at the moment it has lost its
+     * other one.
+     *
+     * The feed is still REQUIRED, for its `timezone` and nothing else: "every Friday at 11:00"
+     * is a wall-clock time in the masjid's zone, and there is no honest fallback for not knowing
+     * which zone that is (schedules.ts).
+     */
+    await this.runSchedules(now, feed);
+
     // Rule 1. The one refusal in this file that protects somebody rather than something.
     if (now - at > STALE_LIMIT_MS) {
       if (this.lastSkip !== 'stale') log.warn('prayer times are more than 48h old — notifications are paused rather than sent from stale data');
@@ -437,12 +458,27 @@ let attempted = 0;
     if (body.length > ANNOUNCE_MAX_CHARS) return { ...none, refused: 'too-long' };
     if (now - this.lastAnnouncedAt < ANNOUNCE_COOLDOWN_MS) return { ...none, refused: 'cooldown' };
 
-    const rows = this.subs.all().filter((r) => r.prefs.announcements);
-    if (rows.length === 0) return { ...none, refused: 'nobody' };
-
     // Claimed BEFORE the first send. Two requests arriving together must not both get past the
     // cooldown while the first is still working its way down a list of five hundred phones.
     this.lastAnnouncedAt = now;
+    return this.broadcast(body, masjidName, now);
+  }
+
+  /**
+   * Every phone that wants notices gets one notice.
+   *
+   * Split out of `announce` when standing announcements arrived, so a scheduled send takes the
+   * same path without taking the **cooldown** with it. That guard is about a human double-tap:
+   * two requests a second apart are one intention. A schedule firing forty seconds after
+   * somebody pressed Send is two intentions, and swallowing the second would be a notice that
+   * silently never went out — which is the failure this feature exists to prevent.
+   *
+   * Each schedule's own `firedThrough` is what stops IT sending twice.
+   */
+  private async broadcast(body: string, masjidName: string, now: number): Promise<AnnounceResult> {
+    const none: AnnounceResult = { refused: '', sent: 0, failed: 0, pruned: 0, audience: 0 };
+    const rows = this.subs.all().filter((r) => r.prefs.announcements);
+    if (rows.length === 0) return { ...none, refused: 'nobody' };
 
     const url = this.publicUrl() || '/';
     const subject = vapidSubject(this.publicUrl());
@@ -466,6 +502,51 @@ let attempted = 0;
     // file somebody else may read; the counts are what an operator actually needs.
     log.info(`announcement sent to ${result.sent} of ${result.audience} phones (${result.pruned} pruned, ${result.failed} failed)`);
     return result;
+  }
+
+  /**
+   * Standing announcements whose moment has come round.
+   *
+   * Sequential over the schedules on purpose — a masjid has one or two, and two notices landing
+   * on a lock screen in the same second is worse than one landing a second after the other.
+   *
+   * A missed occurrence is marked as dealt with WITHOUT sending (`dueAction` returns `skip`),
+   * so a box that was off over the weekend comes back silent rather than delivering Friday's
+   * reminder on Sunday morning. Never throws: a broken schedule must not take the prayer
+   * reminders in the same tick down with it.
+   */
+  private async runSchedules(now: number, feed: TimetableFeed): Promise<void> {
+    if (!this.schedules) return;
+    let list;
+    try {
+      list = this.schedules.all().filter((x) => x.enabled);
+    } catch (err) {
+      log.warn(`could not read the announcement schedules: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+
+    for (const s of list) {
+      const due = dueAction(s, now, feed.timezone);
+      if (!due) continue;
+
+      if (due.action === 'skip') {
+        log.info(`a scheduled announcement was missed while this app was not running — skipped rather than sent late`);
+        this.schedules.markFired(s.id, due.at, false);
+        if (s.repeat === 'once') this.schedules.finishOnce(s.id);
+        continue;
+      }
+
+      // Marked BEFORE the send, not after. A crash or a restart part-way through a broadcast
+      // must not leave the occurrence looking undelivered — re-running it would send the same
+      // notice to everyone who already had it, and that is the half of this that cannot be
+      // taken back. Under-delivering to some phones is recoverable; double-sending is not.
+      this.schedules.markFired(s.id, due.at, true);
+      if (s.repeat === 'once') this.schedules.finishOnce(s.id);
+
+      const out = await this.broadcast(s.text, feed.masjidName ?? '', now);
+      if (out.refused) log.info(`a scheduled announcement was not sent: ${out.refused}`);
+      else this.lastSentAt = now;
+    }
   }
 
   /**

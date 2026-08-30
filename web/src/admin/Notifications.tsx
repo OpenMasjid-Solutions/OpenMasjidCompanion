@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { BellRing, Megaphone, RefreshCw, Send, TriangleAlert } from 'lucide-react';
 import { api } from '../api';
 import { Note } from '../ui';
+import { Scheduled } from './Scheduled';
 
 export interface PushStatus {
   subscribers: number;
@@ -118,8 +119,8 @@ export function Notifications(): JSX.Element {
           </div>
 
           <p className="card-body">
-            Musallis can turn on a reminder before each jamāʿah, per phone, from the bell on the prayer times page.
-            They choose which prayers and how long before.
+            Musallis can turn on a reminder before each jamāʿah, per phone, from <b>Settings</b> in the app. They
+            choose which prayers and how long before.
           </p>
 
           {!status ? (
@@ -178,6 +179,9 @@ export function Notifications(): JSX.Element {
           </div>
 
           {status && <Announce status={status} onSent={load} />}
+          {/* After the one-off, because that is the order somebody discovers them in: they come
+              here to send a notice now, and find they could have set it to send itself. */}
+          <Scheduled onChanged={load} />
         </div>
       </div>
     </section>

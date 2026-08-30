@@ -1711,24 +1711,64 @@ h1, h2, h3, p { margin: 0; }
   border: 1px solid color-mix(in srgb, var(--ink-scene) 18%, transparent);
 }
 
-/* Our own drawing of a browser bar, not a screenshot — see the note in Onboarding.tsx: every
-   real screenshot of an iOS Share sheet is Apple's, and this repository can only ship assets
-   it is able to license under AGPL-3.0. */
-.ob__hint { margin-block-start: 0.85rem; text-align: center; }
-.ob__hint-svg { inline-size: 100%; max-inline-size: 15rem; block-size: auto; }
-.ob__hint-bar {
-  fill: color-mix(in srgb, var(--ink-scene) 8%, transparent);
-  stroke: color-mix(in srgb, var(--ink-scene) 20%, transparent);
+/* A screenshot of the step. Bounded rather than full-bleed: these are portrait phone captures,
+   and one at the card's full width would be taller than the screen and push the next step out
+   of sight — which on a numbered list is how somebody concludes there are only two steps. */
+.ob__shot { margin-block-start: 0.9rem; text-align: center; }
+.ob__shot img {
+  display: block;
+  margin-inline: auto;
+  inline-size: 100%;
+  max-inline-size: 15rem;
+  block-size: auto;
+  border-radius: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+  /* The captures are of a dark phone UI on both platforms, so they sit on the light sky as a
+     dark block. The shadow is what stops that reading as a hole in the card. */
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
 }
-.ob__hint-blank { fill: color-mix(in srgb, var(--ink-scene) 22%, transparent); }
-/* Safari's own toolbar mirrors in Arabic and Urdu, so the drawing of it has to as well. This is
-   the one thing on the page a logical property cannot do for us: SVG coordinates are absolute.
-   It is safe to flip wholesale only because there is no text left inside it. */
-[dir='rtl'] .ob__hint-svg { transform: scaleX(-1); }
-.ob__hint-ring { fill: none; stroke: var(--coral); stroke-width: 2; }
-.ob__hint-glyph { fill: none; stroke: var(--ink-scene); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.ob__hint-glyph--dim { stroke: color-mix(in srgb, var(--ink-scene) 40%, transparent); }
-.ob__hint-cap { display: block; margin-block-start: 0.35rem; font-size: 0.76rem; color: var(--ink-scene-muted); }
+.ob__shot figcaption {
+  margin-block-start: 0.4rem;
+  font-size: 0.76rem;
+  color: var(--ink-scene-muted);
+}
+
+/* "Can't see it?" — wrong for most readers, and the whole install for the few it is right for.
+   A native <details>, so it is keyboard-operable, announced, and findable by the browser's own
+   in-page search, which is exactly how somebody looks for this. */
+.ob__more { margin-block-start: 0.9rem; }
+.ob__more > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--ink-scene) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+}
+.ob__more > summary::-webkit-details-marker { display: none; }
+/* The marker is drawn rather than inherited so it can be a logical rotation — the default
+   triangle points the wrong way in Arabic and cannot be told otherwise. */
+.ob__more > summary::before {
+  content: '';
+  inline-size: 0.42rem;
+  block-size: 0.42rem;
+  flex: none;
+  border-inline-end: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+.ob__more[open] > summary::before { transform: rotate(45deg); }
+.ob__more > summary:hover { background: color-mix(in srgb, var(--ink-scene) 14%, transparent); }
+@media (prefers-reduced-motion: reduce) {
+  .ob__more > summary::before { transition: none; }
+}
 
 /* The address in full. Wraps rather than overflowing: it is here to be read aloud or retyped
    when an in-app browser refuses the clipboard, so every character has to be on screen. */
@@ -1802,3 +1842,165 @@ h1, h2, h3, p { margin: 0; }
   .bars__row { grid-template-columns: 1fr auto; }
   .bars__track { grid-column: 1 / -1; order: 3; }
 }
+
+/* ── Standing announcements (admin) ──────────────────────────────────────────
+ *
+ * Inside the announcement block, and sharing its ground on purpose: setting a notice to send
+ * itself is the same act as sending one, done in advance, and giving it its own card would
+ * suggest otherwise.
+ */
+.sched { list-style: none; margin-block-start: 0.8rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.sched__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+  border: 1px solid var(--glass-border);
+}
+/* Paused, not broken. Dimmed but never hidden and never inert — the controls on the row are
+   how it comes back, so they have to stay usable. */
+.sched__row--off .sched__main { opacity: 0.55; }
+.sched__main { min-width: 0; flex: 1; }
+.sched__text {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--color-ink);
+  /* The message, in full, wrapping. Truncating it would hide the half of the sentence that
+     says which notice this is. */
+  overflow-wrap: anywhere;
+}
+.sched__when {
+  margin-block-start: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+}
+.sched__next { font-weight: 500; color: var(--color-ink-muted); }
+.sched__acts { display: flex; gap: 0.15rem; flex: none; }
+
+.sched__new {
+  margin-block-start: 0.9rem;
+  padding-block-start: 0.9rem;
+  border-block-start: 1px dashed var(--glass-border);
+}
+/* The chip groups. A fieldset for the same reason the musalli settings use one: "how often" is
+   one question with one answer and the browser should say so, and "which days" is one question
+   with several. Its default border and min-inline-size are removed — the latter is the one that
+   catches people out, since a fieldset will not shrink below its content without it. */
+.sched__opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+.sched__opts > .label { inline-size: 100%; margin-block-end: 0.1rem; }
+/* The chips are <label>s here rather than buttons, so the hidden input inside each one carries
+   focus, the arrow keys and the announced state. The ring has to be drawn on the label, because
+   the thing actually focused is a pixel somewhere off screen. */
+.sched__opts .chip:focus-within { outline: 2px solid var(--color-btn); outline-offset: 2px; }
+.sched__row2 { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.sched__row2 .field { flex: 1 1 9rem; }
+
+/* ── Qibla ───────────────────────────────────────────────────────────────────
+ *
+ * The dial is the largest single thing this app draws, on purpose: it is looked at from arm's
+ * length while somebody is turning on the spot, which is a worse reading position than any
+ * other screen here has to survive.
+ */
+.qibla {
+  flex: 1;
+  width: 100%;
+  max-width: 34rem;
+  margin-inline: auto;
+  padding: 0.5rem 1.15rem 1.5rem;
+}
+.qibla__title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  margin-block-end: 0.9rem;
+}
+
+.qibla__dial { margin-block: 0.4rem 1rem; display: grid; place-items: center; }
+.qibla__svg { inline-size: 100%; max-inline-size: 17rem; block-size: auto; }
+
+/* The rose turns; the wedge marking where the PHONE points does not. Both are inside the same
+   SVG so they share a coordinate system and cannot drift apart.
+ *
+ * `transform-box` is SPELT OUT, and it is not a formality. Its default for an SVG element is not
+ * agreed between engines, and where it resolves to the element's own box rather than the viewBox
+ * the pivot lands on the top-left corner of the viewport instead of the middle of the dial — so
+ * the compass swung the whole rose off the bottom of the card the moment a heading arrived, and
+ * did it only when a heading arrived, which is why the still screenshot looked perfect. With
+ * `view-box`, 50% 50% of "-110 -110 220 220" is user-space (0, 0), which is the centre by
+ * construction. */
+.qibla__rose { will-change: transform; }
+
+.qibla__ring { fill: none; stroke: color-mix(in srgb, var(--ink-scene) 22%, transparent); stroke-width: 1.5; }
+.qibla__tick { stroke: color-mix(in srgb, var(--ink-scene) 28%, transparent); stroke-width: 1.5; stroke-linecap: round; }
+.qibla__tick--card { stroke: color-mix(in srgb, var(--ink-scene) 55%, transparent); stroke-width: 2.5; }
+.qibla__card {
+  fill: var(--ink-scene-muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-anchor: middle;
+  /* Tabular numerals do nothing for letters, but the family is set here so the cardinal letters
+     match the rest of the app rather than falling back to the SVG default serif. */
+  font-family: var(--font-display);
+}
+
+/* Where the reader is pointing. Coral, like every other "this is you" in the app. */
+.qibla__you { fill: var(--coral); }
+
+/* The pointer: one line from the middle to the Kaaba, so it reads as a direction rather than
+   as two marks that happen to be on the same radius. */
+.qibla__ray { stroke: var(--color-btn); stroke-width: 4; stroke-linecap: round; }
+.qibla__hub { fill: var(--color-btn); }
+/* The Kaaba itself, drawn rather than lettered: a small black cube with its band is recognised
+   instantly and needs no translating. */
+.qibla__kaaba { fill: #14100c; stroke: color-mix(in srgb, var(--ink-scene) 45%, transparent); stroke-width: 1.5; }
+.qibla__kiswa { stroke: var(--coral-strong); stroke-width: 2.5; }
+
+/* Aligned. A ring rather than a colour change on the needle, so the confirmation is visible in
+   the corner of the eye of somebody who is looking at the room and not at the phone. */
+.qibla__dial--on .qibla__ring { stroke: var(--color-btn); }
+.qibla__dial--on .qibla__you { fill: var(--color-btn); }
+
+.qibla__read { text-align: center; }
+.qibla__deg {
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--ink-scene);
+}
+.qibla__point { margin-block-start: 0.2rem; font-size: 0.95rem; color: var(--ink-scene-muted); }
+/* The live line. Given a fixed height so the card does not grow and shrink as the reader turns
+   — a layout that jumps under a thumb is how somebody taps the wrong thing. */
+.qibla__state {
+  min-block-size: 1.6rem;
+  margin-block-start: 0.6rem;
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--coral);
+}
+/* The height is reserved only when there IS a live reading to put in it. Without a compass the
+   line never fills, and holding 1.6rem of nothing open under the distance is a gap that reads
+   as something failing to load. */
+.qibla__state--quiet { min-block-size: 0; margin-block-start: 0; }
+.qibla__read .set-lead { text-align: start; }
+.qibla__read .card-actions { justify-content: center; }
+.qibla__read .btn { margin-inline: auto; }
+

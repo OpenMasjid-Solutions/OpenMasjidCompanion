@@ -35,6 +35,7 @@ import { parseChangelog, readChangelog } from './changelog';
 import { Campaigns, MAX_LINKS, parseShareLink } from './campaigns';
 import { ANNOUNCE_MAX_CHARS, SubscribeSchema, Subscriptions, type Vapid, sendOne, vapidKeys, vapidSubject } from './push';
 import { Analytics, VisitSchema } from './analytics';
+import { MAX_SCHEDULES, NewScheduleSchema, Schedules, nextRun } from './schedules';
 import { PushScheduler } from './pushScheduler';
 
 const log = makeLog('server');
@@ -47,6 +48,9 @@ export interface PushParts {
   subs: Subscriptions;
   vapid: Vapid;
   scheduler: PushScheduler;
+  /** Standing announcements. Held here rather than built in the routes, because the SCHEDULER
+   *  is what fires them and the routes only edit the list. */
+  schedules: Schedules;
 }
 
 /**
@@ -59,6 +63,7 @@ export interface PushParts {
 export function makePush(store: Store, timetable: TimetableService): PushParts {
   const subs = new Subscriptions(store);
   const vapid = vapidKeys(store);
+  const schedules = new Schedules(store);
   const scheduler = new PushScheduler(
     subs,
     vapid,
@@ -69,8 +74,9 @@ export function makePush(store: Store, timetable: TimetableService): PushParts {
       return { feed: s.feed, at: s.at };
     },
     () => getSite().publicUrl,
+    schedules,
   );
-  return { subs, vapid, scheduler };
+  return { subs, vapid, scheduler, schedules };
 }
 
 export interface ServerDeps {
@@ -103,7 +109,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // Notifications. The keypair is generated on first boot and kept for the life of the volume
   // — see push.ts for why it is never rotated. The TIMER is index.ts's, so a test can drive
   // the scheduler a tick at a time with nothing running in the background.
-  const { subs, vapid, scheduler } = deps.push ?? makePush(store, timetable);
+  const { subs, vapid, scheduler, schedules } = deps.push ?? makePush(store, timetable);
 
   const app = Fastify({
     logger: false, // we log ourselves, and never log a secret
@@ -744,6 +750,71 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     // yet" is an ANSWER the panel renders as a sentence, where a 4xx would make it show a
     // generic failure instead.
     return { data: await scheduler.announce(parsed.data.text, timetable.peek().feed?.masjidName ?? '') };
+  });
+
+  /**
+   * Standing announcements — the list, and what the panel needs to describe it.
+   *
+   * `timezone` is not decoration. Every schedule is a wall-clock time in the MASJID's zone, that
+   * zone comes from Display's payload, and with no timetable there is none — so the panel is
+   * told plainly rather than being allowed to offer a time picker that would fire at the wrong
+   * hour. `nextAt` is computed here for the same reason: the browser must not re-derive an
+   * instant from a zone it would have to be told about anyway.
+   */
+  app.get('/api/admin/announcements', { preHandler: requireAdmin }, async () => {
+    const timezone = timetable.peek().feed?.timezone ?? '';
+    const now = Date.now();
+    return {
+      data: {
+        timezone,
+        max: MAX_SCHEDULES,
+        maxChars: ANNOUNCE_MAX_CHARS,
+        /** How many phones one would actually reach, so the confirm step quotes a real number. */
+        audience: subs.all().filter((r) => r.prefs.announcements).length,
+        schedules: schedules.all().map((x) => ({
+          ...x,
+          nextAt: timezone && x.enabled ? nextRun(x, now, timezone) : null,
+        })),
+      },
+    };
+  });
+
+  /**
+   * Add one.
+   *
+   * `confirm: true` is required exactly as it is for an immediate send, and if anything it
+   * matters more here: this one reaches every phone again next week without anybody deciding to.
+   * Refusing a schedule the app cannot honour — no timezone, list full — is a named 200 the
+   * panel turns into a sentence, not an HTTP error it would render as "something went wrong".
+   */
+  const NewAnnouncement = NewScheduleSchema.and(z.object({ confirm: z.literal(true) }));
+  app.post('/api/admin/announcements', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = NewAnnouncement.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'That announcement could not be scheduled. Please check the message, the time and the days.' });
+    }
+    if (!timetable.peek().feed?.timezone) return { data: { refused: 'no-timezone' as const } };
+    const added = schedules.add(parsed.data);
+    if (!added.ok) return { data: { refused: 'full' as const } };
+    return { data: { refused: '' as const, schedule: added.schedule } };
+  });
+
+  const ScheduleId = z.object({ id: z.number().int().positive() });
+
+  /** Pause or resume. Resuming does NOT deliver what came round while it was paused — see
+   *  `setEnabled` in schedules.ts. */
+  app.post('/api/admin/announcements/update', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = ScheduleId.extend({ enabled: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'That could not be read.' });
+    schedules.setEnabled(parsed.data.id, parsed.data.enabled);
+    return { data: { ok: true } };
+  });
+
+  app.post('/api/admin/announcements/delete', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = ScheduleId.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'That could not be read.' });
+    schedules.remove(parsed.data.id);
+    return { data: { ok: true } };
   });
 
   /** The picker's list. Live from Display every time — an admin opening this screen is about to

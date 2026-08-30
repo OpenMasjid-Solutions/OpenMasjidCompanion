@@ -54,15 +54,29 @@ test('the Donate tab exists only when the masjid has appeals', async () => {
   assert.deepEqual(tabsFor(2).map((t) => t.route), ['/', '/give', '/settings']);
 });
 
+test('THE QIBLA TAB IS TUNNEL-ONLY', async () => {
+  // A browser will not hand a plain-HTTP page a location at all, so on the masjid's own wifi
+  // this tab is a screen that can never do anything — the same rule as install and
+  // notifications. A kiosk in the hallway is a legitimate way to open this app and must not be
+  // shown a button that leads to a dead end.
+  const { tabsFor } = await import('./App');
+  assert.deepEqual(tabsFor(0, false).map((t) => t.route), ['/', '/settings'], 'on the LAN, no Qibla');
+  assert.deepEqual(tabsFor(0, true).map((t) => t.route), ['/', '/qibla', '/settings']);
+  assert.deepEqual(tabsFor(2, true).map((t) => t.route), ['/', '/give', '/qibla', '/settings']);
+});
+
 test('SETTINGS IS LAST, WHATEVER ELSE IS THERE', async () => {
   // On a phone the outer edges of a tab bar are where a thumb lands by accident, and Settings is
   // the tab nobody wants to open twice. Donate must never be the one that moves, either — a tab
   // that changes position when the masjid starts an appeal is a tab people mis-tap for a week.
   const { tabsFor } = await import('./App');
   for (const appeals of [null, 0, 1, 9]) {
-    const routes = tabsFor(appeals).map((t) => t.route);
-    assert.equal(routes[0], '/', `Salah first (appeals=${appeals})`);
-    assert.equal(routes[routes.length - 1], '/settings', `Settings last (appeals=${appeals})`);
+    for (const secure of [false, true]) {
+      const routes = tabsFor(appeals, secure).map((t) => t.route);
+      assert.equal(routes[0], '/', `Salah first (appeals=${appeals}, secure=${secure})`);
+      assert.equal(routes[routes.length - 1], '/settings', `Settings last (appeals=${appeals}, secure=${secure})`);
+      assert.equal(new Set(routes).size, routes.length, 'and no route is drawn twice');
+    }
   }
 });
 
@@ -81,6 +95,12 @@ test('the appeals page is a route of its own, and unknown paths still are not', 
   assert.equal(routeOf('/give/'), '/give');
   assert.equal(routeOf('/give/anything'), 'unknown');
   assert.equal(routeOf('/donate'), 'unknown');
+});
+
+test('the Qibla page is a route of its own', async () => {
+  assert.equal(routeOf('/qibla'), '/qibla');
+  assert.equal(routeOf('/qibla/'), '/qibla');
+  assert.equal(routeOf('/qiblah'), 'unknown', 'a near-miss is not silently accepted');
 });
 
 test('THE QR CODE ROUTE RESOLVES, and only in the exact shape', async () => {

@@ -24,6 +24,7 @@ import path from 'node:path';
 import { Store } from './store';
 import { ANNOUNCE_COOLDOWN_MS, ANNOUNCE_MAX_CHARS, MAX_JUMUAH, MAX_SUBSCRIPTIONS, type Prefs, type Vapid, PRAYERS, PrefsSchema, safeEndpoint, sendOne, Subscriptions, vapidKeys } from './push';
 import { GRACE_MS, PushScheduler, STALE_LIMIT_MS, announcementFor, dueFor, fanOut, notificationFor } from './pushScheduler';
+import { SCHEDULE_GRACE_MS, Schedules } from './schedules';
 import { formatTimeIn, isHhmm, tzOffsetMs, zonedTimeToEpoch } from './zoned';
 import type { TimetableFeed } from './timetable';
 import http from 'node:http';
@@ -324,22 +325,28 @@ function scenario(opts: { at?: number; outcome?: (endpoint: string) => 'sent' | 
   const s = tempStore();
   const subs = new Subscriptions(s.store);
   const sent: Sent[] = [];
+  const bodies: string[] = [];
   const vapid: Vapid = { publicKey: 'pub', privateKey: 'priv' };
+  const schedules = new Schedules(s.store);
   const scheduler = new PushScheduler(
     subs,
     vapid,
     () => ({ feed: feed(), at: opts.at ?? Date.parse('2026-08-24T22:00:00Z') }),
     () => 'https://omos.example.org/companion',
+    schedules,
     async (_v, row, payload) => {
       const outcome = opts.outcome ? opts.outcome(row.endpoint) : 'sent';
-      if (outcome === 'sent') sent.push({ endpoint: row.endpoint, tag: payload.tag });
+      if (outcome === 'sent') {
+        sent.push({ endpoint: row.endpoint, tag: payload.tag });
+        bodies.push(payload.body);
+      }
       return outcome;
     },
     // No jitter by default; a test that is TIMING the fan-out passes `sleep: undefined` to
     // get the real one back.
     'sleep' in opts ? opts.sleep : async () => undefined,
   );
-  return { ...s, subs, scheduler, sent };
+  return { ...s, subs, scheduler, schedules, sent, bodies };
 }
 
 test('a tick sends what is due and nothing else', async () => {
@@ -1146,4 +1153,166 @@ test('the Jumuʿah cap matches what Display is allowed to send', () => {
   const m = /jumuah:\s*z\.array\([^)]*\)\.max\((\d+)\)/.exec(schema);
   assert.ok(m, 'could not find the feed’s Jumuʿah cap');
   assert.equal(MAX_JUMUAH, Number(m[1]), `push.ts caps at ${MAX_JUMUAH}, the feed accepts ${m[1]}`);
+});
+
+// ── Standing announcements, through a real tick ──────────────────────────────
+//
+// The arithmetic has its own file (schedules.test.ts). What is proved here is the WIRING: that
+// a tick reaches them at all, that it reaches them in the right order relative to the rules
+// around it, and that firing one is not the same event as firing it again.
+
+/** 20:01 EDT on the 24th — a minute past a 20:00 schedule. */
+const PAST_EIGHT = Date.parse('2026-08-25T00:01:00Z');
+const DAY_BEFORE = PAST_EIGHT - 86_400_000;
+
+test('a scheduled announcement goes out on a tick, once', async () => {
+  const s = scenario();
+  try {
+    s.subs.put(sub('https://push.example/a', { prayers: [] }), PAST_EIGHT - 60_000);
+    const added = s.schedules.add({ text: 'Halaqa after Isha tonight', repeat: 'daily', time: '20:00', days: [], date: '' }, DAY_BEFORE);
+    assert.ok(added.ok);
+
+    await s.scheduler.tick(PAST_EIGHT);
+    assert.deepEqual(s.bodies, ['Halaqa after Isha tonight']);
+
+    // Every tick for the next hour finds nothing more to do.
+    await s.scheduler.tick(PAST_EIGHT + 60_000);
+    await s.scheduler.tick(PAST_EIGHT + 3_600_000);
+    assert.equal(s.bodies.length, 1, 'one occurrence, one notification');
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('A STALE TIMETABLE SILENCES PRAYER REMINDERS AND NOT THE MASJID', async () => {
+  // Rule 1 exists because a reminder computed from old times may be wrong by minutes and
+  // somebody acts on it. An announcement is not computed from the times at all — "we are closed
+  // on Saturday" is exactly as true when Display has been unreachable since Thursday. Applying
+  // the same rule to both would silence the masjid's own voice at the moment it has lost its
+  // other one.
+  const s = scenario({ at: PAST_EIGHT - STALE_LIMIT_MS - 60_000 });
+  try {
+    s.subs.put(sub('https://push.example/a'), PAST_EIGHT - 60_000);
+    const added = s.schedules.add({ text: 'The masjid is closed on Saturday', repeat: 'daily', time: '20:00', days: [], date: '' }, DAY_BEFORE);
+    assert.ok(added.ok);
+
+    const r = await s.scheduler.tick(PAST_EIGHT);
+    assert.equal(r.skipped, 'stale', 'prayer reminders are still paused');
+    assert.deepEqual(s.bodies, ['The masjid is closed on Saturday'], 'and the announcement still went');
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('a missed occurrence is written off rather than delivered late', async () => {
+  const s = scenario();
+  try {
+    const occurrence = Date.parse('2026-08-25T00:00:00Z');
+    const late = occurrence + SCHEDULE_GRACE_MS + 60_000;
+    s.subs.put(sub('https://push.example/a', { prayers: [] }), occurrence - 60_000);
+    assert.ok(s.schedules.add({ text: 'Reminder: halaqa tonight', repeat: 'daily', time: '20:00', days: [], date: '' }, DAY_BEFORE).ok);
+
+    await s.scheduler.tick(late);
+    assert.deepEqual(s.bodies, [], 'the moment has gone');
+    // And it is not queued for the next tick either.
+    await s.scheduler.tick(late + 60_000);
+    assert.deepEqual(s.bodies, []);
+    assert.equal(s.schedules.all()[0].sentCount, 0);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('a paused schedule is not consulted at all', async () => {
+  const s = scenario();
+  try {
+    s.subs.put(sub('https://push.example/a', { prayers: [] }), PAST_EIGHT - 60_000);
+    const added = s.schedules.add({ text: 'Not this week', repeat: 'daily', time: '20:00', days: [], date: '' }, DAY_BEFORE);
+    assert.ok(added.ok);
+    s.schedules.setEnabled(added.schedule.id, false);
+    await s.scheduler.tick(PAST_EIGHT);
+    assert.deepEqual(s.bodies, []);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('somebody who turned notices off does not get a scheduled one either', async () => {
+  // The musalli-facing switch is one switch. A notice the masjid set last month must not be a
+  // way round a choice somebody made on their own phone yesterday.
+  const s = scenario();
+  try {
+    s.subs.put(sub('https://push.example/quiet', { prayers: [], announcements: false }), PAST_EIGHT - 60_000);
+    assert.ok(s.schedules.add({ text: 'Anything at all', repeat: 'daily', time: '20:00', days: [], date: '' }, DAY_BEFORE).ok);
+    await s.scheduler.tick(PAST_EIGHT);
+    assert.deepEqual(s.bodies, []);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('A SCHEDULE IS NOT BLOCKED BY THE MANUAL DOUBLE-TAP GUARD', async () => {
+  // The cooldown is about a human pressing Send twice in a second. A schedule firing forty
+  // seconds after somebody pressed Send is two separate intentions, and swallowing the second
+  // would be a notice that silently never went out — the exact failure scheduling exists to
+  // prevent.
+  const s = scenario();
+  try {
+    s.subs.put(sub('https://push.example/a', { prayers: [] }), PAST_EIGHT - 60_000);
+    assert.ok(s.schedules.add({ text: 'The scheduled one', repeat: 'daily', time: '20:00', days: [], date: '' }, DAY_BEFORE).ok);
+
+    const manual = await s.scheduler.announce('Typed by hand', 'Masjid An-Noor', PAST_EIGHT - 1000);
+    assert.equal(manual.refused, '');
+    assert.ok(ANNOUNCE_COOLDOWN_MS > 1000, 'the cooldown is still in force at this point');
+
+    await s.scheduler.tick(PAST_EIGHT);
+    assert.deepEqual(s.bodies, ['Typed by hand', 'The scheduled one']);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('a one-off is spent after it goes', async () => {
+  const s = scenario();
+  try {
+    s.subs.put(sub('https://push.example/a', { prayers: [] }), PAST_EIGHT - 60_000);
+    assert.ok(s.schedules.add({ text: 'Eid prayer is at 8', repeat: 'once', time: '20:00', days: [], date: '2026-08-24' }, DAY_BEFORE).ok);
+
+    await s.scheduler.tick(PAST_EIGHT);
+    assert.deepEqual(s.bodies, ['Eid prayer is at 8']);
+    const row = s.schedules.all()[0];
+    assert.equal(row.enabled, false, 'switched off, so it cannot come round again');
+    assert.equal(row.sentCount, 1);
+    assert.equal(row.text, 'Eid prayer is at 8', 'and still readable, so the admin can see it went');
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('two notices due in one tick both arrive', async () => {
+  const s = scenario();
+  try {
+    s.subs.put(sub('https://push.example/a', { prayers: [] }), PAST_EIGHT - 60_000);
+    for (const text of ['First notice', 'Second notice']) {
+      assert.ok(s.schedules.add({ text, repeat: 'daily', time: '20:00', days: [], date: '' }, DAY_BEFORE).ok);
+    }
+    await s.scheduler.tick(PAST_EIGHT);
+    assert.deepEqual(s.bodies, ['First notice', 'Second notice']);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test('the scheduler still works with no schedules attached at all', async () => {
+  // The constructor argument is optional so every caller that predates this feature behaves
+  // exactly as it did — including the one in index.ts if it is ever built by hand.
+  const bare = tempStore();
+  try {
+    const subs = new Subscriptions(bare.store);
+    const sched = new PushScheduler(subs, { publicKey: 'p', privateKey: 'q' }, () => ({ feed: feed(), at: Date.parse('2026-08-24T22:00:00Z') }), () => '');
+    const r = await sched.tick(Date.parse('2026-08-24T23:35:00Z'));
+    assert.equal(r.skipped, 'no-subscribers');
+  } finally {
+    bare.cleanup();
+  }
 });
