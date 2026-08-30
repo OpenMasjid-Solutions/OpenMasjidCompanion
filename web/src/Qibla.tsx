@@ -31,15 +31,15 @@ import {
   angleDelta,
   compassPoint,
   distanceToKaaba,
-  forget,
   headingFrom,
   isAligned,
   norm360,
   qiblaBearing,
-  recall,
-  remember,
+  recallVisit,
+  rememberForVisit,
   type OrientationLike,
 } from './bearing';
+import { haptic } from './haptics';
 
 type Phase = 'idle' | 'locating' | 'ready' | 'denied' | 'failed' | 'unsupported';
 
@@ -57,7 +57,6 @@ export function Qibla({ secure }: { secure: boolean }): JSX.Element {
   const [phase, setPhase] = useState<Phase>('idle');
   const [bearing, setBearing] = useState<number | null>(null);
   const [km, setKm] = useState(0);
-  const [stale, setStale] = useState(false);
 
   /**
    * Whatever this phone worked out last time. Shown at once and without asking anybody anything
@@ -72,11 +71,10 @@ export function Qibla({ secure }: { secure: boolean }): JSX.Element {
    * refusal must not be quietly reset into a fresh prompt.
    */
   useEffect(() => {
-    const seen = recall();
+    const seen = recallVisit();
     if (seen) {
       setBearing(seen.bearing);
       setKm(seen.km);
-      setStale(true);
       setPhase('ready');
       return;
     }
@@ -102,10 +100,10 @@ export function Qibla({ secure }: { secure: boolean }): JSX.Element {
         const d = distanceToKaaba(pos.coords.latitude, pos.coords.longitude);
         setBearing(b);
         setKm(Math.round(d));
-        setStale(false);
         setPhase('ready');
-        // The BEARING is remembered, never the position — see bearing.ts.
-        remember(b, d);
+        haptic('success');
+        // For this visit only, and only the bearing — see bearing.ts.
+        rememberForVisit(b, d);
       },
       (err) => setPhase(err.code === err.PERMISSION_DENIED ? 'denied' : 'failed'),
       GEO,
@@ -115,6 +113,20 @@ export function Qibla({ secure }: { secure: boolean }): JSX.Element {
   const compass = useCompass(secure);
   const facing = compass.heading;
   const aligned = bearing !== null && facing !== null && isAligned(facing, bearing);
+
+  /**
+   * A buzz the moment it lines up, and only on the moment.
+   *
+   * The best haptic in this app by some distance: somebody turning on the spot with a phone held
+   * out is not looking at the screen, they are looking at the room. `wasAligned` is a ref rather
+   * than state because it exists to suppress a repeat, and putting it in state would re-render
+   * the dial on every reading to store something nothing renders.
+   */
+  const wasAligned = useRef(false);
+  useEffect(() => {
+    if (aligned && !wasAligned.current) haptic('success');
+    wasAligned.current = aligned;
+  }, [aligned]);
   // Where the rose is drawn. With no compass it is north-up, which is a map; with one it turns
   // under the phone so that "up" is where the reader is actually pointing.
   const rose = facing === null ? 0 : -facing;
@@ -133,13 +145,12 @@ export function Qibla({ secure }: { secure: boolean }): JSX.Element {
         </section>
       )}
 
+      {/* One button, and nothing to read first (Hasan, 2026-08-30). The paragraph that used to
+          be here explained that the location never leaves the phone — true, and still true, and
+          nobody standing in a prayer hall is reading it. The browser's own prompt is about to
+          ask the question anyway, in words the reader already trusts. */}
       {phase === 'idle' && (
-        <section className="set-card">
-          <p className="set-lead">
-            Your phone works out where you are, and this points you to Makkah. <b>Your location never leaves this
-            phone</b> &mdash; the masjid never sees it, and neither do we; only the direction is kept, here on your own
-            device.
-          </p>
+        <section className="set-card qibla__start">
           <button className="btn btn--primary" onClick={locate}>
             <LocateFixed size={15} aria-hidden="true" />
             Point me to Makkah
@@ -233,21 +244,6 @@ export function Qibla({ secure }: { secure: boolean }): JSX.Element {
             {compass.uncalibrated && (
               <p className="hint">Wave the phone in a figure of eight to settle the compass.</p>
             )}
-
-            <div className="card-actions">
-              <button
-                className="btn"
-                onClick={() => {
-                  forget();
-                  setBearing(null);
-                  setPhase('idle');
-                }}
-              >
-                <LocateFixed size={15} aria-hidden="true" />
-                {stale ? 'Check where I am now' : 'Check again'}
-              </button>
-            </div>
-            {stale && <p className="hint">This is the direction from the last place this phone checked from.</p>}
           </section>
         </>
       )}
@@ -338,9 +334,14 @@ function Dial({ bearing, rose, live, aligned }: { bearing: number; rose: number;
             <circle r="5" className="qibla__hub" />
             <g transform={`rotate(${norm360(bearing)}) translate(0 -78)`}>
               {/* The Kaaba, drawn rather than lettered: a small black cube with its band is
-                  recognised instantly and needs no translating. Counter-rotated so it stays
-                  upright as the pointer swings. */}
-              <g transform={`rotate(${-norm360(bearing)})`}>
+                  recognised instantly and needs no translating.
+               *
+               * Counter-rotated by the WHOLE screen rotation, not just by the bearing. It sits
+               * inside two turns — the pointer's `bearing`, and the rose's own `rose` — and
+               * cancelling only the inner one left it upright relative to a card that was itself
+               * tilted, so on screen it leaned by however far the reader had turned. A cube that
+               * is not sitting flat does not read as a building. */}
+              <g transform={`rotate(${-(norm360(bearing) + rose)})`}>
                 <rect x="-11" y="-11" width="22" height="22" rx="3" className="qibla__kaaba" />
                 <line x1="-11" y1="-2" x2="11" y2="-2" className="qibla__kiswa" />
               </g>

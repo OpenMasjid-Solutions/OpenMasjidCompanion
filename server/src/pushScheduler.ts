@@ -224,12 +224,16 @@ export function dueFor(feed: TimetableFeed, prefs: Prefs, after: number, now: nu
 export function notificationFor(due: Due, feed: TimetableFeed, lead: number | null, publicUrl: string): Notification {
   const when = formatTimeIn(due.date, due.hhmm, feed.timezone, feed.hourCycle, feed.language);
   const name = due.label;
+  // **"Iqamah", not "Jamāʿah"** (Hasan, 2026-08-30). The two are not the same word — the
+  // iqamah is the call, the jamāʿah is the gathering it calls to — but the app's own timetable
+  // has always headed that column "Iqamah", and a notification that names it differently from
+  // the screen it came from is a second name for one time. One word, everywhere a reader sees.
   const body =
     due.kind === 'adhan'
       ? `Adhan ${when}`
       : lead && lead > 0
-        ? `Jamāʿah in ${lead} minute${lead === 1 ? '' : 's'} — ${when}`
-        : `Jamāʿah ${when}`;
+        ? `Iqamah in ${lead} minute${lead === 1 ? '' : 's'} — ${when}`
+        : `Iqamah ${when}`;
   return {
     title: `${name} — ${feed.masjidName}`,
     body,

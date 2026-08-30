@@ -203,16 +203,28 @@ before and during the build; mirror them.**
   Settings (added 2026-08-29) means every install has a second place to go. `/give` is a real
   route, so it is bookmarkable, so it needs a real empty state.
 
-- **Settings, a musalli's own** (`/settings`, added by Hasan 2026-08-29): the two things a
+- **Settings, a musalli's own** (`/settings`, added by Hasan 2026-08-29): **the masjid's own
+  contact details at the top** (added 2026-08-30 — phone, email, address, website and links to
+  WhatsApp, Instagram, Facebook, X, YouTube and Telegram; every field optional, nothing drawn for
+  an empty one, and no card at all for a masjid that filled none of them in), then the things a
   reader may want to change, and nothing else. **Appearance** — keep the time-of-day look, or
   hold it dark or light all day; a pinned polarity still moves through the day inside it
   (always-dark runs Fajr → Maghrib → Isha), because "always dark" was a request about contrast,
   not a request to switch the design off. **Prayer reminders**, moved here from the sheet over
   the prayer times: these are settings, and a modal is a shape for a question. The bell in the
   header stays as a shortcut *to* this screen, because notifications are the one feature a
-  musalli has to find on purpose. Everything here is per-browser, in localStorage, and never
-  leaves the phone — except the reminder switches, which have to reach the server because the
-  server is what sends them.
+  musalli has to find on purpose. **The bell that used to be in the header was removed on
+  2026-08-30**: with a permanent Settings tab, a second door to the same room is a second thing
+  to explain. Everything here is per-browser, in localStorage, and never leaves the phone —
+  except the reminder switches, which have to reach the server because the server is what sends
+  them.
+
+- **Haptics** (added 2026-08-30): a short buzz on a tap, on a swipe that actually moves, and when
+  the Qibla lines up. One delegated `pointerdown` listener rather than forty call sites
+  (`haptics.ts`), a switch in Settings shown only where there is a vibrator to switch off, and
+  the phone's own setting always wins. **It does nothing at all on an iPhone** — Safari has never
+  shipped the Vibration API and there is no route to the Taptic Engine from a web page — so
+  haptics are only ever a confirmation of something already on screen, never the signal itself.
 
 - **The onboarding page** (`/onboarding`, added by Hasan 2026-08-29) — **what the QR code
   points at.** A poster has to print instructions that are right for every phone that will ever
@@ -257,7 +269,10 @@ before and during the build; mirror them.**
   calculation and does not touch the §2 rule: a bearing is self-evidently right or wrong the
   moment you hold the phone up, where a wrong prayer time is silent. It needs a secure context,
   so the tab is drawn only over the tunnel, like install and push, and "location declined" is a
-  designed screen rather than an error. **The bearing leads and the compass is offered second**
+  designed screen rather than an error. **It asks again every visit** (Hasan, 2026-08-30): the
+  bearing is held in memory for as long as the page lives, so moving between tabs does not
+  re-prompt, and nothing is written to storage — a stored bearing is a fact about where somebody
+  was, and this app does not write that down. **The bearing leads and the compass is offered second**
   — a magnetometer needs a permission, a gesture and somewhere that is not a basement, where
   "119°, east-southeast, 4,794 km" needs only a position. Only the BEARING is remembered on the
   phone, never the position. See `docs/DESIGN_LANGUAGE.md`.

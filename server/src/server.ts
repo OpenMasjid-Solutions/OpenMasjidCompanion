@@ -36,6 +36,7 @@ import { Campaigns, MAX_LINKS, parseShareLink } from './campaigns';
 import { ANNOUNCE_MAX_CHARS, SubscribeSchema, Subscriptions, type Vapid, sendOne, vapidKeys, vapidSubject } from './push';
 import { Analytics, VisitSchema } from './analytics';
 import { MAX_SCHEDULES, NewScheduleSchema, Schedules, nextRun } from './schedules';
+import { ContactSchema, getContact, hasAnyContact, setContact } from './contact';
 import { PushScheduler } from './pushScheduler';
 
 const log = makeLog('server');
@@ -345,6 +346,15 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         /** What this app is called on a home screen. The install prompt names it, so a musalli
          *  is told they are adding their masjid rather than a piece of software. */
         installName: installName(store.get('app.name') ?? '', timetable.peek().feed?.masjidName ?? ''),
+        /**
+         * How to reach the masjid, for the top of the Settings screen.
+         *
+         * On the bootstrap rather than behind a route of its own: it is a handful of short
+         * strings that every page already has the answer to, and a second request for them would
+         * be a second thing to be slow on a bad connection. Empty strings are sent as empty
+         * strings and the page draws nothing for them — see contact.ts.
+         */
+        contact: getContact(store),
         remote: {
           configured: site.configured,
           enabled: site.enabled,
@@ -750,6 +760,33 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     // yet" is an ANSWER the panel renders as a sentence, where a 4xx would make it show a
     // generic failure instead.
     return { data: await scheduler.announce(parsed.data.text, timetable.peek().feed?.masjidName ?? '') };
+  });
+
+  /**
+   * How to reach the masjid.
+   *
+   * The only thing this app stores that is MEANT to be read by strangers, which is why it is on
+   * the public bootstrap and why it is still validated as if it were hostile: it is typed into a
+   * form and rendered as links on a page.
+   */
+  app.get('/api/admin/contact', { preHandler: requireAdmin }, async () => ({
+    data: { contact: getContact(store) },
+  }));
+
+  app.post('/api/admin/contact', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = ContactSchema.safeParse(req.body);
+    if (!parsed.success) {
+      // Named rather than generic: the two things a masjid can realistically get wrong here are
+      // an email with no @ in it and a link that is not a link, and "something went wrong" would
+      // send them looking at the phone number.
+      const first = parsed.error.issues[0];
+      const field = String(first?.path?.[0] ?? '');
+      return reply.code(400).send({
+        error: field === 'email' ? 'That email address does not look right.' : 'One of those links could not be read. Please check it and try again.',
+      });
+    }
+    setContact(store, parsed.data);
+    return { data: { contact: parsed.data, any: hasAnyContact(parsed.data) } };
   });
 
   /**

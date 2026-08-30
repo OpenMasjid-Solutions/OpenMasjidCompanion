@@ -45,7 +45,7 @@ export const LABELS: Record<Notifiable, string> = {
 export interface Prefs {
   prayers: Notifiable[];
   adhan: boolean;
-  /** Minutes before the jamā'ah; null = not wanted. */
+  /** Minutes before the Iqamah; null = not wanted. */
   beforeIqamah: number | null;
   /** WHICH Jumu'ah, by position. null = all of them, which is the default. */
   jumuah: number[] | null;
@@ -54,7 +54,7 @@ export interface Prefs {
   announcements: boolean;
 }
 
-/** Everything on, fifteen minutes before the jamā'ah — enough to leave the house. */
+/** Everything on, fifteen minutes before the Iqamah — enough to leave the house. */
 export const DEFAULTS: Prefs = {
   prayers: [...PRAYERS, 'jumuah'],
   adhan: false,

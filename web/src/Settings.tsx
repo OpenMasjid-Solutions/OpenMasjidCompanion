@@ -13,22 +13,43 @@
  * switches, which have to reach the server because the server is what sends them. The look is
  * localStorage and nothing else: no account, no sync, nothing about it in the masjid's store.
  */
-import { MoonStar, Palette, Smartphone, Sun, SunMoon } from 'lucide-react';
+import { Check, MoonStar, Palette, Smartphone, Sun, SunMoon, Vibrate } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { navigate } from './App';
 import { ONBOARDING_PATH } from './base';
 import { SKY_MODES, type SkyMode } from './periodTheme';
 import { prefsStore, usePrefs } from './prefs';
 import { ReminderSettings } from './Notify';
+import { ContactCard } from './Contact';
+import { hasContact, type Contact } from './contactLinks';
+import { hapticsSupported } from './haptics';
 
 const SKY_ICON: Record<SkyMode, LucideIcon> = { period: SunMoon, dark: MoonStar, light: Sun };
 
-export function Settings({ secure, jumuah, installed }: { secure: boolean; jumuah: string[]; installed: boolean }): JSX.Element {
-  const { sky } = usePrefs();
+export function Settings({
+  secure,
+  jumuah,
+  installed,
+  contact,
+  masjidName,
+}: {
+  secure: boolean;
+  jumuah: string[];
+  installed: boolean;
+  /** null until the bootstrap has answered. Nothing is drawn on a maybe. */
+  contact: Contact | null;
+  masjidName: string;
+}): JSX.Element {
+  const { sky, haptics } = usePrefs();
 
   return (
     <main className="settings">
       <h1 className="settings__title">Settings</h1>
+
+      {/* First, because it is the only thing on this screen that belongs to the MASJID rather
+          than to the reader — and absent entirely for a masjid that has not filled any of it in,
+          which is most of them. */}
+      {contact && hasContact(contact) && <ContactCard contact={contact} name={masjidName} />}
 
       <section className="set-card">
         <h2 className="set-title">
@@ -74,6 +95,33 @@ export function Settings({ secure, jumuah, installed }: { secure: boolean; jumua
           })}
         </fieldset>
       </section>
+
+      {/* Only where there is something to switch off. On an iPhone the Vibration API does not
+          exist at all (see haptics.ts), so this row would be a control for nothing — and a
+          setting that does nothing is worse than a missing one, because somebody will use it and
+          conclude the app ignores them. */}
+      {hapticsSupported() && (
+        <section className="set-card">
+          <h2 className="set-title">
+            <Vibrate size={16} aria-hidden="true" />
+            Vibration
+          </h2>
+          <p className="set-lead">
+            A small buzz when you tap something, swipe between days, or line up the Qibla. Your phone&rsquo;s own
+            vibration setting still comes first.
+          </p>
+          <div className="notify__chips">
+            <button
+              className={haptics ? 'chip chip--on' : 'chip'}
+              onClick={() => prefsStore.patch({ haptics: !haptics })}
+              aria-pressed={haptics}
+            >
+              {haptics && <Check size={13} aria-hidden="true" />}
+              Buzz on tap
+            </button>
+          </div>
+        </section>
+      )}
 
       <ReminderSettings secure={secure} jumuah={jumuah} />
 

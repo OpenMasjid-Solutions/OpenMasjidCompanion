@@ -112,12 +112,12 @@ export function Onboarding({ install, secure, name }: { install: Install; secure
         )}
       </Step>
 
-      <Step n={2} state={reminders.on ? 'done' : 'now'} title={reminders.on ? 'Reminders are on' : 'Get a reminder before each jamāʿah'}>
+      <Step n={2} state={reminders.on ? 'done' : 'now'} title={reminders.on ? 'Reminders are on' : 'Get a reminder before each Iqamah'}>
         {reminders.blocker ? (
           <Blocked blocker={reminders.blocker} />
         ) : reminders.on ? (
           <p className="ob__text">
-            You&rsquo;ll be reminded before each jamāʿah. Change which prayers, or turn it off, in <b>Settings</b>.
+            You&rsquo;ll be reminded before each Iqamah. Change which prayers, or turn it off, in <b>Settings</b>.
           </p>
         ) : (
           <>

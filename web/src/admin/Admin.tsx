@@ -30,6 +30,7 @@ import { Poster, Share } from './Share';
 import { Appeals } from './Appeals';
 import { Notifications } from './Notifications';
 import { Insights } from './Insights';
+import { ContactForm } from './ContactForm';
 
 interface AdminStatus {
   remote: RemoteStatus;
@@ -163,6 +164,11 @@ export default function Admin({ info }: { info: AppInfo | null }): JSX.Element {
             />
           )}
           <Appeals onChanged={loadStatus} />
+
+          {/* After the appeals and before the app's own appearance: it is masjid information
+              rather than app configuration, and it belongs with the other things a volunteer
+              knows off the top of their head. */}
+          <ContactForm />
           {status?.pwa && <Appearance status={status.pwa} onChanged={loadStatus} />}
 
           {/* After the PWA card on purpose: reminders need the app on a phone, and the card

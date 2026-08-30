@@ -155,53 +155,33 @@ export function isAligned(heading: number, bearing: number): boolean {
 }
 
 /**
- * The remembered answer.
+ * The answer, for as long as this visit lasts and not a moment longer.
  *
- * **The BEARING is stored, never the position.** One number, on the reader's own phone, that
- * never leaves it — where a stored latitude and longitude would be a record of where somebody
- * was, sitting in a browser store for anybody who later picks up the phone. It is all the
- * screen needs, and refusing to write the rest down is cheaper than protecting it.
+ * It was localStorage, kept for a month, on the reasoning that a bearing does not change unless
+ * the reader travels and a congregation should not be asked for their location every Friday.
+ * **Hasan overruled that on 2026-08-30: ask again every time.** He is right, and the reason is
+ * not really about accuracy — a stored bearing is a fact about where somebody was, sitting in a
+ * browser store for anybody who later picks up the phone, and this app has spent a lot of effort
+ * not writing that down anywhere else.
  *
- * Kept for a month. A bearing does not change unless the reader travels, and somebody who has
- * travelled can press the button again — which is a better trade than asking a congregation for
- * their location every Friday.
+ * A module-level variable rather than component state, so switching to the prayer times and back
+ * does not re-ask within one visit — a permission prompt for something you did thirty seconds ago
+ * is how a reader learns to press Block. It dies with the page, which is what "leaving the app"
+ * means for an installed PWA.
+ *
+ * Nothing here touches storage of any kind, and that absence is the feature.
  */
-const KEY = 'omc-qibla';
-export const REMEMBER_MS = 30 * 86_400_000;
+let visit: { bearing: number; km: number } | null = null;
 
-export interface Remembered {
-  bearing: number;
-  /** Kilometres to the Kaaba, for the sanity line. Rounded on the way in — it is a reassurance,
-   *  not a measurement, and a metre of precision would be a smaller number about the phone. */
-  km: number;
-  at: number;
+export function rememberForVisit(bearing: number, km: number): void {
+  visit = { bearing, km: Math.round(km) };
 }
 
-export function remember(bearing: number, km: number, now = Date.now()): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ bearing, km: Math.round(km), at: now } satisfies Remembered));
-  } catch {
-    /* private browsing — it just will not persist */
-  }
+export function recallVisit(): { bearing: number; km: number } | null {
+  return visit;
 }
 
-export function recall(now = Date.now()): Remembered | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const v = JSON.parse(raw) as Partial<Remembered>;
-    if (typeof v.bearing !== 'number' || typeof v.at !== 'number') return null;
-    if (!Number.isFinite(v.bearing) || now - v.at > REMEMBER_MS) return null;
-    return { bearing: norm360(v.bearing), km: typeof v.km === 'number' ? v.km : 0, at: v.at };
-  } catch {
-    return null;
-  }
-}
-
-export function forget(): void {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {
-    /* nothing to do, and nothing that matters */
-  }
+/** Test-only, and used by nothing else: module state outlives a test file's cases. */
+export function clearVisit(): void {
+  visit = null;
 }

@@ -119,7 +119,7 @@ export function Notifications(): JSX.Element {
           </div>
 
           <p className="card-body">
-            Musallis can turn on a reminder before each jamāʿah, per phone, from <b>Settings</b> in the app. They
+            Musallis can turn on a reminder before each Iqamah, per phone, from <b>Settings</b> in the app. They
             choose which prayers and how long before.
           </p>
 
@@ -243,7 +243,7 @@ function Announce({ status, onSent }: { status: PushStatus; onSent: () => Promis
         </h3>
       </div>
       <p className="hint">
-        A one-off notice to every phone signed up &mdash; a funeral, a closure, a changed jamāʿah. It arrives like a
+        A one-off notice to every phone signed up &mdash; a funeral, a closure, a changed Iqamah. It arrives like a
         prayer reminder, with your masjid&rsquo;s name on it. <b>It can&rsquo;t be taken back once sent.</b>
       </p>
 

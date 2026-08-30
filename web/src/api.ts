@@ -14,6 +14,7 @@
  * a value the UI renders, not an exception it has to catch.
  */
 import { withBase } from './base';
+import type { Contact } from './contactLinks';
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -68,4 +69,7 @@ export interface AppInfo {
   /** Whether install and notifications can HONESTLY be offered. Both need a secure context,
    *  which means the tunnel; over plain http on the LAN neither API exists at all. */
   remote: { configured: boolean; enabled: boolean; secure: boolean };
+  /** How to reach the masjid. Every field may be '' and most of them usually are — the page
+   *  draws nothing for an empty one. */
+  contact: Contact;
 }

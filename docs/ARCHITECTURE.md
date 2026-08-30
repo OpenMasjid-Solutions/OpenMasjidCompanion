@@ -1200,3 +1200,102 @@ instead of seeding it.
 Server 335 → 363: 19 for the schedule arithmetic in its own file, 9 more driving them through a
 real tick. Web 128 → 155: 14 for the bearing, 11 for the wording a schedule is confirmed by, and
 the tab-bar rules.
+
+## Slice 16 — contact details, haptics, and the Qibla's second pass (0.1.0-dev.19)
+
+A list of small things from Hasan on 2026-08-30, two of which turned out to have real bugs
+underneath them.
+
+### One word for one time
+
+The lock screen said "Jamāʿah in 15 minutes"; the app's own timetable has always headed that
+column "Iqamah". They are not the same word — the iqamah is the call, the jamāʿah is the
+gathering it calls to — but a notification that names a time differently from the screen it came
+from is a second name for one thing, and the reader has to work out that it is not a third
+prayer. It is "Iqamah" everywhere a reader sees it now.
+
+### The header bell
+
+Removed. It was a shortcut to the reminder switches from before Settings existed as a tab; with a
+permanent Settings tab at the bottom of every screen it was a second door to the same room, and
+the top-right of a prayer-times page is the most valuable corner it has.
+
+### Contact details
+
+The smallest feature here and the one with the clearest reason to exist: somebody who has just
+installed a masjid's prayer times is exactly the person who will later need its phone number.
+
+The shape of it is "nothing is invented". Every field is optional, an empty one draws nothing,
+and a masjid that filled none of them in gets no card — `hasContact` is checked against what
+SURVIVES sanitising rather than against what is stored, so a masjid whose only entry is a link
+this app will not render gets no card either, instead of an empty one headed with their name
+that looks like something failed to load.
+
+**Validated on the way in and again on the way out**, in two languages, and both files say why:
+the data volume outlives any one build, so a value a looser version once accepted has to be
+refused again when it is read, and the page must never be the first thing to notice a
+`javascript:` URL. `web/src/contactLinks.ts` is named that way rather than `contact.ts` for the
+case-collision reason `bearing.ts` already exists for.
+
+Two bugs the tests found, both of which had passed a reading of the code:
+
+1. **`+44 (0)20 7946 0000` dialled `+4402079460000`, which reaches nobody.** The bracketed zero
+   is the trunk prefix — you dial it *instead of* the country code, never as well as it — and
+   stripping punctuation while keeping digits produces a number that cannot connect. It is also
+   how a very large number of British masjids write their number down, so this is not an edge
+   case. Removed only when the number is in international form: without a `+`, a leading zero is
+   the thing that makes it dialable.
+2. **One unreadable field emptied the whole record on read.** `getContact` parsed the row as a
+   unit, so a value of the wrong type — from a future build, or a corrupted row — cost the masjid
+   the phone number they had typed correctly. It parses field by field now. The WRITE path
+   deliberately keeps the whole-object schema: there, a bad email is something to tell the admin
+   about while they are looking at the form, not something to drop quietly.
+
+It rides on `/api/app` rather than a route of its own, and the existing bootstrap allowlist test
+did exactly what it was built to do — failed, and made the new key be argued for. The contact
+object's own field list is now pinned there too, since it is the one part of the bootstrap an
+admin types freely into.
+
+### Haptics
+
+One delegated `pointerdown` listener on the document rather than a call at forty sites. "Haptics
+on buttons, throughout" is a property of the app rather than of any one component, and threading
+it through every `onClick` guarantees the forty-first is missed — it is also how the platforms
+themselves do it, with the OS deciding what a press feels like rather than each button.
+`pointerdown` and not `click`, because feedback on release, after the screen has already changed,
+feels like a fault rather than a confirmation.
+
+**It does nothing on an iPhone.** Safari has never shipped the Vibration API, on any Apple
+platform, and there is no permission to ask for and no polyfill. So every haptic in this app is a
+confirmation of something already visible — the Qibla says "Facing the Qibla" on screen *and*
+buzzes, and the buzz is the half that is allowed to be missing. The switch in Settings only
+appears where there is a vibrator to switch off, because a control for nothing is worse than a
+missing one: somebody will use it and conclude the app ignores them.
+
+The swipes buzz only when they *move*. A swipe into the end of the timetable window, or into a
+month with no data, is a gesture that was understood and refused, and a buzz there would confirm
+nothing. Both `step` functions now return whether anything happened, which is a better shape
+regardless.
+
+### The Qibla, second pass
+
+- **The Kaaba sat at an angle.** It was counter-rotated against the pointer's own `bearing` but
+  not against the rose's rotation, so it stayed upright relative to a card that was itself
+  tilted. Cancelling the whole screen rotation fixes it; a cube that is not sitting flat does not
+  read as a building. Asserted now by reading the element's real screen matrix rather than by
+  looking at it.
+- **The opening screen is one button.** The paragraph explaining that the location never leaves
+  the phone was true, is still true, and was not being read by anybody standing in a prayer hall
+  — the browser's own prompt asks the same question a second later, in words the reader already
+  trusts.
+- **It asks again every visit.** The bearing was in localStorage for a month, on the reasoning
+  that a congregation should not be re-prompted every Friday. Hasan overruled it, and he is right
+  for a reason that is not about accuracy: a stored bearing is a fact about where somebody was,
+  sitting in a browser store for whoever next picks up the phone, and this app has spent a lot of
+  effort not writing that down anywhere else. It is a module-level variable now — so moving
+  between tabs does not re-ask within one visit, and the page dying takes it with it, which is
+  what "leaving the app" means for an installed PWA.
+
+### Test count
+
+Server 373, web 163.

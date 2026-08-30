@@ -92,7 +92,7 @@ export function ReminderSettings({ secure, jumuah }: { secure: boolean; jumuah: 
       <section className="set-card">
         <Head />
         <p className="set-lead">
-          A quiet reminder on this phone before each jamāʿah, and the occasional notice from the masjid. Only this
+          A quiet reminder on this phone before each Iqamah, and the occasional notice from the masjid. Only this
           device, and you can turn any of it off whenever you like &mdash; the masjid never sees who signed up.
         </p>
         {error && <p className="form-error">{error}</p>}

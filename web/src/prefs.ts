@@ -35,6 +35,15 @@ export interface Prefs {
    * dashboard, and deliberately absent from `appearancePatch` for that reason.
    */
   sky: SkyMode;
+  /**
+   * The small buzz on a tap, a swipe, and when the Qibla lines up.
+   *
+   * On by default, and offered as a switch only where there is a vibrator to switch off — on an
+   * iPhone the whole feature is inert (see haptics.ts) and a control for it would be a lie. The
+   * PHONE's own vibration setting still wins over this one and is not readable from here, which
+   * is right: somebody who silenced their handset has already answered.
+   */
+  haptics: boolean;
   wallpaper: string;
   /** Optional custom wallpaper image URL — overrides the preset when set. */
   wallpaperImage: string;
@@ -62,7 +71,7 @@ export interface Prefs {
 export const OPENED_FROM_DASHBOARD = typeof location !== 'undefined' && /(?:^|[#&])omos=/.test(location.hash);
 
 const KEY = 'omc-prefs';
-const DEFAULTS: Prefs = { theme: 'system', sky: 'period', wallpaper: 'aurora', wallpaperImage: '', accent: 'cyan', followOmos: false };
+const DEFAULTS: Prefs = { theme: 'system', sky: 'period', haptics: true, wallpaper: 'aurora', wallpaperImage: '', accent: 'cyan', followOmos: false };
 
 /** Accent palette — mirrors OpenMasjidOS so the app matches the dashboard's accent.
  *  cyan is the tokens' built-in primary, so selecting it just clears the overrides. */
@@ -210,7 +219,7 @@ function load(): Prefs {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...DEFAULTS };
     const stored = JSON.parse(raw) as Partial<Prefs>;
-    return { ...DEFAULTS, ...stored, sky: normSky(stored.sky) };
+    return { ...DEFAULTS, ...stored, sky: normSky(stored.sky), haptics: stored.haptics !== false };
   } catch {
     return { ...DEFAULTS };
   }

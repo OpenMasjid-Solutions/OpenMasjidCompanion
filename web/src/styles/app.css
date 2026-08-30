@@ -2004,3 +2004,49 @@ h1, h2, h3, p { margin: 0; }
 .qibla__read .card-actions { justify-content: center; }
 .qibla__read .btn { margin-inline: auto; }
 
+
+/* ── The masjid's own details (musalli Settings) ─────────────────────────────
+ *
+ * Rows a thumb can hit rather than a definition list: every one of these is a link, and the
+ * whole row is the target because a phone number set in body text is a 14px tap area.
+ */
+.contact { list-style: none; margin-block-start: 0.8rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.contact__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  /* 44px of height at the default font size, which is the smallest target anybody should have
+     to hit on a phone with one hand. */
+  min-block-size: 2.75rem;
+  padding: 0.55rem 0.5rem;
+  margin-inline: -0.5rem;
+  border-radius: 0.6rem;
+  color: var(--ink-scene);
+  text-decoration: none;
+}
+a.contact__row:hover { background: color-mix(in srgb, var(--ink-scene) 8%, transparent); }
+a.contact__row:active { background: color-mix(in srgb, var(--ink-scene) 14%, transparent); }
+/* The address is not a link — see contactLinks.ts for why the map is a separate, deliberate
+   press — so it must not look like one or feel like one under a finger. */
+.contact__row--static { cursor: default; }
+.contact__row svg { flex: none; margin-block-start: 0.15rem; color: var(--coral); }
+.contact__val {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  min-width: 0;
+  /* A long email or a hyphenated domain has to wrap rather than push the card wider than the
+     phone. `anywhere`, because there is no space in an address to break at. */
+  overflow-wrap: anywhere;
+}
+/* The lines the masjid typed, kept. This is the one field somebody may copy onto an envelope. */
+.contact__val--address { white-space: pre-line; }
+
+.contact__socials { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-block-start: 0.9rem; }
+/* The chips here are links, not switches. Same shape — they are the same size of thing to a
+   thumb — but they must not inherit the pressed look, which would say "on". */
+.contact__socials .chip { text-decoration: none; }
+
+/* The Qibla's opening screen is one button and nothing else (Hasan, 2026-08-30), so the card
+   around it should not look like a card with something missing. */
+.qibla__start { text-align: center; }
+.qibla__start .btn { margin-block-start: 0; margin-inline: auto; }

@@ -209,7 +209,7 @@ test('an adhan notification says adhan, and a zero lead does not say "in 0 minut
   assert.match(notificationFor(base, f, 15, '').body, /Adhan/);
   const atJamaah = notificationFor({ ...base, kind: 'iqamah', hhmm: '05:30' }, f, 0, '');
   assert.doesNotMatch(atJamaah.body, /0 minutes/);
-  assert.match(atJamaah.body, /Jamāʿah/);
+  assert.match(atJamaah.body, /Iqamah/);
 });
 
 // ── Privacy ──────────────────────────────────────────────────────────────────
@@ -658,7 +658,7 @@ test('A REAL PUSH IS SIGNED, ENCRYPTED, AND CARRIES NO PLAINTEXT', { skip: haveO
     const outcome = await sendOne(
       vapid,
       { endpoint: `https://127.0.0.1:${port(service)}/push/abc`, ...keys },
-      { title: 'Maghrib — Masjid An-Noor', body: 'Jamāʿah in 15 minutes — 7:50 PM', tag: '2026-08-24:maghrib:iqamah', url: 'https://omos.example.org/companion' },
+      { title: 'Maghrib — Masjid An-Noor', body: 'Iqamah in 15 minutes — 7:50 PM', tag: '2026-08-24:maghrib:iqamah', url: 'https://omos.example.org/companion' },
       'https://omos.example.org',
     );
 

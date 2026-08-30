@@ -13,7 +13,7 @@
  * this code reasons about, and every link goes back through `withBase`.
  */
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, Clock3, Compass, Github, HandCoins, Settings2 } from 'lucide-react';
+import { Clock3, Compass, Github, HandCoins, Settings2 } from 'lucide-react';
 import { api, type AppInfo } from './api';
 import { ONBOARDING_PATH, stripBase, withBase } from './base';
 import { useAppearanceSync, usePrefs, setThemeOverride } from './prefs';
@@ -21,6 +21,7 @@ import { surfaceFor } from './periodTheme';
 import { jumuahLabels, type PeriodKey } from './prayerTimes';
 import { useInstall, useServiceWorker } from './pwa';
 import { useTelemetry } from './telemetry';
+import { startButtonHaptics } from './haptics';
 import { InstallPrompt, UpdateBanner } from './Install';
 import { Scene } from './ui';
 import { MasjidHeader, Today, type Timetable } from './Today';
@@ -29,7 +30,6 @@ import { Onboarding } from './Onboarding';
 import { Settings } from './Settings';
 import { Qibla } from './Qibla';
 import { TabBar, type Tab } from './Tabs';
-import { blockerFor, readEnv } from './reminders';
 
 /**
  * The admin panel is LAZY, and this line is the reason the musalli bundle stays small.
@@ -131,6 +131,11 @@ export function App(): JSX.Element {
     window.addEventListener('popstate', on);
     return () => window.removeEventListener('popstate', on);
   }, []);
+
+  // One delegated listener for every button, tab and chip in the app — see haptics.ts for why
+  // it is not forty onClick handlers, and for the fact that none of it does anything on an
+  // iPhone.
+  useEffect(startButtonHaptics, []);
 
   useEffect(() => {
     void api.get<AppInfo>('/api/app').then((r) => {
@@ -242,17 +247,12 @@ export function App(): JSX.Element {
           thing scrolled to. Fixed, so it does not shove the page down under a reading thumb. */}
       {!isAdmin && updateReady && <UpdateBanner onApply={applyUpdate} />}
       <div className={showTabs ? 'shell shell--tabs' : 'shell'}>
-        {!isAdmin && !bare && (
-          <MasjidHeader
-            name={times?.masjid?.name || 'Prayer times'}
-            /* The bell is a SHORTCUT to the reminders, not a second copy of them: the switches
-               themselves live in Settings, where somebody looks for a setting. It is here
-               because notifications are the one feature a musalli has to find on purpose, and
-               a tab labelled "Settings" is not where anyone looks for a bell. Hidden on the
-               Settings tab itself, where it would point at the screen already open. */
-            action={route === '/settings' ? undefined : <NotifyShortcut secure={secure} onOpen={() => navigate('/settings')} />}
-          />
-        )}
+        {/* No action in the header any more. The bell that used to sit here was a shortcut to
+            the reminder switches, and it was removed on 2026-08-30: with a permanent Settings
+            tab at the bottom of every screen, a second door to the same room is a second thing
+            to explain, and the top-right of a prayer-times page is the most valuable corner it
+            has. */}
+        {!isAdmin && !bare && <MasjidHeader name={times?.masjid?.name || 'Prayer times'} />}
 
         {route === '/' &&
           (times ? (
@@ -267,7 +267,15 @@ export function App(): JSX.Element {
 
         {route === '/qibla' && <Qibla secure={secure} />}
 
-        {route === '/settings' && <Settings secure={secure} jumuah={jumuah} installed={install.installed} />}
+        {route === '/settings' && (
+          <Settings
+            secure={secure}
+            jumuah={jumuah}
+            installed={install.installed}
+            contact={info?.contact ?? null}
+            masjidName={times?.masjid?.name || info?.installName || ''}
+          />
+        )}
 
         {route === '/onboarding' && (
           <Onboarding install={install} secure={secure} name={info?.installName || times?.masjid?.name || 'Prayer times'} />
@@ -304,24 +312,7 @@ export function App(): JSX.Element {
   );
 }
 
-/**
- * The bell in the header.
- *
- * Hidden entirely when it could do nothing at all — no secure context, or a browser with no
- * notification API — because a bell that opens a screen saying "your browser can't" is worse
- * than no bell. `ios-not-installed` and `denied` DO keep it: both have a next step, and a
- * musalli wondering why they get no reminders deserves to be able to find out why.
- */
-function NotifyShortcut({ secure, onOpen }: { secure: boolean; onOpen: () => void }): JSX.Element | null {
-  const [env] = useState(readEnv);
-  const blocker = blockerFor({ secure, ...env });
-  if (blocker === 'insecure' || blocker === 'unsupported') return null;
-  return (
-    <button className="icon-btn" onClick={onOpen} aria-label="Prayer reminders">
-      <Bell size={19} aria-hidden="true" />
-    </button>
-  );
-}
+
 
 function NotFound({ onHome }: { onHome: (e: React.MouseEvent) => void }): JSX.Element {
   return (

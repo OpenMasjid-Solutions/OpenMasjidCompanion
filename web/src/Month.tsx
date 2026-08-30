@@ -17,6 +17,7 @@
 import { useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useSwipe } from './swipe';
+import { haptic } from './haptics';
 import {
   type Day,
   type Masjid,
@@ -73,18 +74,25 @@ export function Month({
    *  same action. Held here rather than passed down: only this component knows which of its own
    *  controls was used. */
   const [slide, setSlide] = useState<'next' | 'prev' | null>(null);
+  /** Returns whether the month actually changed — a swipe towards a month the timetable does
+   *  not cover is understood and refused, and the haptic below must not confirm it. */
   const step = (by: number) => {
-    if (!canGo(by)) return;
+    if (!canGo(by)) return false;
     setSlide(by === 1 ? 'next' : 'prev');
     onAnchor(shift(by));
+    return true;
   };
 
   // The same gesture as the day view, because a month grid is the same kind of thing to a
   // thumb. `canGo` is checked inside `step` rather than by not binding the handler: a swipe
   // into a month with no times should do nothing, not scroll the page sideways.
   const swipe = useSwipe(
-    () => step(1),
-    () => step(-1),
+    () => {
+      if (step(1)) haptic('select');
+    },
+    () => {
+      if (step(-1)) haptic('select');
+    },
   );
 
   return (

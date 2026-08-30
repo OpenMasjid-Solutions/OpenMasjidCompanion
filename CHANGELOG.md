@@ -14,6 +14,34 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Added
 
+- **Your masjid's contact details in the app.** Add a phone number, email, address, website and
+  links to WhatsApp, Instagram, Facebook, X, YouTube or Telegram in the admin panel, and they
+  appear at the top of **Settings** for everyone. Fill in as much or as little as you like &mdash;
+  a phone number on its own is a perfectly good answer, and anything left blank simply isn't
+  shown. The address gets a **Directions** button, the phone number dials, and the email opens a
+  message.
+
+- **A small buzz when you tap.** Tabs, buttons, swiping between days and months, and &mdash; the
+  useful one &mdash; the moment the Qibla lines up, so you can feel it without looking at the
+  screen. There's a switch to turn it off in Settings. **This only works on Android**: iPhones
+  give web apps no way to vibrate at all, so nothing on screen ever depends on it.
+
+### Changed
+
+- **Reminders now say "Iqamah"** rather than "Jamāʿah", matching the column heading on your own
+  timetable. One word for one time.
+- **The Qibla asks where you are each time you open the app**, instead of remembering it. Moving
+  between tabs won't ask again, and nothing about your location is stored anywhere.
+- **The Qibla screen opens with just the button.** The paragraph explaining that your location
+  stays on your phone is gone &mdash; it's still true, and your browser is about to ask you the
+  same question in its own words.
+- **The bell has gone from the top of the screen.** Reminders live in **Settings**, which is
+  always one tap away at the bottom.
+
+### Fixed
+
+- **The Kaaba on the compass sat at an angle** once you turned the phone, instead of upright.
+
 - **Qibla.** A new tab showing which way Makkah is from wherever you are standing &mdash; the
   direction in degrees, in words, and how far away the Kaaba is, with a dial you can line up.
   Tap **Use my compass** and the dial follows your phone, telling you which way to turn until it

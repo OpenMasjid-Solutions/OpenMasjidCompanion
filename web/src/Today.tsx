@@ -37,6 +37,7 @@ import {
 } from './prayerTimes';
 import { Month } from './Month';
 import { useSwipe } from './swipe';
+import { haptic } from './haptics';
 import { MasjidLogo, Note } from './ui';
 
 export interface Timetable {
@@ -105,20 +106,35 @@ export function Today({ data, onPeriod }: { data: Timetable; onPeriod: (period: 
     if (masjid) onPeriod(period);
   }, [period, masjid, onPeriod]);
 
+  /** Returns whether it actually moved. The window has ends, and at one of them a swipe is a
+   *  gesture that was understood and refused — which is a different thing to confirm than a day
+   *  changing, and the haptic below is why the difference now has to be reported. */
   const step = useCallback(
     (by: 1 | -1) => {
-      setOffset((o) => {
-        const next = Math.min(data.days.length - 1, Math.max(0, todayIndex + o + by)) - todayIndex;
-        if (next !== o) setSlide(by === 1 ? 'next' : 'prev');
-        return next;
-      });
+      const next = Math.min(data.days.length - 1, Math.max(0, todayIndex + offset + by)) - todayIndex;
+      if (next === offset) return false;
+      setSlide(by === 1 ? 'next' : 'prev');
+      setOffset(next);
+      return true;
     },
-    [data.days.length, todayIndex],
+    [data.days.length, todayIndex, offset],
   );
 
+  /**
+   * A swipe that moves a day buzzes; one that runs into the end of the window does not.
+   *
+   * Here rather than inside `useSwipe`, because only the caller knows whether anything happened
+   * — and a buzz for a swipe that changed nothing is a confirmation of nothing. The arrows do
+   * not do this: they are buttons, and the delegated listener in haptics.ts has already
+   * confirmed the press.
+   */
   const swipe = useSwipe(
-    useCallback(() => step(1), [step]),
-    useCallback(() => step(-1), [step]),
+    useCallback(() => {
+      if (step(1)) haptic('select');
+    }, [step]),
+    useCallback(() => {
+      if (step(-1)) haptic('select');
+    }, [step]),
   );
 
   if (!masjid || !day) return <NotSetUp />;

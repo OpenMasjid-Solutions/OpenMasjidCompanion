@@ -177,10 +177,26 @@ test('/api/app carries nothing secret', async () => {
   const data = JSON.parse(body).data as Record<string, unknown>;
   assert.deepEqual(
     Object.keys(data).sort(),
-    ['basePath', 'embedded', 'installName', 'name', 'publicUrl', 'remote', 'version'],
+    ['basePath', 'contact', 'embedded', 'installName', 'name', 'publicUrl', 'remote', 'version'],
     'the public bootstrap is an explicit, reviewed list — a new key here reaches every musalli',
   );
   // `remote` decides whether the page offers to be installed and to send notifications. It is
   // three booleans about this app's own address; nothing in it is about a person.
   assert.deepEqual(Object.keys(data.remote as object).sort(), ['configured', 'enabled', 'secure']);
+  /**
+   * `contact` is the masjid's own PUBLIC information — the phone number and links it would print
+   * on a poster — and it is here rather than behind a route of its own because every page
+   * already fetches this and a second request for ten short strings would be a second thing to
+   * be slow on a bad connection.
+   *
+   * Its shape is pinned for the same reason the outer list is. This is the one thing in the
+   * bootstrap that an admin can type freely into, so a field appearing here that was not
+   * intended to be public would be a field a masjid entered for their own reference and found
+   * on every phone in the congregation.
+   */
+  assert.deepEqual(
+    Object.keys(data.contact as object).sort(),
+    ['address', 'email', 'facebook', 'instagram', 'phone', 'telegram', 'website', 'whatsapp', 'x', 'youtube'],
+    'every contact field is meant to be read by strangers — check that before adding one',
+  );
 });
