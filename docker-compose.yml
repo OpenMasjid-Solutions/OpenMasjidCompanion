@@ -28,7 +28,7 @@ services:
     #
     # On `dev` this line is the exact prerelease tag with no digest. Never carry that
     # form into main.
-    image: ghcr.io/openmasjid-solutions/openmasjidcompanion:0.1.0
+    image: ghcr.io/openmasjid-solutions/openmasjidcompanion:0.1.0@sha256:a3ec1be828b7a4944c14039d8017b15b5ac101b7926faecae1e23af785e8846f
     restart: unless-stopped
     environment:
       PORT: "8080"
