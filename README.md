@@ -15,11 +15,18 @@
 
 ---
 
-> **Status: early development, dev channel only.** This app is listed on the OpenMasjid app
-> catalog's **Development** channel and is deliberately **not** on the stable channel. To try it,
-> set **OpenMasjidOS → Settings → Update Channel → Development**, then install it from the App
-> Store. It is being built one working slice at a time; see [`CHANGELOG.md`](CHANGELOG.md) for
-> what is actually in a build today. Nothing here is ready for a masjid's congregation yet.
+> **Status: v0.1.0 — the first release.** The image is built, published and tagged. The catalog
+> entry that would put it on the **stable** channel is
+> [proposed, not merged](https://github.com/OpenMasjid-Solutions/OpenMasjidAPPS/pull/29) — a
+> catalog maintainer runs that release — so for now install it from the **Development** channel:
+> **OpenMasjidOS → Settings → Update Channel → Development**, then the App Store.
+> [`CHANGELOG.md`](CHANGELOG.md) is what is actually in a build today.
+>
+> **Before you install, one honest caveat.** The prayer times come from OpenMasjid Display's
+> `timetable` capability, and that capability is on Display's **dev** channel — it has not landed
+> in a stable Display release yet (stable is v0.69.0). On an all-stable box Companion installs and
+> opens, but it has nothing to read and says so plainly rather than inventing times. To see it
+> work end to end, put **both** apps on the Development channel.
 
 **OpenMasjid Companion** is an app for
 [OpenMasjidOS](https://github.com/OpenMasjid-Solutions/OpenMasjidOS) that puts the masjid in a
@@ -28,6 +35,11 @@ on their phone, and can add it to their home screen like an app — no app store
 to sign up for.
 
 It runs in **one container** on the masjid's own machine, alongside the rest of OpenMasjidOS.
+
+<p align="center">
+  <img src="screenshots/1.svg" width="900"
+       alt="OpenMasjid Companion on a phone: a masjid's own prayer timetable, with Adhan and Iqamah columns, a day arc and a countdown to the next prayer." />
+</p>
 
 ## Acknowledgements
 
@@ -104,16 +116,33 @@ May Allah reward everyone who made it possible.
   **[OpenMasjid Display](https://github.com/OpenMasjid-Solutions/OpenMasjidDisplay)**, so the times
   on a phone are the same times that are on the wall — including any Iqamah change you have
   scheduled, on the day it takes effect.
-- **A countdown to the next jamā'ah**, with Jumu'ah and the Hijri date, laid out to be read
-  one-handed in a dark prayer hall.
+- **A countdown to the next Iqamah**, with Jumu'ah, the Hijri date, and a page that looks like the
+  time of day — dark before Fajr, light by mid-morning, dark again after Maghrib. Laid out to be
+  read one-handed in a dark prayer hall.
 - **Works with no signal.** The last timetable it fetched stays on the phone, and it says plainly
   when it was last updated rather than guessing.
 - **Optional prayer reminders.** A musalli chooses which prayers to be notified about, at the Adhan
   or a few minutes before the Iqamah. Per device, per person. The masjid sees a count, never a list.
+- **Announcements.** Type a notice — a funeral, a closure, a changed Iqamah — and it reaches every
+  phone that has not turned notices off, with your masjid's name on it. It asks you to confirm
+  first, because it cannot be taken back. One can also be set to send itself: once on a date, every
+  day, or on chosen days at a chosen time, on your masjid's own clock.
+- **A Qibla compass**, from the phone's own location — which never leaves the phone and is never
+  stored.
 - **Your appeals, in the app.** Paste the share link of any appeal from
   **[OpenMasjid Donations](https://github.com/OpenMasjid-Solutions/OpenMasjidDonations)** and it
   appears as a tile with its progress. Tapping **Donate** opens your Donations page to give.
+- **Your contact details**, at the top of Settings — phone, email, address, website, and links to
+  WhatsApp, Instagram, Facebook, X, YouTube or Telegram. Fill in as much or as little as you like;
+  anything blank is simply not shown.
 - **A QR code and a printable poster**, generated for you, pointing at your real public address.
+  The QR points at a page that walks people through installing it, which knows which phone and
+  browser is reading it — including what to do when *Add to Home Screen* is missing from an
+  iPhone's Share sheet, and what to do if the link was opened inside WhatsApp or Instagram.
+- **"Who's using it"** in the admin panel: how many phones opened the app in the last month, iPhone
+  or Android, and how many opened it from their **home screen** rather than a browser — the number
+  that tells you whether the poster worked. It counts phones, never people, and forgets after 90
+  days.
 
 ### Two things it deliberately does not do
 
@@ -145,8 +174,10 @@ it never takes the app down and it never invents anything.
 ## What it needs
 
 - **OpenMasjidOS** with the app installed from the catalog.
-- **OpenMasjid Display**, with a timetable set up and the `timetable` capability available (Display
-  v0.70.0 or newer). Without it, Companion has no prayer times and says so.
+- **OpenMasjid Display**, with a timetable set up and the `timetable` capability available. That
+  capability ships in **Display v0.70.0**, which is **not released yet** — it is on Display's dev
+  channel today, and stable Display is v0.69.0. Without it Companion has no prayer times and says
+  so; it never falls back to calculating them.
 - **Remote access turned on** in OpenMasjidOS → Settings → Remote access, with this app shared.
   This one is not optional: an installable app, push notifications and a QR code all need a public
   HTTPS address, and none of them can work from an address inside your building. Until it is on,
@@ -169,7 +200,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md). In short:
 
 ```bash
 cd server && npm ci && npm run build && npm run typecheck:tests && npm test
-cd web    && npm ci && npm run build && npm audit --audit-level=high
+cd web    && npm ci && npm run build && npm test && npm audit --audit-level=high
 ```
 
 All development happens on the **`dev`** branch; `main` is what masjids install.

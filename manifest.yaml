@@ -20,16 +20,34 @@ description: |
   - **Your timetable, not a calculated one** — today, this week and this month come
     straight from **OpenMasjid Display**, so the times on a phone are the same times
     that are on the wall, including any Iqamah change you have scheduled.
-  - **A countdown to the next jamā'ah**, with Jumu'ah and the Hijri date, in a calm
-    layout that is easy to read one-handed at Fajr.
+  - **A countdown to the next Iqamah**, with Jumu'ah, the Hijri date, and a page
+    that looks like the time of day — dark before Fajr, light by mid-morning, dark
+    again after Maghrib. Calm, and easy to read one-handed at Fajr.
   - **Works with no signal** — the last timetable it fetched stays on the phone, and
     it says plainly when it was last updated rather than guessing.
   - **Optional prayer reminders** — a musalli can choose which prayers to be
     notified about, at the Adhan or a few minutes before the Iqamah. It is their
     phone's choice, per device, and you never see who subscribed — only how many.
+    They come from your own box, with no outside notification service involved.
+  - **Announcements** — type a notice, for a funeral, a closure or a changed Iqamah,
+    and it reaches every phone that has not turned notices off, with your masjid's
+    name on it. You confirm first, because it cannot be taken back. One can also be
+    set to send itself: once on a date, every day, or on chosen days at a chosen
+    time, on your masjid's own clock.
+  - **A Qibla compass**, from the phone's own location — which never leaves the
+    phone and is never stored.
   - **Your appeals, in the app** — paste the share link of any appeal from
     **OpenMasjid Donations** and it appears as a tile with its progress. Tapping
     **Donate** opens your Donations page to give; this app never handles money.
+  - **Your contact details** at the top of Settings — phone, email, address, website
+    and links to WhatsApp, Instagram, Facebook, X, YouTube or Telegram. Fill in as
+    much or as little as you like; anything blank is simply not shown.
+  - **A QR code and a printable poster.** The code points at a page that walks people
+    through installing it, and that page knows which phone and browser is reading it
+    — including what to do when *Add to Home Screen* is missing from an iPhone's
+    Share sheet. The admin panel then tells you how many phones opened the app and
+    how many kept it on their home screen, which is how you know the poster worked.
+    It counts phones, never people, and forgets after 90 days.
 
   **Before it can reach a phone, turn on Remote access.** This app is only useful
   over the internet — a QR code pointing at an address inside your building works

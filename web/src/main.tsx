@@ -3,6 +3,7 @@
 
 import { createRoot } from 'react-dom/client';
 import { App, dashboardLanding, routeOf } from './App';
+import { Boundary } from './Boundary';
 import { OPENED_FROM_DASHBOARD, prefsStore } from './prefs';
 import { withBase } from './base';
 import './styles/index.css';
@@ -19,4 +20,10 @@ if (landing) history.replaceState(null, '', withBase(landing) + location.hash);
 // app never flashes the wrong theme at somebody in a dark prayer hall.
 prefsStore.hydrate();
 
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(
+  // A component that throws unmounts the whole tree and leaves a white screen — on an installed
+  // PWA, without even an address bar to reload from. See Boundary.tsx.
+  <Boundary>
+    <App />
+  </Boundary>,
+);

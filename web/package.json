@@ -7,12 +7,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "node --import tsx --test src/prayerTimes.test.ts src/periodTheme.test.ts src/swipe.test.ts src/pwa.test.ts src/arc.test.ts src/base.test.ts src/landing.test.ts src/platform.test.ts src/telemetry.test.ts src/admin/scheduleText.test.ts src/bearing.test.ts src/contactLinks.test.ts src/testFileCoverage.test.ts",
+    "test": "node --import tsx --test src/prayerTimes.test.ts src/periodTheme.test.ts src/swipe.test.ts src/pwa.test.ts src/arc.test.ts src/base.test.ts src/landing.test.ts src/platform.test.ts src/telemetry.test.ts src/admin/scheduleText.test.ts src/bearing.test.ts src/contactLinks.test.ts src/Boundary.test.ts src/testFileCoverage.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
-    "motion": "^11.15.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

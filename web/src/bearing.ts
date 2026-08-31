@@ -180,8 +180,3 @@ export function rememberForVisit(bearing: number, km: number): void {
 export function recallVisit(): { bearing: number; km: number } | null {
   return visit;
 }
-
-/** Test-only, and used by nothing else: module state outlives a test file's cases. */
-export function clearVisit(): void {
-  visit = null;
-}

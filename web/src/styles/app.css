@@ -1557,6 +1557,23 @@ h1, h2, h3, p { margin: 0; }
   color: var(--ink-scene-muted);
 }
 .set-card .btn { margin-block-start: 0.9rem; }
+
+/* The crash screen's expander (Boundary.tsx). Closed, quiet, and scrollable rather than
+   endless — a component stack is long and must not push the Reload button off the screen. */
+.crash-details { margin-block-start: 1rem; font-size: 0.85rem; color: var(--color-ink-muted); }
+.crash-details > summary { cursor: pointer; padding-block: 0.3rem; }
+.crash-details > pre {
+  margin-block-start: 0.5rem;
+  max-height: 11rem;
+  overflow: auto;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--ink-scene) 8%, transparent);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .set-card .notify__group:first-of-type { margin-block-start: 0.95rem; }
 
 /* One question, three answers. Full-width rows rather than chips, because each one needs a

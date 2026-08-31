@@ -95,7 +95,7 @@ commercial/dual licenses; you keep your copyright. If you cannot accept the reli
 
 ```bash
 cd server && npm ci && npm run build && npm test
-cd web    && npm ci && npm run build
+cd web    && npm ci && npm run build && npm test
 ```
 
 For a live loop, run `cd server && npm run dev` alongside `cd web && npm run dev` — the Vite dev
@@ -113,14 +113,18 @@ Everything below is what CI runs, so running it first saves a round trip:
 
 ```bash
 cd server && npm run build && npm run typecheck:tests && npm test
-cd web    && npm run build && npm audit --audit-level=high
+cd web    && npm run build && npm test && npm audit --audit-level=high
 ```
 
 - `npm run build` (server) compiles, but **deliberately excludes `*.test.ts`** — tests are never
   emitted into the image. `npm run typecheck:tests` is what typechecks them; the runner (tsx)
   strips types without checking, so without it a broken test can still pass.
-- **A new test file must be added to the `test` script** in `server/package.json`. It is an
-  explicit list, not a glob — and a test that quietly never runs is worse than no test, because it
-  is trusted. `testFileCoverage.test.ts` fails the suite if you forget.
+- **A new test file must be added to the `test` script** — in `server/package.json` or
+  `web/package.json`, whichever half it belongs to. Both are explicit lists, not globs, and a test
+  that quietly never runs is worse than no test because it is trusted. Each half has a
+  `testFileCoverage.test.ts` that fails the suite if you forget, and also if the list names a file
+  that no longer exists.
 - `web`'s `npm run build` is `tsc --noEmit && vite build`, so it typechecks as well as bundles.
+  `noUnusedLocals` is on, so an import left behind by a deletion fails the build rather than
+  riding along.
 - New behaviour wants a test. The server suite is plain `node:test` — no framework to learn.

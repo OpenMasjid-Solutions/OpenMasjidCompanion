@@ -10,7 +10,7 @@ import { config, ssoConfigured } from './config';
 import { makeLog } from './logger';
 import { Store } from './store';
 import { buildServer, makePush } from './server';
-import { startSitePolling } from './site';
+import { startSitePolling, stopSitePolling } from './site';
 import { TimetableService } from './timetableService';
 
 const log = makeLog('main');
@@ -43,6 +43,7 @@ async function main(): Promise<void> {
     log.info('shutting down');
     timetable.stop();
     push.scheduler.stop();
+    stopSitePolling();
     store.close();
     app.close().finally(() => setTimeout(() => process.exit(code), 200));
     // Hard backstop in case close() hangs, so the container actually cycles.

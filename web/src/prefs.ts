@@ -19,7 +19,7 @@
  * page defaults to following their phone's own light/dark setting, which is what "dark
  * room at Fajr" actually means in practice.
  */
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { api } from './api';
 import type { SkyMode } from './periodTheme';
 
@@ -272,21 +272,6 @@ export function usePrefs(): Prefs {
   return useSyncExternalStore(prefsStore.subscribe, prefsStore.get, prefsStore.get);
 }
 
-/** `prefers-reduced-motion`, live. Every animated thing in this app asks before moving —
- *  a countdown that ticks is the one piece of motion a musalli cannot opt out of by not
- *  scrolling, so it has to respect this. */
-export function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() =>
-    typeof window === 'undefined' ? false : window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const on = () => setReduced(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
-  return reduced;
-}
 
 /**
  * Follow OpenMasjidOS's appearance live, through our own server's relay.

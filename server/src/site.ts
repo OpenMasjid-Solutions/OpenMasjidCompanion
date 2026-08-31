@@ -133,19 +133,3 @@ export function stopSitePolling(): void {
   if (timer) clearInterval(timer);
   timer = null;
 }
-
-/** Tests only, so one case cannot leak into the next. */
-export function resetSiteForTests(next?: Partial<SiteState>): void {
-  stopSitePolling();
-  state = {
-    enabled: false,
-    domain: '',
-    publicUrl: '',
-    basePath: '',
-    configured: ssoConfigured(),
-    checkedAt: 0,
-    ok: false,
-    ...next,
-  };
-  setBasePath(state.basePath);
-}

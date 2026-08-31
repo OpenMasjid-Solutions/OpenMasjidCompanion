@@ -1497,3 +1497,80 @@ release. It now asserts the thing that actually matters, and there are three leg
 - No `Build image` run exists for the digest-pin commit, so the pin cannot have been invalidated
   by the commit that created it.
 - `verify-release-tag.yml` then asserted the same thing independently on the pushed tag.
+
+
+## The 0.2.0 cleanup — an audit, and the failure with no screen behind it
+
+A sweep across documentation, security, dead code and bugs, asked for after 0.1.0 shipped.
+Most of it found nothing, which is worth recording as plainly as what it did find.
+
+### The error boundary, and why its absence was the real finding
+
+This app has a designed answer for every upstream failure it can name: Display unreachable, an
+appeal that 404s, remote access off, a timetable too stale to notify from. It had none for the
+failure it cannot name — a component that throws while rendering. React answers that by
+unmounting the whole tree, so the reader gets a white page: no times, no explanation, and on an
+installed PWA no address bar to reload from.
+
+That is the second-worst thing this app can do to somebody, after showing a wrong prayer time,
+and it was the only failure mode in the app with no screen behind it. `Boundary.tsx` is that
+screen. It is deliberately not styled as an error, for the same reason `Note` is not: a red
+panel on a prayer-times page tells a reader the masjid is broken, when what is true is only
+that this app could not draw a page.
+
+It reports nowhere. There is no error-reporting endpoint here and adding one would quietly turn
+a page with no visitor log into a page with one (§4). The details go to the browser console and
+to a collapsed expander, for whoever is being asked "what does it say?" over the phone.
+
+What is tested is `crashDetail`: JavaScript lets any value be thrown, including a string, a
+symbol, a bigint or an object with a cyclic reference, and a crash handler that assumes it was
+handed an `Error` turns one broken page into an unrecoverable one. The boundary itself needs a
+DOM the web suite does not have; the part that can be got wrong without a browser is pinned.
+
+### `motion` was a dependency of the documentation, not of the app
+
+CLAUDE.md §12 promised "Motion (the library) for gentle entrances and the countdown tick" and
+§14 listed it among the web dependencies. Nothing imported it — the only occurrence of the word
+in `web/src` was the English word in a comment. It was declared, installed, locked, and
+tree-shaken straight back out of every build.
+
+Alongside it, `prefs.ts` exported a `useReducedMotion` hook that nothing called, duplicating
+in JavaScript what the stylesheet already does in eleven `@media (prefers-reduced-motion: reduce)`
+blocks. Both are gone and §12 now describes the mechanism that actually runs. The bundle came
+out byte-identical, which is the proof the dependency was never in it.
+
+### What the audit did not find, recorded so it is not re-run from scratch
+
+- **No vulnerabilities**, either half, at `--audit-level=high`.
+- **No missing authorisation.** Every `/api/admin/*` route carries `requireAdmin`; verified again
+  against a running container, where `/api/admin/status` answers 401 unauthenticated.
+- **No injection.** The one interpolated SQL identifier (`analytics.tally`) is a private method
+  taking a three-literal union, with a runtime allow-list behind the type. No `innerHTML`, no
+  `eval`, nowhere.
+- **No secret in a log.** The VAPID public key is truncated, push endpoints go through
+  `safeEndpoint` (host + an 8-character hash), and the private key is never touched.
+- **The missing CSP and `X-Frame-Options` are deliberate**, not an oversight. OpenMasjidOS embeds
+  its apps in a frame — Donations documents the same absence for the same reason — and the
+  session cookie is `SameSite=Lax`, which is what actually closes the clickjacking route.
+- **The container is hardened as §13 asks and Donations is not**: `user: "1000:1000"`,
+  `read_only: true`, `cap_drop: ALL`, `no-new-privileges`, `tmpfs: /tmp`. Confirmed at runtime:
+  `docker exec … id` reports uid 1000.
+
+### A documentation bug that mattered more than it looked
+
+CONTRIBUTING said "everything below is what CI runs, so running it first saves a round trip",
+and then listed a web block with no `npm test` in it. CI has run `web`'s 165 tests all along.
+Anyone following the file exactly would have pushed without running them and discovered the
+failure from a red run — which is precisely the round trip the sentence promised to save. The
+same omission was in README and CLAUDE.md §16. All three now match `checks.yml`.
+
+### The dependency that is not ours to fix
+
+`display/timetable` — the capability this app's entire purpose rests on — ships in **Display
+v0.70.0**, which is not released. Stable Display is v0.69.0, and the capability is on Display's
+dev branch. Companion on an all-stable box installs, opens, and honestly reports it has no
+timetable, which is the designed degraded state working exactly as intended and not a bug.
+
+It does mean the two stable releases want ordering, and the order is Display first. That is a
+cross-repo fact, so it is written down here and in the README and flagged to Hasan, and it is
+not fixed from this repo (§2).

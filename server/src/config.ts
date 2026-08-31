@@ -70,5 +70,3 @@ export const config = {
 export function ssoConfigured(): boolean {
   return !!config.omosBaseUrl && !!config.omosAppSecret;
 }
-
-export type Config = typeof config;

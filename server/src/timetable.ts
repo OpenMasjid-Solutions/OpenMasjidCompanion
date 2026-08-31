@@ -26,7 +26,6 @@ import { makeLog } from './logger';
 const log = makeLog('timetable');
 
 export const PRAYER_KEYS = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
-export type PrayerKey = (typeof PRAYER_KEYS)[number];
 
 /** 24-hour wall clock, always, whatever `hourCycle` says — that field is presentation. */
 const HHMM = z
@@ -109,8 +108,6 @@ export const ListSchema = z.object({
 });
 
 export type TimetableFeed = z.infer<typeof FeedSchema>;
-export type TimetableDay = z.infer<typeof DaySchema>;
-export type TimetableSummary = z.infer<typeof ListSchema>['timetables'][number];
 
 /** Parse or return null. `brokerCall` turns null into a `bad_payload` failure, so a malformed
  *  answer degrades a feature rather than throwing inside a request. */

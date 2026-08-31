@@ -12,6 +12,18 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- **A screen that fails now says so.** If something goes wrong while the app is drawing a page,
+  it shows a short message and a Reload button instead of going blank. Before this, a fault in
+  any one part of the app took the whole page with it and left a white screen — with no address
+  bar to reload from, if the app was on a home screen. Your prayer times are not affected by
+  this: it is about the app failing to draw, never about the timetable.
+- The catalog picture is now a photograph of a real masjid's app rather than a drawing with the
+  times blanked out.
+- Removed a package the app never used, and some code nothing called.
+- The README, CONTRIBUTING and the specification now describe what the app actually does — the
+  Qibla compass, announcements, Settings and contact details had all shipped without being
+  written down, and the listed test commands left out half the tests.
+
 ## 0.1.0
 
 The first release. **OpenMasjid Companion puts your masjid in your congregation's pocket** —

@@ -98,9 +98,19 @@ and why the image must be **published before** the version bump is pushed (the c
 exact tag; an entry whose image doesn't exist yet is a pull failure on someone's phone-facing
 server).
 
-**First listing:** this app is not in `registry.yaml` yet. Stay unlisted until a build genuinely
-installs and opens; then propose the entry (optionally as a `coming_soon:` teaser first) via a PR
-to the catalog's `dev`. Ask Hasan before opening that PR.
+**Listing status (2026-08-30).** Done, and it stays done — this paragraph is history, not a task.
+The entry exists in `registry.yaml` with `dev_ref: dev`, so the dev channel has followed this
+branch since PR #28. `v0.1.0` was released and proposed for the **stable** channel in
+[catalog PR #29](https://github.com/OpenMasjid-Solutions/OpenMasjidAPPS/pull/29), which is
+**open, not merged**: a catalog maintainer runs that release, and until they do the stable catalog
+keeps serving what it served before. "Released" means the tag and the image exist, never that
+masjids are being offered it.
+
+**What a stable listing still waits on, and it is not ours:** `display/timetable` ships in
+**Display v0.70.0**, which is unreleased — stable Display is v0.69.0. Companion on an all-stable
+box installs, opens, and honestly reports that it has no timetable. That is the designed degraded
+state and not a bug, but it means the two stable releases want ordering, and the order is
+Display first. Flag it; never "fix" it from here (§2).
 
 ---
 
@@ -669,8 +679,12 @@ musalli half; it refines this section rather than replacing it.
 - The musalli page is the identity of this app: calm, generous type, `font-variant-numeric:
   tabular-nums` for every time and countdown, Sakīna Glass cards, subtle geometric texture. A
   phone screen at Fajr in a dark room — light on the eyes, obvious at a glance.
-- **Motion** (the library) for gentle entrances and the countdown tick; always honour
-  `prefers-reduced-motion`. **RTL** via logical properties only; i18n-ready strings (English
+- **Motion is done in CSS**, not a library. `prefers-reduced-motion` is honoured in the
+  stylesheet — every animation and `:active` transform sits behind a `@media (prefers-reduced-motion:
+  reduce)` block — which is why the `motion` package was dropped in 0.2.0: it was declared, never
+  imported, and a JS `useReducedMotion` hook duplicated what the CSS already did. Reach for a
+  library only when CSS genuinely cannot express the movement, and honour the query either way.
+  **RTL** via logical properties only; i18n-ready strings (English
   first). **No Quranic/sacred text in decorative chrome** — prayer names and dates are content,
   ornaments are geometric.
 - WCAG AA in both themes; visible `focus-visible`; icon-only buttons labelled.
@@ -729,9 +743,12 @@ musalli half; it refines this section rather than replacing it.
 - **`server/`** — Node 22 + Fastify 5, better-sqlite3, zod, `web-push`, a real IANA-tz date
   library for §7/§9. No WebSockets (nothing here needs a live channel; the countdown is
   client-side).
-- **`web/`** — React 18 + Vite + TS, Display's tokens, Motion, lucide-react, `qrcode.react`.
-- **Tests** are `node --test` via tsx, **listed explicitly in `server/package.json`'s `test`
-  script — an unlisted test file silently never runs.** Mirror Display's
+- **`web/`** — React 18 + Vite + TS, Display's tokens, lucide-react, `qrcode.react`. No
+  animation library: motion is CSS (§12).
+- **Tests** are `node --test` via tsx, **listed explicitly in the `test` script of BOTH
+  `server/package.json` and `web/package.json` — an unlisted test file silently never runs.**
+  Each half has a `testFileCoverage.test.ts` that fails the suite when the list and the disk
+  disagree, in either direction. Mirror Display's
   `npm run typecheck:tests` (`tsconfig.check.json`) so test files are actually typechecked:
   the build excludes them and tsx strips types without checking. Non-negotiable tests: timezone
   /DST scheduling, base-path routing (LAN and tunnelled forms), broker fail-soft states, the
@@ -788,7 +805,7 @@ digest-pin commit, and only once the app genuinely installs and opens.
 cd server && npm run build && npm run typecheck:tests && npm test
 
 # web (musalli app + admin). build runs tsc --noEmit, then vite build.
-cd web && npm run build && npm audit --audit-level=high
+cd web && npm run build && npm test && npm audit --audit-level=high
 
 # everything together (what the App Store runs)
 docker compose up -d --build
