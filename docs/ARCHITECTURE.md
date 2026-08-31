@@ -1456,3 +1456,44 @@ The AGPL §13 source offer is on the Settings screen only now. The requirement i
 REACHES a network user, not that it is on every screen, and Settings is one tap away from all of
 them on a tab bar that is always drawn. It was under the prayer times, which is the one screen
 somebody opens to read a single number.
+
+## The 0.1.0 release — and what a FIRST release needs that later ones do not
+
+Hasan said the words on 2026-08-31. The chain in CLAUDE.md §17 was followed exactly —
+**publish → pin → tag** — and two things came up that only ever come up once.
+
+**The `channel` job cannot be green on a first release's merge commit.** It requires every image
+on `main` to be `@sha256`-pinned, and the digest does not exist until `main` has published. Every
+later release resolves compose to the *previous* release's pin and stays green throughout; the
+first has nothing to resolve to. So `main` carried `:0.1.0` unpinned for exactly one commit —
+`Checks` red on `channel` only, `server` and `web` both green — and went green again on the
+digest-pin commit that followed.
+
+The alternative was writing a digest that had not been read out of the registry for this version,
+which is the mistake §0 tells three war stories about. A red job for one commit is the cheaper
+error.
+
+**The changelog test could only ever pass on `dev`.** It asserted `releases[0].version ===
+'Unreleased'`, so the release chain — which turns `## Unreleased` into `## X.Y.Z` — would have
+failed it on `main`, in the middle of a release, for a reason with nothing to do with the
+release. It now asserts the thing that actually matters, and there are three legitimate states:
+
+- a **stable** build must ship its own notes (asserted hard: `top === package.json version`, or
+  the panel's "What's new" describes a different build to somebody deciding whether to update);
+- on dev with work in progress the top is `Unreleased`;
+- on dev *immediately after* a release the re-opened `## Unreleased` is empty, the parser drops
+  it by design, and the top is the release just cut — one version behind the prerelease the build
+  now calls itself. Correct, and it must not fail.
+
+### What was verified rather than assumed
+
+- The digest was read from GHCR, not from the build log, and confirmed to be an **OCI image
+  index** carrying `linux/amd64` and `linux/arm64`. A per-architecture digest pins amd64 and
+  breaks every Raspberry Pi in the catalog.
+- `git rev-list -n1 v0.1.0` prints the digest-pin commit, not its parent. That is the off-by-one
+  Display has shipped three times, and the check is not "did I tag after publishing".
+- The tagged tree's digest was compared against what GHCR serves, locally, **before** the tag was
+  pushed — after the push, a red CI run is all that is left to tell you.
+- No `Build image` run exists for the digest-pin commit, so the pin cannot have been invalidated
+  by the commit that created it.
+- `verify-release-tag.yml` then asserted the same thing independently on the pushed tag.

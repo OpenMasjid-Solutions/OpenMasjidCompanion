@@ -10,6 +10,8 @@ admin panel's account menu → **What's new** shows them with no internet needed
 plain language, as it lands. A release condenses it into a `## X.Y.Z` section carrying
 only what a masjid would actually notice. A released section is never rewritten.
 
+## Unreleased
+
 ## 0.1.0
 
 The first release. **OpenMasjid Companion puts your masjid in your congregation's pocket** —

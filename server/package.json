@@ -1,7 +1,7 @@
 {
   "name": "openmasjid-companion-server",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0-dev.1",
   "description": "API + push scheduler + storage + static web host for OpenMasjid Companion",
   "license": "AGPL-3.0-only",
   "scripts": {
