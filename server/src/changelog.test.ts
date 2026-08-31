@@ -129,7 +129,36 @@ test('THIS repo\'s real CHANGELOG.md parses into something worth showing an admi
   assert.ok(md.length > 0, 'the changelog should be findable from the test run');
   const releases: { version: string; items: { text: string; heading?: true }[] }[] = parseChangelog(md);
   assert.ok(releases.length > 0, 'at least one section');
-  assert.equal(releases[0].version, 'Unreleased', 'the working log is at the top on dev');
+  /**
+   * Which section is at the top depends on the branch, and the assertion has to say so.
+   *
+   * It used to be a bare `=== 'Unreleased'`, which meant this test could only ever pass on dev:
+   * cutting a release turns `## Unreleased` into `## X.Y.Z`, so the release chain would fail
+   * here, on main, for a reason with nothing to do with the release.
+   *
+   * There are three legitimate states and only one of them is worth asserting hard:
+   *
+   *  - **A stable build MUST ship its own notes.** If this build calls itself 0.1.0, the newest
+   *    section has to be 0.1.0 — otherwise the panel's "What's new" describes a different build
+   *    to somebody deciding whether to update, which is the one thing this file exists to get
+   *    right.
+   *  - On dev with work in progress, the top is `Unreleased`.
+   *  - On dev immediately after a release, `Unreleased` has been re-opened EMPTY and the parser
+   *    drops it (by design — an empty section is not a change), so the top is the release that
+   *    was just cut, one version behind the prerelease this build now calls itself. That is
+   *    correct and must not fail.
+   */
+  const top = releases[0].version;
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf8')) as { version: string };
+  if (!pkg.version.includes('-dev.')) {
+    assert.equal(top, pkg.version, `this build is ${pkg.version} but the newest section is "${top}" — an admin would read the wrong release notes`);
+  } else {
+    assert.ok(
+      top === 'Unreleased' || /^\d+\.\d+\.\d+$/.test(top),
+      `on a prerelease the top section should be the working log or the last release, got "${top}"`,
+    );
+  }
+
   for (const r of releases) {
     assert.ok(r.items.length > 0, `"${r.version}" parsed to no items`);
     for (const item of r.items) {
