@@ -18,13 +18,13 @@ import { api, type AppInfo } from './api';
 import { ONBOARDING_PATH, stripBase, withBase } from './base';
 import { useAppearanceSync, usePrefs, setThemeOverride } from './prefs';
 import { surfaceFor } from './periodTheme';
-import { jumuahLabels, type PeriodKey } from './prayerTimes';
+import { jumuahLabels, periodOf, positionAt } from './prayerTimes';
 import { useInstall, useServiceWorker } from './pwa';
 import { useTelemetry } from './telemetry';
 import { startButtonHaptics } from './haptics';
 import { InstallPrompt, UpdateBanner } from './Install';
 import { Scene } from './ui';
-import { MasjidHeader, Today, type Timetable } from './Today';
+import { MasjidHeader, Today, useMinuteTick, type Timetable } from './Today';
 import { Give, useCampaigns } from './Give';
 import { Onboarding } from './Onboarding';
 import { Settings } from './Settings';
@@ -123,8 +123,6 @@ export function App(): JSX.Element {
   const [route, setRoute] = useState<Route>(() => routeOf(location.pathname));
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [times, setTimes] = useState<Timetable | null>(null);
-  /** Which part of the day it is, reported up by Today. Drives the whole page's look. */
-  const [period, setPeriod] = useState<PeriodKey | null>(null);
 
   useEffect(() => {
     const on = () => setRoute(routeOf(location.pathname));
@@ -146,6 +144,25 @@ export function App(): JSX.Element {
   useAppearanceSync();
   /** The reader's own say over the sky — "follow the day", or hold one polarity. See Settings. */
   const { sky } = usePrefs();
+
+  /**
+   * Which part of the day it is at THIS MASJID. Worked out here, from the timetable, on every
+   * route.
+   *
+   * It used to be reported upward by the day view, which meant the sky was only ever right on
+   * the one screen that mounted it: a reload on Settings, Qibla or the appeals left the app in
+   * its "we do not know what time it is there" dark at two in the afternoon. The timetable is
+   * fetched here anyway, and the masjid's own IANA zone comes with it, so there was never a
+   * reason for the answer to live further down.
+   *
+   * `useMinuteTick` rather than the render clock: the period changes at a jamāʿah, and a page
+   * left open through Maghrib should get dark without being touched.
+   */
+  const minute = useMinuteTick();
+  const period = useMemo(() => {
+    if (!times?.masjid || times.days.length === 0) return null;
+    return periodOf(positionAt(times.days, times.masjid.timezone, minute));
+  }, [times, minute]);
 
   const isAdmin = route === '/admin';
 
@@ -256,7 +273,7 @@ export function App(): JSX.Element {
 
         {route === '/' &&
           (times ? (
-            <Today data={times} onPeriod={setPeriod} />
+            <Today data={times} />
           ) : (
             <main className="centre-wrap">
               <span className="spinner" />
@@ -305,7 +322,12 @@ export function App(): JSX.Element {
           />
         )}
 
-        {!isAdmin && <Foot />}
+        {/* The AGPL source offer, on the Settings screen only (Hasan, 2026-08-31).
+            §13's requirement is that the offer REACHES a network user, not that it is on every
+            screen — and Settings is one tap away from all of them, on a tab bar that is always
+            drawn. It was under the prayer times, which is the one screen somebody opens to read
+            a single number. */}
+        {!isAdmin && route === '/settings' && <Foot />}
       </div>
       {showTabs && <TabBar tabs={tabs} route={route} onGo={go} />}
     </>

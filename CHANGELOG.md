@@ -44,6 +44,9 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Fixed
 
+- **The app went dark in the middle of the afternoon.** Reloading while on Settings, Qibla or
+  the appeals left it in its night colours with &ldquo;Follow the day&rdquo; selected, because
+  only the prayer times screen was working out what time of day it was. Every screen knows now.
 - **The Kaaba could cover a compass letter.** For a masjid whose Qibla happens to point close to
   north, south, east or west &mdash; Karachi, Sydney, Nairobi, Mombasa &mdash; the Kaaba was drawn
   on top of that letter and hid most of it.
@@ -52,8 +55,11 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 - **The compass has been redrawn** as a proper compass face &mdash; a white card with a fine
   bezel, a marked ring, and the Kaaba turned to face the Qibla rather than to face the top of
-  your phone. The long line across the dial is now a single needle showing which way you are
+  your phone. The long line across the dial is now a single arrow showing which way you are
   pointing: turn until the Kaaba sits under it.
+- **The masjid&rsquo;s details are headed by a masjid** rather than by a second map pin.
+- **The &ldquo;OpenMasjid Solutions&rdquo; line has moved to Settings**, so it is off the screen
+  you open to read one number.
 
 - **Qibla.** A new tab showing which way Makkah is from wherever you are standing &mdash; the
   direction in degrees, in words, and how far away the Kaaba is, with a dial you can line up.

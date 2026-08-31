@@ -1959,11 +1959,12 @@ h1, h2, h3, p { margin: 0; }
   font-family: var(--font-display);
 }
 
-/* Where the reader is pointing. Pale, as the reference is — it is a confirmation of the words
-   underneath it rather than the only thing saying which way to turn, and a saturated wedge in
-   the middle of the card would shout over the Kaaba, which is the thing worth finding. The
-   hairline is what gives it a defined edge against a near-white face. */
-.qibla__needle { fill: #f3b083; stroke: #e08a55; stroke-width: 1; }
+/* Where the reader is pointing: two faces of one folded blade, the lit side and the shaded one.
+   That is the entire 3D effect and it costs two fills — a gradient or an SVG filter would say the
+   same thing and make a low-end phone work for it. The hairline is what gives the silhouette a
+   defined edge against a near-white face. */
+.qibla__arrow-a { fill: #f7c6a2; stroke: #d9793f; stroke-width: 0.8; }
+.qibla__arrow-b { fill: #e8905c; stroke: #d9793f; stroke-width: 0.8; }
 
 /* The Kaaba. Drawn rather than lettered: recognised instantly, and needs no translating. */
 .qibla__kaaba { fill: #17130f; }
@@ -1973,7 +1974,10 @@ h1, h2, h3, p { margin: 0; }
 /* Aligned. The bezel, because it rings the whole thing and is therefore visible in the corner of
    the eye of somebody who is looking at the room rather than at the phone. */
 .qibla__dial--on .qibla__bezel { fill: var(--color-btn); }
-.qibla__dial--on .qibla__needle { fill: var(--color-btn); stroke: var(--color-btn); }
+/* Aligned, the arrow keeps its fold — flattening it to one colour would make the moment it
+   lines up the moment it stops looking like an object. */
+.qibla__dial--on .qibla__arrow-a { fill: var(--color-btn-hover); stroke: var(--color-btn); }
+.qibla__dial--on .qibla__arrow-b { fill: var(--color-btn); stroke: var(--color-btn); }
 
 .qibla__read { text-align: center; }
 .qibla__deg {

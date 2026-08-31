@@ -31,6 +31,7 @@ import {
   type Social,
 } from './contactLinks';
 import { currentEnv, osOf } from './platform';
+import { MasjidIcon } from './Masjid';
 
 /**
  * Icons for the networks.
@@ -59,8 +60,11 @@ export function ContactCard({ contact, name }: { contact: ContactInfo; name: str
 
   return (
     <section className="set-card">
+      {/* A masjid, not a map pin (Hasan, 2026-08-31). The pin already belongs to the address
+          row below, and using it twice in one card made the heading look like a second address
+          rather than like the name of the building the card is about. */}
       <h2 className="set-title">
-        <MapPin size={16} aria-hidden="true" />
+        <MasjidIcon size={17} />
         {name || 'The masjid'}
       </h2>
 

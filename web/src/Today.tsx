@@ -21,14 +21,12 @@ import {
   type DailyKey,
   type Masjid,
   type MonthMarks,
-  type PeriodKey,
   type Slot,
   MONTH_MARKS,
   changedOn,
   formatDate,
   formatTime,
   formatUntil,
-  periodOf,
   positionAt,
   slotTime,
   slotsFor,
@@ -54,7 +52,7 @@ export interface Timetable {
 
 /** Re-render often enough that the countdown stays true to the minute, and no more. A page left
  *  open on a shelf in the prayer hall should not be repainting every second. */
-function useMinuteTick(): number {
+export function useMinuteTick(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     // Line up with the start of the next minute so the countdown changes when the clock does,
@@ -72,7 +70,7 @@ function useMinuteTick(): number {
   return now;
 }
 
-export function Today({ data, onPeriod }: { data: Timetable; onPeriod: (period: PeriodKey) => void }): JSX.Element {
+export function Today({ data }: { data: Timetable }): JSX.Element {
   const now = useMinuteTick();
   const [offset, setOffset] = useState(0);
   const [view, setView] = useState<'day' | 'month'>('day');
@@ -94,17 +92,15 @@ export function Today({ data, onPeriod }: { data: Timetable; onPeriod: (period: 
   // The hero always reports NOW, whichever day the table below is showing. Someone browsing
   // ahead to next Friday still wants to know how long until Maghrib today.
   const position = useMemo(() => positionAt(data.days, zone, now), [data.days, zone, now]);
-  const period = periodOf(position);
 
   /**
-   * Tell the shell which part of the day it is, so the whole page can be themed for it.
-   *
-   * Reported upward rather than applied here because it sets an attribute on the ROOT element —
-   * the sky, the ink and the glass all key off it, and they sit outside this component.
+   * This component no longer tells the shell what time of day it is, and that is the fix for a
+   * real bug rather than a tidy-up. It used to report the period upward on mount — so the sky
+   * was only ever right on the screen this component is on. Reload while looking at Settings, or
+   * Qibla, or the appeals, and nothing mounted to report anything: the page fell back to the
+   * "we do not know what time it is at this masjid" dark, at two in the afternoon, with
+   * "Follow the day" selected. App works it out from the same timetable now, on every route.
    */
-  useEffect(() => {
-    if (masjid) onPeriod(period);
-  }, [period, masjid, onPeriod]);
 
   /** Returns whether it actually moved. The window has ends, and at one of them a swipe is a
    *  gesture that was understood and refused — which is a different thing to confirm than a day

@@ -370,20 +370,24 @@ function Dial({ bearing, rose, live, aligned }: { bearing: number; rose: number;
          * Where the phone is pointing. Fixed to the SCREEN, outside the rose, because "the way
          * you are facing" is up by definition — the card turns underneath it.
          *
-         * A leaf rather than the thin line and hub this replaced (Hasan, 2026-08-30, after the
-         * reference). The line ran from the middle out to the Kaaba, which said "the Kaaba is
-         * over there" — true, and already said by the Kaaba being over there. What the screen was
-         * missing is the other half of the sentence: where YOU are pointing. Lining the two up is
-         * the whole gesture.
+         * **An arrow, in two halves** (Hasan, 2026-08-31). It was a leaf, and a leaf points less
+         * than an arrow does: the eye reads a taper as a shape and a straight edge running to a
+         * point as a direction. Split down the centre line with one face lighter than the other,
+         * which is the whole of the 3D — a folded blade catching light from one side, the way a
+         * real compass needle is made. Two flat fills rather than a gradient or a filter,
+         * because both of those cost something on a phone to say the same thing.
+         *
+         * The notched base (0, 20) is what makes it a dart rather than a triangle sitting on the
+         * dial, and it is also what gives the fold somewhere to end.
          *
          * Only with a live compass. Without one the card cannot turn, so there is no "you" to
-         * mark and a needle would be claiming a direction the phone does not know.
+         * mark and an arrow would be claiming a direction the phone does not know.
          */}
         {live && (
-          <path
-            d="M0 -38 C 5 -23 11 -8 11 4 C 11 22 6 34 0 34 C -6 34 -11 22 -11 4 C -11 -8 -5 -23 0 -38 Z"
-            className="qibla__needle"
-          />
+          <g className="qibla__arrow">
+            <path d="M0 -38 L-11.5 30 L0 20 Z" className="qibla__arrow-a" />
+            <path d="M0 -38 L11.5 30 L0 20 Z" className="qibla__arrow-b" />
+          </g>
         )}
       </svg>
     </div>

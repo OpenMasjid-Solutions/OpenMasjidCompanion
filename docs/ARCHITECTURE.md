@@ -1404,3 +1404,55 @@ in the file. It is `margin: 0.8rem 0 0; padding: 0` now.
 
 The lesson is the one about the first fix: the gap was found by measuring a vertical distance, so
 the vertical half got fixed, and the horizontal half was in the same screenshot the whole time.
+
+## Slice 18 — the dark afternoon, and an arrow that points (0.1.0-dev.22)
+
+### The sky only knew what time it was on one screen
+
+Reload while looking at Settings, Qibla or the appeals and the app came up in its night colours
+at two in the afternoon, with "Follow the day" selected. It was not the theme code: `surfaceFor`
+was doing exactly what it was written to do, which is fall back to dark when the period is
+unknown.
+
+The period was unknown because **`Today` was the only thing that computed it.** It reported
+upward through an `onPeriod` prop on mount, so the answer existed only on the one screen that
+mounted it, and every other route got the "we do not know what time it is at this masjid"
+fallback — correct in a fresh install, and wrong on every reload of three of the five tabs.
+
+`App` fetches the timetable anyway and the masjid's IANA zone arrives with it, so there was never
+a reason for the answer to live further down. It is `periodOf(positionAt(...))` in `App` now, on
+a minute tick so a page left open through Maghrib goes dark on its own, and `Today` no longer has
+the prop. Verified by reloading each of the four musalli routes at 13:00 New York and asserting
+`data-theme="light"`, and again at 02:00 asserting it is still dark.
+
+The general shape is worth naming: **a value that themes the whole document should not be
+produced by one of the documents' children.** The bug was invisible for as long as the only route
+anybody reloaded on was the one that happened to own it.
+
+### An arrow instead of a leaf
+
+A leaf points less than an arrow does — the eye reads a taper as a shape and a straight edge
+running to a point as a direction. It is two triangles now, split down the centre line with one
+face lighter than the other, which is the whole of the "3D": a folded blade catching light from
+one side, the way a real compass needle is made. Two flat fills rather than a gradient or an SVG
+filter, because both of those cost a low-end phone something to say the same thing. The notched
+base is what makes it a dart rather than a triangle sitting on the dial, and it gives the fold
+somewhere to end.
+
+### A masjid, not a second map pin
+
+lucide has `Church`, `Landmark` and `Castle` and no masjid, and heading a masjid's own details
+with a church is worse than heading them with nothing — so `Masjid.tsx` is our own line drawing
+of a generic building form (dome, crescent, two minarets), which is nobody's mark and is
+therefore an asset this repository can license like the rest of it.
+
+It is deliberately simpler than the reference: at the 16–17px this is actually used at, the
+windows and the doorway's inner arch resolve to two grey pixels, and detail that becomes noise
+makes an icon read worse rather than better.
+
+### The footer
+
+The AGPL §13 source offer is on the Settings screen only now. The requirement is that the offer
+REACHES a network user, not that it is on every screen, and Settings is one tap away from all of
+them on a tab bar that is always drawn. It was under the prayer times, which is the one screen
+somebody opens to read a single number.
