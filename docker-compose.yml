@@ -12,23 +12,24 @@
 # inside the app and saved to /data.
 services:
   app:
-    # ── MAIN BRANCH: the stable channel ──────────────────────────────────────
-    # The release version, pinned to the manifest-list @sha256 digest of the image CI
-    # published for it. The digest is what protects an existing install: every push to
-    # main republishes :<version> and :latest, so a version tag on its own is NOT
-    # immutable — the digest is the only thing that is.
+    # ── DEV BRANCH: the development channel ──────────────────────────────────
+    # The EXACT prerelease version CI published for this build — never the moving
+    # `:dev` alias. Two reasons, and both are the difference between a working dev
+    # channel and a silent one:
     #
-    # It must be the MANIFEST-LIST digest, never a per-architecture one: a per-arch
-    # digest pins amd64 and breaks every Raspberry Pi in the catalog.
+    #   1. OpenMasjidOS spots an update by comparing the catalog's `version` with the
+    #      installed one. The version here has to change per build, and the image
+    #      reference has to change with it, or there is nothing to notify and nothing
+    #      to update to.
+    #   2. An exact tag is immutable, so a masjid on Development gets the build we
+    #      published rather than whatever `:dev` happens to point at by then.
     #
-    # The order that produces this line is publish -> pin -> tag (CLAUDE.md §0). It is
-    # written in its own commit, after main has published, from a digest read out of
-    # the registry for THIS version — never carried over from the previous release and
-    # never guessed. `verify-release-tag.yml` re-checks it against GHCR on every v* tag.
+    # Bump this in the SAME commit as manifest.yaml's `version:`. The `channel` job in
+    # .github/workflows/checks.yml fails the build if the two ever disagree.
     #
-    # On `dev` this line is the exact prerelease tag with no digest. Never carry that
-    # form into main.
-    image: ghcr.io/openmasjid-solutions/openmasjidcompanion:0.2.0@sha256:07d0b2b87a73f60d0e5c84edca34b80284246531f2feb19a94808f4123d50036
+    # On `main` this line is the release tag + @sha256 digest, written in its own commit
+    # after main has published. Never carry this dev line into main — see CLAUDE.md §0.
+    image: ghcr.io/openmasjid-solutions/openmasjidcompanion:0.3.0-dev.1
     restart: unless-stopped
     environment:
       PORT: "8080"

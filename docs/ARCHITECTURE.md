@@ -1574,3 +1574,23 @@ timetable, which is the designed degraded state working exactly as intended and 
 It does mean the two stable releases want ordering, and the order is Display first. That is a
 cross-repo fact, so it is written down here and in the README and flagged to Hasan, and it is
 not fixed from this repo (§2).
+
+### A release-tooling trap, found the hard way at 0.2.0
+
+CLAUDE.md §17 says to bump the version in "both lockfiles (which each carry it twice)", and the
+obvious way to do that is a string replacement of `"<old>"` → `"<new>"`. That is wrong, and 0.2.0
+is the first version where it shows.
+
+A lockfile carries `"version": "X"` for **every** package in the tree, not only for ours. The app
+was going from `0.2.0` to `0.3.0-dev.1`, and `real-require@0.2.0` is a transitive dependency of
+`pino` — so a blind replacement silently rewrote that dependency's version too, leaving a lockfile
+claiming `real-require@0.3.0-dev.1` against a `resolved` URL still pointing at the 0.2.0 tarball.
+`npm ci` would then either fail or install something the lockfile does not describe.
+
+Nothing shipped: the corruption was caught in the working tree by the field count not matching the
+expected two. But it would not have been caught at `0.1.0` — no dependency in either tree is at
+`0.1.0` — which is exactly what makes it the kind of bug that waits for a version number to collide.
+
+**Bump the root version only.** Parse the JSON and set `.version` and `.packages[""].version`;
+never touch anything under `packages["node_modules/..."]`. Any future version is one npm publish
+away from colliding with a dependency, so the string form is not "fine so far", it is untriggered.
