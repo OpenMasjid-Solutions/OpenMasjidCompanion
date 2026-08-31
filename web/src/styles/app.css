@@ -1953,7 +1953,7 @@ h1, h2, h3, p { margin: 0; }
 .qibla__tick--card { stroke: #a49c97; stroke-width: 2.5; }
 .qibla__card {
   fill: #a49c97;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   text-anchor: middle;
   font-family: var(--font-display);
@@ -2009,11 +2009,22 @@ h1, h2, h3, p { margin: 0; }
  * Rows a thumb can hit rather than a definition list: every one of these is a link, and the
  * whole row is the target because a phone number set in body text is a 14px tap area.
  */
-/* `margin-block: … 0` — the END is the load-bearing half. A <ul> carries a 1em bottom margin by
-   default and the app's reset only zeroes the body's, so the Directions button underneath sat
-   16px further down than anything in this file asked for. That is the kind of gap you tune the
-   wrong rule to fix twice before measuring it. */
-.contact { list-style: none; margin-block: 0.8rem 0; display: flex; flex-direction: column; gap: 0.15rem; }
+/* `margin: 0.8rem 0 0` AND `padding: 0` — BOTH halves of the same oversight.
+ *
+ * Tailwind's preflight is off and this app's only base rules zero the body's margin and the
+ * headings', so a <ul> keeps the user agent's 1em bottom margin AND its 40px inline start
+ * padding. The margin was found first, by measuring a gap; the padding survived it and was
+ * indenting every contact row 32px past the card's own title, which is worse and was in front of
+ * me in a screenshot the whole time. `.picker` (above) spells out `padding: 0` for exactly this
+ * reason — the precedent was already in the file. */
+.contact {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
 .contact__row {
   display: flex;
   align-items: flex-start;

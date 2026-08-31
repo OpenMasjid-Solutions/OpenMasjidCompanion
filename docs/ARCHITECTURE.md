@@ -1362,3 +1362,45 @@ only the first was set. The type is what the browser validates and what a keyboa
 input mode is which keyboard actually appears — a keypad, not a QWERTY somebody has to switch out
 of — and the autocomplete token is what lets a volunteer fill their own masjid's details with one
 tap instead of typing a postcode from memory.
+
+## Slice 17a — what the review caught (0.1.0-dev.21)
+
+An adversarial pass over slice 17's diff: four dimensions, every finding handed to a separate
+agent told to refute it. Seven claims, two survived, and both were real. Both were also verified
+here by measurement before being acted on — an agent's confidence is not evidence.
+
+### The Kaaba was painting over a cardinal letter
+
+Three numbers moved together in slice 17 and collided. The letters went from r=68 to r=62 and
+from 13px to 15px; the Kaaba went from r=78 to r=72 and from 22 units square to 26. Their radial
+spans became 55–69 and 59–85 — overlapping — and because the Kaaba group is the last child of the
+rose it paints last, opaque, over the letter.
+
+It is invisible for most masjids and total for some, because **which** masjid gets it is decided
+by the qibla bearing: anything within about ±17° of a cardinal. Measured live, Karachi (267.7°,
+two degrees off due west) lost **70% of its W**. Sydney, Auckland, Nairobi, Mombasa and Dar es
+Salaam are all inside the same window. On screen it reads as a rendering fault rather than as a
+marker sitting on a card.
+
+The letters are at r=52 now and the Kaaba at r=76, 22 units square — the two rings are separated
+by 7 units at the closest point, and the tile's corners reach 91.6 against a face of 92. Asserted
+by measuring the rendered boxes at eight real cities, four of them chosen because their bearings
+sit on a cardinal: worst overlap anywhere, 0%.
+
+Worth noting: **the reference image has the letters and the Kaaba at the same radius** (0.79 and
+0.75 of the face) and would do this too. It happens to be drawn at a bearing where nothing
+collides. Matching a reference exactly is not the same as matching it correctly.
+
+### The list padding — the half of a fix that was missed
+
+Slice 17 found a 16px gap under the address, traced it to the user agent's `<ul>` bottom margin,
+and set `margin-block: 0.8rem 0`. The user agent also puts **`padding-inline-start: 40px`** on a
+`ul`, and that survived: every contact row was indented 32px past the card's own title.
+
+Preflight is off (`corePlugins: { preflight: false }`, and `@tailwind base` is never imported at
+all), so the only base rules in this app are the body's margin and the headings'. `.picker` in
+the same stylesheet already spells out `padding: 0` for exactly this reason — the precedent was
+in the file. It is `margin: 0.8rem 0 0; padding: 0` now.
+
+The lesson is the one about the first fix: the gap was found by measuring a vertical distance, so
+the vertical half got fixed, and the horizontal half was in the same screenshot the whole time.

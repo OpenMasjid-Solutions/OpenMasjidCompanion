@@ -319,8 +319,21 @@ function Dial({ bearing, rose, live, aligned }: { bearing: number; rose: number;
               ended up on their sides: nesting an SVG rotation inside another puts the pivot
               somewhere neither of them meant. They still turn WITH the rose, as the printed card
               of a real compass does — and as the reference does. */}
+          {/**
+           * The letters ride at r=52, INSIDE the ring the Kaaba occupies, and the gap between the
+           * two is the point.
+           *
+           * They were at 62 and the tile at 72, whose spans (55–69 and 59–85) overlap — so for
+           * any masjid whose qibla happens to point near a cardinal the tile painted over the
+           * letter, opaque and last. Karachi is 267.7°, two degrees off due west, and lost 70% of
+           * its W; Sydney, Auckland, Nairobi and Mombasa are all inside the same window. It reads
+           * as a rendering fault rather than as a marker on a card.
+           *
+           * The reference image has them at the same radius as each other and would do this too;
+           * it just happens to be drawn at a bearing where nothing collides.
+           */}
           {marks.map(([deg, label]) => {
-            const p = at(deg, 62);
+            const p = at(deg, 52);
             return (
               <text key={label} x={p.x} y={p.y} className="qibla__card" dominantBaseline="central">
                 {label}
@@ -341,13 +354,15 @@ function Dial({ bearing, rose, live, aligned }: { bearing: number; rose: number;
            * Turning with the bearing is what the reference does and it is also the more truthful
            * drawing: the Kaaba is a cube with a face towards you, not an icon pinned to a map.
            */}
-          <g transform={`rotate(${norm360(bearing)}) translate(0 -72)`}>
-            <rect x="-13" y="-13" width="26" height="26" rx="4" className="qibla__kaaba" />
+          <g transform={`rotate(${norm360(bearing)}) translate(0 -76)`}>
+            {/* 22 units square at r=76, so its inner edge is 65 and its corners reach 91.6 —
+                clear of the letters at 46–58 and just inside the r=92 face at every bearing. */}
+            <rect x="-11" y="-11" width="22" height="22" rx="3.5" className="qibla__kaaba" />
             {/* The kiswa's band, and the door below it. Two shapes, because the band alone reads
                 as a stripe on a square and the pair reads as a building — at this size that is
                 the whole of the difference between an icon and a flag. */}
-            <rect x="-13" y="-4" width="26" height="3.5" className="qibla__kiswa" />
-            <rect x="-4.5" y="2" width="6" height="8" rx="0.8" className="qibla__door" />
+            <rect x="-11" y="-3.5" width="22" height="3" className="qibla__kiswa" />
+            <rect x="-4" y="1.5" width="5" height="7" rx="0.8" className="qibla__door" />
           </g>
         </g>
 
@@ -366,7 +381,7 @@ function Dial({ bearing, rose, live, aligned }: { bearing: number; rose: number;
          */}
         {live && (
           <path
-            d="M0 -46 C 6 -28 13 -10 13 4 C 13 26 7 42 0 42 C -7 42 -13 26 -13 4 C -13 -10 -6 -28 0 -46 Z"
+            d="M0 -38 C 5 -23 11 -8 11 4 C 11 22 6 34 0 34 C -6 34 -11 22 -11 4 C -11 -8 -5 -23 0 -38 Z"
             className="qibla__needle"
           />
         )}

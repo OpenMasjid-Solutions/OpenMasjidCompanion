@@ -44,6 +44,12 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ### Fixed
 
+- **The Kaaba could cover a compass letter.** For a masjid whose Qibla happens to point close to
+  north, south, east or west &mdash; Karachi, Sydney, Nairobi, Mombasa &mdash; the Kaaba was drawn
+  on top of that letter and hid most of it.
+- **The masjid&rsquo;s contact details were indented** further than everything else on the
+  Settings screen.
+
 - **The compass has been redrawn** as a proper compass face &mdash; a white card with a fine
   bezel, a marked ring, and the Kaaba turned to face the Qibla rather than to face the top of
   your phone. The long line across the dial is now a single needle showing which way you are

@@ -29,7 +29,7 @@ services:
     #
     # On `main` this line is the release tag + @sha256 digest. Never carry this dev
     # line into main — see CLAUDE.md §0.
-    image: ghcr.io/openmasjid-solutions/openmasjidcompanion:0.1.0-dev.20
+    image: ghcr.io/openmasjid-solutions/openmasjidcompanion:0.1.0-dev.21
     restart: unless-stopped
     environment:
       PORT: "8080"
