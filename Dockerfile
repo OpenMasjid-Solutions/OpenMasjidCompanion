@@ -9,7 +9,7 @@
 # correct prebuilt native binaries (better-sqlite3) for that architecture.
 
 # ---- Build the web app (musalli app + admin panel) → static files -----------
-FROM --platform=$BUILDPLATFORM node:22-slim AS web
+FROM --platform=$BUILDPLATFORM node:26-slim AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -17,7 +17,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- Compile the server (TypeScript → dist) ---------------------------------
-FROM --platform=$BUILDPLATFORM node:22-slim AS server
+FROM --platform=$BUILDPLATFORM node:26-slim AS server
 WORKDIR /server
 COPY server/package.json server/package-lock.json ./
 RUN npm ci
@@ -25,7 +25,7 @@ COPY server/ ./
 RUN npm run build
 
 # ---- Runtime (target architecture) ------------------------------------------
-FROM node:22-slim AS runtime
+FROM node:26-slim AS runtime
 ENV NODE_ENV=production
 
 LABEL org.opencontainers.image.title="OpenMasjid Companion" \
