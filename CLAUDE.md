@@ -197,6 +197,49 @@ before and during the build; mirror them.**
 
 ### ✅ In scope (v1.0)
 
+- **Bottom tab bar:** Salah, Donate (only when the masjid has appeals), Settings, and Qibla
+  when it lands. Drawn only when there are two or more places to go — one lit tab over the only
+  page there is is a label, not navigation. That rule is unchanged and simply no longer fires:
+  Settings (added 2026-08-29) means every install has a second place to go. `/give` is a real
+  route, so it is bookmarkable, so it needs a real empty state.
+
+- **Settings, a musalli's own** (`/settings`, added by Hasan 2026-08-29): **the masjid's own
+  contact details at the top** (added 2026-08-30 — phone, email, address, website and links to
+  WhatsApp, Instagram, Facebook, X, YouTube and Telegram; every field optional, nothing drawn for
+  an empty one, and no card at all for a masjid that filled none of them in), then the things a
+  reader may want to change, and nothing else. **Appearance** — keep the time-of-day look, or
+  hold it dark or light all day; a pinned polarity still moves through the day inside it
+  (always-dark runs Fajr → Maghrib → Isha), because "always dark" was a request about contrast,
+  not a request to switch the design off. **Prayer reminders**, moved here from the sheet over
+  the prayer times: these are settings, and a modal is a shape for a question. The bell in the
+  header stays as a shortcut *to* this screen, because notifications are the one feature a
+  musalli has to find on purpose. **The bell that used to be in the header was removed on
+  2026-08-30**: with a permanent Settings tab, a second door to the same room is a second thing
+  to explain. Everything here is per-browser, in localStorage, and never leaves the phone —
+  except the reminder switches, which have to reach the server because the server is what sends
+  them.
+
+- **Haptics** (added 2026-08-30): a short buzz on a tap, on a swipe that actually moves, and when
+  the Qibla lines up. One delegated `pointerdown` listener rather than forty call sites
+  (`haptics.ts`), a switch in Settings shown only where there is a vibrator to switch off, and
+  the phone's own setting always wins. **It does nothing at all on an iPhone** — Safari has never
+  shipped the Vibration API and there is no route to the Taptic Engine from a web page — so
+  haptics are only ever a confirmation of something already on screen, never the signal itself.
+
+- **The onboarding page** (`/onboarding`, added by Hasan 2026-08-29) — **what the QR code
+  points at.** A poster has to print instructions that are right for every phone that will ever
+  scan it, so it prints the generic ones; a web page knows which phone and which browser is
+  reading it and can say the one true sentence, including the one no poster could ever print:
+  *"this browser can't — open it in Safari."* It detects the OS and the browser (`platform.ts`,
+  the only user-agent table in the repo), offers the real `beforeinstallprompt` where there is
+  one, names the buttons on iOS Safari, sends an in-app webview to a real browser with the
+  address on the clipboard, and then offers notifications as a second step — never on load,
+  which is how a browser learns to block a site for good. Launched standalone it redirects
+  straight into the app: somebody who has already done the thing must never be shown the
+  instructions for doing it.
+
+- **Who's using it** (admin, added by Hasan 2026-08-29) — see the amended out-of-scope line
+  below, and `server/src/analytics.ts` for why the schema is the constraint.
 - **Musalli home (public, no login):** today's Adhan + Iqamah times for the five prayers,
   Jumuʿah, the Hijri and Gregorian dates, a live next-prayer countdown, and the masjid's name
   and logo. Big, calm, one-hand-usable, tabular numerals.
@@ -205,14 +248,40 @@ before and during the build; mirror them.**
   opening the app with no signal still shows times — with an honest "last updated" marker.
 - **Web-push prayer notifications (v1, not later):** per-device opt-in; per-prayer on/off;
   notify at Adhan and/or N minutes before Iqamah. Self-hosted VAPID — no third-party push
-  relay. §9.
+  relay. §9. **Plus admin-authored announcements** (added 2026-08-29): one notice, typed and
+  confirmed, to every phone that has not opted out of notices. A separate musalli-facing switch
+  from the prayer reminders — someone who wants silence at prayer times may still want to hear
+  about a funeral — and the only thing in this app that reaches a musalli unbidden, so it is
+  admin-only, needs an explicit `confirm`, and is cooldown-guarded against a double-tap.
+  **Standing announcements** (added 2026-08-30) let one be set to send itself — once on a date,
+  every day, or on chosen weekdays at a chosen time. The masjid's own wall clock, from the
+  timetable's IANA zone, with no fallback: with no timetable there is no hour, so nothing is
+  scheduled rather than something being sent at the wrong one. A missed occurrence is written
+  off rather than delivered late, and they are the one thing a **stale** timetable does not
+  silence — Rule 1 exists because a prayer reminder computed from old times may be wrong, and
+  "we are closed on Saturday" is not computed from the times at all.
 - **Donation appeals:** admin-curated tiles (title, cover image, goal/raised progress) fetched
   from the **Donations app's public campaign API**, each linking out to the Donations donor page
   to actually give. §8.
+- **Qibla (added to v1 by Hasan 2026-08-24; built 2026-08-30):** a compass pointing to Makkah,
+  from the **device's own geolocation** — no Display change, and work order #3 was withdrawn on
+  the same day rather than ask for the masjid's coordinates. This is **not** a prayer-time
+  calculation and does not touch the §2 rule: a bearing is self-evidently right or wrong the
+  moment you hold the phone up, where a wrong prayer time is silent. It needs a secure context,
+  so the tab is drawn only over the tunnel, like install and push, and "location declined" is a
+  designed screen rather than an error. **It asks again every visit** (Hasan, 2026-08-30): the
+  bearing is held in memory for as long as the page lives, so moving between tabs does not
+  re-prompt, and nothing is written to storage — a stored bearing is a fact about where somebody
+  was, and this app does not write that down. **The bearing leads and the compass is offered second**
+  — a magnetometer needs a permission, a gesture and somewhere that is not a basement, where
+  "119°, east-southeast, 4,794 km" needs only a position. Only the BEARING is remembered on the
+  phone, never the position. See `docs/DESIGN_LANGUAGE.md`.
 - **Installability:** a server-generated web manifest + service worker, correct under the
   tunnel's base path, named and iconed for the masjid. §10.
-- **QR + printable poster:** the admin panel renders a QR of the app's public URL and a
-  print-ready poster page ("Scan → Add to Home Screen", with iPhone/Android hints).
+- **QR + printable poster:** the admin panel renders a QR of the app's public URL **plus
+  `/onboarding`** and a print-ready poster page ("Scan → Add to Home Screen", with iPhone/Android
+  hints kept as the printed fallback). One value builds the code and the copy button, so the
+  address on screen can never disagree with the one that was printed.
 - **Admin panel** (login-protected; OpenMasjidOS SSO with a local-password fallback, mirroring
   Donations): guided first-run setup, timetable picker (via the broker), campaign curation, app
   name + icon, notification defaults + status, Share (QR/poster), and an account menu with the
@@ -233,13 +302,27 @@ before and during the build; mirror them.**
 - Chat, feeds, event RSVPs, or community features.
 - Native iOS/Android apps.
 - Modifying OpenMasjidOS, Display, Donations, or the catalog (work orders only).
-- Analytics beyond a plain count of push subscriptions shown to the admin.
+- ~~Analytics beyond a plain count of push subscriptions shown to the admin.~~ **Amended
+  2026-08-29** (Hasan asked for a device/browser breakdown). The reason this line existed was to
+  stop the app growing a visitor log, and that reason has not gone away — so what was built is
+  the shape that answers a masjid's question without one ever existing: **the entire schema is a
+  counter.** One row per (day, device, browser, mode), holding a number. No row per visit, no
+  session, no id, no IP, no user agent, no path, no timestamp finer than the date; 90 days and
+  then gone. The three fields are closed enums duplicated in `web/src/platform.ts` and asserted
+  equal by `analytics.test.ts`, so an unauthenticated endpoint that lands in an admin panel has
+  no free text in it anywhere. `analytics.test.ts` asserts the column list **exhaustively** — a
+  future column has to be argued for in that test first. What stays out of scope is everything
+  the old line was about: per-visitor records, paths, referrers, dwell time, or anything that
+  could be joined against a push subscription.
 
 ### 🔭 Later (design for, don't build now)
 
-- **Announcements / Iqamah-change notices** pushed to musallis — an additive method on the
-  Display capability (`v` bump), plus admin-authored notices.
-- Qibla, nearby-masjid handoff, events, multiple timetables (e.g. men's/women's halls).
+- **Iqamah-change notices** pushed to musallis automatically — an additive method on the
+  Display capability (`v` bump). *(Admin-authored announcements were here until 2026-08-29 and
+  are now in v1: they need nothing from Display, so the two halves were separable. The admin
+  types a notice and confirms it; it reaches every phone that has not turned notices off.)*
+- Nearby-masjid handoff, events, multiple timetables (e.g. men's/women's halls). *(Qibla was
+  here until 2026-08-24 and is now in v1, above.)*
 - Admin WhatsApp `commands:` (e.g. subscriber counts).
 - Full translations beyond the English strings (the scaffolding ships in v1).
 
@@ -401,9 +484,13 @@ unavailable, app still fine", never a crash. Behaviour:
   cause (Display not installed / capability not available yet / not granted) in plain words.
 - **Never fabricate a time. Never extrapolate a day Display didn't send.**
 
-Until Display ships the capability, develop against a **local stub** clearly gated behind a dev
-flag (`COMPANION_DEV_STUB=1`) that ships disabled and is impossible to enable from the UI — a
-masjid must never see stub times.
+~~Until Display ships the capability, develop against a local stub behind `COMPANION_DEV_STUB=1`.~~
+**Not needed, and deliberately not built** (2026-08-24): Display shipped `timetable` before this
+app's client was written, so the condition never arrived. There is no branch anywhere in this
+server that can produce a prayer time — which is a stronger form of "a masjid must never see stub
+times" than a flag that ships disabled. Development without a Display container drives a fake
+**platform** instead, so the real broker client, the real zod schemas and the real error mapping
+all still run; a stub would have bypassed exactly the code most worth exercising.
 
 ### 6.6 Alerts
 
@@ -432,6 +519,15 @@ emails or messages a musalli, ever.
   screen (one model, two views — Display's poster code follows the same rule for the same
   reason).
 - Hijri comes from Display's payload. Do not compute it here.
+- **A jamāʿah "change" is not a moved time** (the month view mark, `prayerChanged`). A masjid sets
+  a jamāʿah either as a **clock time** (holds; the gap to the adhan drifts daily) or as an
+  **offset** ("Maghrib + 5"; the printed time moves daily and nobody decided anything). Nothing
+  changed if **either** the time held **or** the gap held — comparing only printed times marked
+  every day of an offset Maghrib, and comparing only gaps would mark every day of a fixed Fajr.
+  A **rounded** offset is indistinguishable from a small revision from the outside, which is why
+  Maghrib is excluded by default with an admin switch (`month.maghrib`) rather than a cleverer
+  rule. The setting is masjid-wide, rides in the public payload, and **is part of that payload's
+  ETag** — otherwise a phone 304s and keeps the old marks.
 
 ---
 
@@ -462,6 +558,14 @@ at `<donationsPublicBase>/<slug>`. Companion consumes exactly that:
   hear about from us, not from a confused donor.
 - Sanitise everything rendered from this feed (titles, descriptions, image URLs — http(s) only)
   exactly as if it were untrusted, because operationally it is a cross-app input.
+- **Name the failure, never shrug at it.** This fetch leaves the building: the masjid's public
+  address resolves on the internet and comes back through the tunnel, so it can fail at DNS, at
+  the connection, at TLS, on a timeout, on a redirect we will not follow, on an HTTP status, or
+  on a body that is not a campaign. **Those are seven different problems with seven different
+  fixes**, and the admin panel must say which — a single "we couldn't reach this appeal" names
+  the one explanation an admin has already ruled out by opening the link in their own browser.
+  `describeProblem` carries the sentence and `problemDetail` the technical line, and a test
+  asserts every branch has both.
 
 ---
 
@@ -531,9 +635,12 @@ the one secret that *does* belong on the volume; never log the private key).
 
 Screens (keep it this small): **Setup** (first-run wizard: tunnel check → pick timetable → paste
 campaign links → app name + icon → Share), **Home** (status: tunnel, timetable freshness,
-campaigns health, subscriber count, last push), **Timetable** (picker + preview + refresh now),
+campaigns health, subscriber count, last push), **Who's using it** (the device/browser/installed
+breakdown — under Share on purpose, because it is the answer to "did the poster work?" and reads
+as that question only when it sits under the poster), **Timetable** (picker + preview + refresh now),
 **Donations** (link list, reorder, per-link health, test-mode warnings), **Notifications**
-(enabled state, defaults, subscriber count, "send a test notification to this device"),
+(enabled state, defaults, subscriber count, "send a test notification to this device", the
+one-off announcement, and the **standing announcements** list with its next-send times),
 **Share** (QR + poster), **Settings** (app name/icon, local password management, language), and
 the account menu (version, **What's new** from the changelog, **Source code** link).
 
@@ -546,6 +653,13 @@ optional details expander).
 ## 12. Design & theming
 
 Match the family — the polish bar is Display, Donations, and the dashboard.
+
+**The musalli page's visual direction lives in [`docs/DESIGN_LANGUAGE.md`](docs/DESIGN_LANGUAGE.md)**
+(set by Hasan on 2026-08-24 from a reference app he uses): the time-of-day sky, the day arc with
+the prayers along it, the big current-prayer header, the dimmed-past/outlined-present list, and
+what was deliberately *not* taken from it — chiefly the accent colour, which comes from the
+masjid's own OpenMasjidOS appearance, not from a palette of ours. Read it before touching the
+musalli half; it refines this section rather than replacing it.
 
 - **Tokens via CSS variables**, copied verbatim from Display (`tokens.css`, `glass.css`) with
   Tailwind utilities only (preflight off) mapped onto them. Dark default; light and
@@ -575,9 +689,26 @@ Match the family — the polish bar is Display, Donations, and the dashboard.
 - **Secrets hygiene:** `OPENMASJID_APP_SECRET` read from env each start, never persisted, never
   logged. VAPID private key stored in `/data`, never logged, never sent to any browser. Push
   endpoints never logged in full.
+- **One deliberate exception to `redirect: 'error'`: the campaign fetch** (`campaigns.ts`).
+  The rule exists because every other outbound call presents `X-OpenMasjid-App-Secret` and a
+  redirect would hand it to whatever host the redirect named. The campaign fetch presents
+  **nothing** — it is the same anonymous GET a browser makes to a public donor page — so
+  refusing a redirect buys no secrecy and breaks real deployments (a canonical-host rule or a
+  trailing-slash normalisation at the Cloudflare edge). It follows at most 3 hops **manually**,
+  and a hop is allowed only if it is **same-origin** (safe by construction) or a **public https**
+  host. A public link may never bounce us onto a private address: that would make the admin's
+  paste box a port scanner for the masjid's own network.
 - **Outbound fetch posture everywhere:** `redirect: 'error'`, `AbortController` timeouts,
   https-only for anything crossing the tunnel domain, response-size caps on the campaign and
   timetable fetches, and no URL ever built from a request's `Host` header.
+- **The visit counter is the third unauthenticated write** (`POST /api/public/visit`), and it
+  gets its own, much larger budget rather than sharing the push one. Behind the tunnel every
+  request arrives from the same peer — cloudflared's — so a per-peer limit is really a
+  per-masjid limit, and 429ing a busy Jumuʿah would drop counts on precisely the day worth
+  counting. The table can only ever hold a few dozen rows a day whatever happens, so what the
+  limit bounds is write load, not growth. It follows that the counts are **inflatable by anyone
+  holding the public link**, which is inherent to counting a public page and is said out loud on
+  the admin's own screen rather than left to be discovered when a number looks wrong.
 - **Unauthenticated writes are rate-limited and validated** (push subscribe/unsubscribe; the
   login endpoint gets attempt limiting like Donations). Everything external is parsed with
   **zod**; cross-app content (campaign JSON, timetable payloads) is sanitised before rendering.

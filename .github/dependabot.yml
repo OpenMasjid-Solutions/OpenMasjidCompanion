@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 OpenMasjid-Solutions
+#
+# Automated dependency updates. Without this nothing told the maintainers when an
+# advisory landed against something this app ships — the postcss advisory found by the
+# 2026-08-04 audit had been public for a while and no one here knew. (DISPLAY-015)
+#
+# `docker` covers the digest-pinned FROM lines in the Dockerfile and `github-actions`
+# the SHA-pinned `uses:` in the workflows — both are pinned deliberately for
+# supply-chain reasons (DISPLAY-004, DISPLAY-009), and Dependabot is what keeps a
+# deliberate pin from quietly becoming a stale one.
+#
+# EVERY entry sets `target-branch: dev`. Without it Dependabot opens against the default
+# branch, which is `main` — and `main` only ever moves as a release (CLAUDE.md →
+# "Branching policy"), so every bump would arrive as a PR nobody is allowed to merge.
+# Pointing it at `dev` means a bump lands where work belongs and ships with the next
+# release. Note this also makes `dev` the branch Dependabot reads the manifests from.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /server
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # One PR for the dev toolchain, individual PRs for anything that ships in the image.
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /web
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

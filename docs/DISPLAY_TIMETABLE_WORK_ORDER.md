@@ -187,3 +187,350 @@ On a real OpenMasjidOS box with both apps installed from the dev channel:
 - No write methods of any kind.
 - No change to the public widget, the volunteer page, or `commands`.
 - No new platform work — the broker as shipped in OpenMasjidOS ≥ v0.40.0 carries this as-is.
+
+---
+
+# Addendum — SHIPPED. What Display actually built (2026-08-23)
+
+> **This section, not the ask above, is the contract Companion is written against.** The ask
+> stays as written because it is the history of the request; this records the answer. Display
+> shipped `timetable` on its **dev channel** (`0.70.0-dev.83`), with the `fabric.provides`
+> manifest entry in the same build as the routes, as asked.
+>
+> **The authoritative shape is the `Fabric*` interfaces in Display's
+> `server/src/fabricTimetable.ts`**, written up in its `docs/USING_THE_FABRIC.md` §8. This
+> addendum is Companion's copy of that, kept in step per CLAUDE.md §2. **The Display repo's copy
+> of this work order needs the same addendum** — that is a note for a maintainer, not something
+> this repo may do.
+
+## Six deliberate divergences, and what each means for the client
+
+1. **`jumuah[].adhan` is always `null`.** Not an omission: a Display timetable configures
+   Jumu'ah as **jamā'ah times only** — there is no per-Jumu'ah Adhan field anywhere in its
+   model. The example earlier in this document showed `13:00` and was wrong to. On the wall, the
+   Friday countdown runs to the calculated **Dhuhr** adhan relabelled "Jumu'ah".
+   → *Companion reads that day's `prayers.dhuhr.adhan` when it needs an adhan time for Jumu'ah,
+   and never renders `jumuah[].adhan`.*
+
+2. **`jumuah` is `[]` on every day that is not a Friday** *in the masjid's own timezone* (which
+   is not always UTC's Friday). Display's screens carry a standing Jumu'ah strip on all seven
+   days as a reference; repeating that here would assert a jamā'ah on a Tuesday.
+   → *Companion shows Jumu'ah on the day it is sent, and does not carry it forward.*
+
+3. **`sunrise` is present per day** — astronomical Shurūq, additive to the ask, free for Display
+   to compute. Display offered to drop it if unwanted.
+   → *Kept. Companion shows it. See "Decided" at the end of this addendum — Display should not
+   drop the field.*
+
+4. **Two extra statuses.** `409 {error:'no_location'}` — the timetable exists but the admin
+   never set coordinates, so there is nothing to compute times *for*; answering anyway would
+   return plausible-looking times for latitude 0, longitude 0. `405 {error:'method_not_allowed'}`
+   on a non-POST. And the envelope refuses with **`403`, not `401`** (a 401 without
+   `WWW-Authenticate` is wrong, and it matches Display's existing inbound route).
+   → *`409` is Companion's "prayer times aren't set up yet" state, named precisely in the admin
+   panel. Retrying it changes nothing, so it must not be treated as a transient failure.*
+
+5. **`hijri` is `{ label }` only**, already localised to the timetable's own language. Structured
+   day/month/year is available additively if asked for.
+   → *Companion renders the label. It does not parse it, and it never computes a Hijri date.*
+
+6. **`name` is the admin's PRIVATE label** ("Name (for you)" — e.g. "Women's section"), never
+   shown on a Display screen.
+   → *Exactly right for Companion's admin timetable picker. It must never be rendered on the
+   musalli page, which shows `masjidName`.*
+
+## The full error set a client has to branch on
+
+| status | body                           | meaning for Companion                                                            |
+| ------ | ------------------------------ | -------------------------------------------------------------------------------- |
+| `400`  | `{error:'bad_request'}`        | our bug — a malformed `id`/`from`, or `days` outside 1–45. Not retryable.          |
+| `403`  | `{error:'forbidden'}`          | the envelope refused, deliberately not saying which part. Not retryable.           |
+| `404`  | `{error:'unknown_timetable'}`  | the admin deleted it in Display → ask them to pick again; serve the stale cache.   |
+| `405`  | `{error:'method_not_allowed'}` | our bug — both methods are POST.                                                   |
+| `409`  | `{error:'no_location'}`        | **not an error to retry.** The admin must set coordinates in Display.              |
+| `429`  | `{error:'too_many_requests'}`  | Display's own 60/min socket-keyed limiter. Back off.                               |
+| `503`  | `{error:'not_ready'}`          | Display has no secret yet (still starting). Retry.                                 |
+| `5xx`  | anything                       | "ask again later".                                                                 |
+
+Plus the **platform's** own `{ "fabric_error": { "code": … } }` — `not_granted`,
+`target_not_installed`, `target_unreachable`, `timeout`, `rate_limited` — which never reaches
+Display at all. Every one of these means *"feature unavailable, app still fine"*.
+
+## Two properties worth relying on
+
+- **`timezone` is the zone the times were actually COMPUTED in**, not the stored config string.
+  Display's stored field is `''` for "this box's zone", and its engine also falls back to the
+  host zone for a name `Intl` does not recognise — so passing the config string through would be
+  silently an hour or more out, on every prayer, for everyone who installed this app. Companion
+  schedules push notifications from this field and must never substitute anything else for it.
+- **The answer contains no clock**, so it is deterministic and Companion may cache it freely.
+
+## LAN-only: implemented differently, and more strictly
+
+This document asked for Display's own commands-route doctrine — *"exact path only… there is no
+header to trust for it"* — and Display kept the **intent** while rejecting the literal form,
+correctly. Its router derives `pathname` with `new URL()`, which **normalises**, so nine
+different request lines all arrive as `pathname === '/fabric/timetable/list'`
+(`/display/../…`, `%2e%2e`, `.%2e`, an absolute-form target, a protocol-relative one, a
+backslash separator, …). Matching the parsed pathname would therefore have let a tunnelled
+request through. The shipped route compares the **raw request line** instead, which is strictly
+stronger: the tunnel does not strip the prefix, so every one of those shapes is a *rewrite* of
+the prefix rather than a way to remove it, and no tunnelled spelling can equal the bare path. A
+query string is tolerated in case the platform ever appends a trace id.
+
+Display also deliberately did **not** copy the commands route's `x-forwarded-*` refusal: the
+broker *is* a proxy, so a route that refused `X-Forwarded-For` would be dead on arrival,
+silently, and only discoverable on real hardware.
+
+Read-only is **asserted, not intended** — a test reads the module and fails if `store.update`
+ever appears in it.
+
+## Acceptance test: steps 1–5 are still outstanding
+
+Display could not run them: they need a real OpenMasjidOS box with **both** apps installed from
+the dev channel, and Companion did not exist. Everything on the Display side is unit-tested, and
+its equivalent of step 3 (tunnelled → 404) is the nine-shape table above, verified against Node's
+URL parser.
+
+**Step 3 is the one to confirm on real hardware**, and it is now Companion's turn to be the other
+half of steps 1, 2 and 5. Those are the acceptance test for this repo's timetable slice.
+
+## Sizing, confirmed
+
+The worst case a masjid can configure — 45 days, eight Jumu'ah jamā'āt, the longest names the
+store allows, Arabic labels — measures **18.5 KB**, so the broker's 256 KB ceiling has a factor
+of about 14 in hand. The 45-day cap is really about CPU: every day is a fresh solar computation
+in the same process that draws the masjid's screens at 1 fps.
+
+## Decided
+
+- **Shurūq: keep it, and show it** (Hasan, 2026-08-23). Companion renders `sunrise` as a row on
+  the today, week and month views, visually distinct from the five jamā'āt because it is not one
+  — it is a sun event, with no Iqamah. It is what a printed masjid timetable normally carries and
+  a musalli timetable without it looks incomplete. **Display should NOT drop the field.** This is
+  a small addition to `CLAUDE.md` §4's v1 list, made deliberately.
+
+## Still open
+
+- **Structured Hijri.** Available additively (`formatToParts`) if Companion ever needs to
+  reformat the date rather than render Display's label. Nothing in v1 needs it, and asking for it
+  would mean this app was formatting a Hijri date, which is close to computing one. Leave it.
+
+---
+
+# Work order #2 — OpenMasjidDisplay: add the masjid logo to the `timetable` capability
+
+> **Status: REQUESTED, not built.** Raised by Companion 2026-08-24, after Hasan asked that a
+> musalli's home-screen icon be the masjid's own logo. Companion ships the fallback chain without
+> it and simply skips the first link until this exists — nothing here is blocking.
+
+## Why
+
+When a musalli adds OpenMasjid Companion to their home screen, the icon should be **their masjid's
+logo**, not ours. Companion's own mark is the last resort, not the default: the app on somebody's
+phone belongs to the masjid.
+
+There are two masjid logos on a box and they are not the same thing:
+
+| source | what it is | reachable today |
+| ------ | ---------- | ---------------- |
+| `GET ${OPENMASJID_BASE_URL}/api/public/logo` | the platform-wide logo, set once in OpenMasjidOS → Settings → Customize. Raster only, CORS-open, 404 when unset. | **yes** |
+| Display's per-timetable `logoImage` | the logo actually **on the prayer screens** — the one a masjid uploads when they set their TV up | **no** — not on the `timetable` contract |
+
+The second is the better answer and the one Hasan asked for, because it is the logo a musalli
+already associates with the masjid: it is on the wall in front of them. It is also the more likely
+of the two to be set at all — a masjid configures Display's screens long before anyone visits
+Settings → Customize.
+
+So Companion resolves in this order, and needs the first link built:
+
+```
+Display's timetable logo  →  the platform's /api/public/logo  →  Companion's own mark
+```
+
+## The ask
+
+A **third method** on the same capability, at the same exact unprefixed path shape, under the same
+envelope (`checkBrokerEnvelope`, read-only, no clock):
+
+```
+POST /fabric/timetable/logo      ← { "id": "tt_6e46aea7" }
+```
+
+Response `200`:
+
+```jsonc
+{
+  "v": 1,
+  "id": "tt_6e46aea7",
+  "logo": {
+    "mime": "image/png",          // the raster types Display already accepts
+    "bytes": 48213,               // decoded length, so a consumer can sanity-check before decoding
+    "data": "iVBORw0KGgo…"        // base64, no data: prefix
+  }
+}
+```
+
+…or `{ "v": 1, "id": "…", "logo": null }` when that timetable has no `logoImage` (the built-in
+mark). `null` is a normal answer, not an error.
+
+**A separate method rather than a field on `get`, deliberately.** `get` is polled on a cadence
+(~every 15 minutes) and its whole virtue is that it is small — 18.5 KB at the 45-day cap. A logo
+is 10–200 KB, changes maybe once in the life of an install, and inlining it would multiply the
+steady-state cost of the feed by an order of magnitude for a payload that is identical every time.
+Fetched separately it can be cached until the masjid changes it.
+
+**Requirements:**
+
+- **Raster only.** Refuse SVG even if `logoImage` holds one — an SVG is a script container, and
+  this one ends up rendered as an app icon and re-encoded by the consumer. The platform's own
+  `/api/public/logo` takes exactly this position and says so.
+- **Cap the response.** The broker's ceiling is 256 KB each way and base64 costs 33%, so anything
+  over ~180 KB decoded should answer `413 {error:'logo_too_large'}` rather than a truncated image
+  or a broker-level failure. Companion treats that as "no logo" and falls through.
+- `404 {error:'unknown_timetable'}` for an unknown id, as `get` already does.
+- Read-only, like the rest of the capability.
+
+**Versioning:** additive — a new method does not change `v`. Companion probes it and treats EVERY
+error as "no logo, fall through". (This paragraph originally said an older Display would answer
+404. It answers 401 — see the correction under "Work order #2 — SHIPPED" below.)
+
+## What Companion does with it
+
+Once, at the point the admin picks a timetable and whenever they ask for a refresh: fetch, validate
+it really is a raster of the declared type, re-encode to the 512/192/maskable PWA sizes server-side,
+and store the derived icons on Companion's own volume. The masjid can always override it with an
+upload in Companion's own settings — this only decides the **default**.
+
+## If this is not wanted
+
+Say so and Companion will fall back to the platform's `/api/public/logo` alone, which already works.
+The result is simply that a masjid whose logo is on their screens but not in Settings → Customize
+gets Companion's mark on the home screen instead of their own.
+
+---
+
+## Work order #2 — SHIPPED (2026-08-24), with one correction to the ask
+
+Display built `POST /fabric/timetable/logo` as specified: `{v:1, id, logo:{mime, bytes, data}}`
+with `data` base64 and no `data:` prefix, or `{v:1, id, logo:null}`. Raster enforced by an
+**allowlist read from the magic bytes** (`image/png`, `image/jpeg`, `image/gif`) rather than by
+refusing SVG by extension — which is stronger than what was asked for, and correctly so: a
+`.png` that is really an SVG is a file Display's own upload route cannot produce but a restored
+backup can. `415 {error:'logo_not_raster'}`. WebP is absent because Display's uploader already
+refuses it (resvg cannot decode it), so no such logo exists on a screen either.
+
+The cap landed at **175 KB decoded**, derived rather than guessed: base64 is 4:3, so the encoded
+answer is ~239 KB against the broker's 256 KB ceiling, 8.8 % spare. A Display-side test
+recomputes that arithmetic, so raising the cap without re-deriving it fails.
+
+Two divergences from the ask, both right:
+
+1. **`logo` needs no location**, unlike `get`. A masjid can upload a logo before setting
+   coordinates, and the icon is still theirs — gating it on a location would borrow an unrelated
+   failure.
+2. **A `logoImage` naming a missing file answers `logo: null`**, not an error. Companion falls
+   back to its own mark in exactly that case, so null is the honest answer.
+
+### The correction — worth keeping, because it is a trap
+
+This document told Display that Companion "treats every error, including a 404 from an older
+Display that has no such route, as no logo, fall through". **The 404 part was wrong.** Display
+booted a server and measured it:
+
+```
+POST /fabric/timetable/list   -> 200
+POST /fabric/timetable/logo   -> 404 unknown_timetable   (bad id)
+POST /fabric/timetable/bogus  -> 401 Please sign in.     (i.e. an older Display)
+GET  /fabric/timetable/logo   -> 405 method_not_allowed
+```
+
+An unmatched non-GET path falls past every branch to Display's session gate, and a Fabric call
+carries no cookie — so there is no route that can 404 for "this method does not exist". An older
+Display answers **401**.
+
+Companion's fall-through-on-any-error posture makes this harmless, which is why it stays exactly
+as it is. **It must not be tightened to branch on 404**: from these methods a 404 means *the id
+was wrong*, which is a different problem from *this Display is too old*, and conflating them
+would send an admin to re-pick a timetable that was never the issue.
+
+---
+
+# Work order #3 — WITHDRAWN, not sent
+
+> **Decided by Hasan, 2026-08-24: this is not needed. Qibla uses the device's own geolocation.**
+>
+> Kept here rather than deleted so it is not re-proposed. Display is not being asked for
+> coordinates, and the fallback described under "If this is not wanted" at the end **is now the
+> design**: the compass asks the musalli's browser where they are, and shows an honest "we need
+> your location for this" state to anyone who declines.
+>
+> Two consequences that follow from that and are not optional:
+>
+> 1. **Qibla needs a secure context**, so it works over the tunnel and not on the plain-HTTP
+>    LAN — the same rule as install and notifications (CLAUDE.md §6.4). The LAN page must hide
+>    it rather than offer a button that cannot work.
+> 2. **Declining is a normal outcome, not an error.** A good number of people say no to a
+>    location prompt, and the screen has to be worth looking at when they do.
+>
+> The rest of this section is the original ask, left intact for the record.
+
+---
+
+**Original ask (superseded).** Hasan added Qibla to Companion's v1 on 2026-08-24
+(`docs/DESIGN_LANGUAGE.md`); this is what would have made it work without a permission prompt.
+
+## The ask
+
+Add `location` to the existing `get` response — a **field, not a method**, because unlike the
+logo it is ~40 bytes and never worth a second round trip:
+
+```jsonc
+{
+  "v": 1,
+  "id": "tt_6e46aea7",
+  "timezone": "America/New_York",
+  "location": { "latitude": 40.2415, "longitude": -75.2838 },   // NEW — or null
+  "days": [ /* … */ ]
+}
+```
+
+- `null` when the admin has not set coordinates. Note this can only be observed on a timetable
+  that *has* them, since `get` already answers `409 no_location` otherwise — so in practice the
+  field is present whenever the call succeeds. It is typed nullable anyway, so that a future
+  Display which computes times some other way is not forced to lie.
+- Additive, so **`v` stays 1**. Companion treats an absent field as `null`.
+
+## Why Companion wants it
+
+Qibla is a bearing to Makkah from a position. There are only two positions available:
+
+1. **The masjid's own**, which needs no permission prompt, no HTTPS, no signal, and no
+   geolocation API — and is the *right* default for a masjid's own app.
+2. **The musalli's device**, which needs an explicit permission a lot of people decline, and a
+   secure context they only have over the tunnel.
+
+Without (1), declining a location prompt leaves a dead screen. With it, the compass works for
+everyone immediately and the device's location becomes a refinement for someone using the app
+away from the masjid.
+
+Display already holds these coordinates — that is what `409 no_location` is about — so this is
+exposing a value that exists, not computing anything new.
+
+**This is not a prayer-time calculation** and does not touch Companion's §2 rule. A Qibla
+bearing is a great-circle heading, self-evidently right or wrong on screen the moment you hold
+the phone up. A wrong prayer time is silent and unfalsifiable; a compass pointing at the wrong
+wall is neither.
+
+## Requirements
+
+- **Read-only**, like the rest of the capability.
+- **The coordinates the times were actually computed FOR**, matching the `timezone` field's own
+  rule — not a stored config string that may differ.
+- Ordinary WGS-84 decimal degrees. Rounding to ~4 decimal places (≈11 m) is welcome: this is a
+  masjid's location, it is on their public website already, and a bearing does not need more.
+
+## If this is not wanted
+
+Say so and Companion will use the device's geolocation alone, and show an honest "we need your
+location for this" state to anyone who declines. That is a worse screen, not a broken app.

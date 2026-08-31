@@ -1,0 +1,356 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 OpenMasjid-Solutions */
+/*
+ * Design tokens — mirrors the OpenMasjidOS palette so the control panel feels
+ * like part of the platform. Switching theme = data-theme="dark|light" on <html>.
+ * Fonts use the system stack (no external/CDN dependency).
+ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-surface: #030D1A;
+  --color-surface-raised: #0A1828;
+  --color-surface-overlay: #0F2040;
+  --color-surface-hover: rgba(34, 211, 238, 0.07);
+  --color-surface-shimmer: #0D2035;
+
+  --color-primary: #22D3EE;
+  --color-primary-hover: #67E8F9;
+  --color-primary-muted: #155E75;
+  --color-primary-subtle: rgba(34, 211, 238, 0.12);
+
+  --color-accent: #F59E0B;
+  --color-gold: #F59E0B;
+  --color-gold-subtle: rgba(245, 158, 11, 0.1);
+
+  --color-ink: #F4F7FB;
+  --color-ink-muted: #AEBACD;
+  --color-ink-faint: #8593AD;
+
+  --color-border: rgba(148, 175, 210, 0.14);
+
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-danger: #F87171;
+
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --radius-card: 1rem;
+  --radius-button: 0.625rem;
+  /* The tightest radius in the set: an inset row, a list item, a small field — things that sit
+     INSIDE something already rounded, where the button radius reads as a bubble. Added because five
+     places were reaching for a --radius-sm that had never been defined and silently falling back to
+     their own hardcoded guess (0.35rem in one file, 8px in another). */
+  --radius-input: 0.375rem;
+
+  --glass-blur: 16px;
+  --glass-blur-inset: 9px;
+  --glass-blur-strong: 28px;
+  --glass-saturate: 165%;
+  --glass-saturate-strong: 200%;
+  --glass-bg: rgba(10, 24, 40, 0.55);
+  --glass-bg-raised: rgba(15, 32, 64, 0.68);
+  /* A WINDOW is opaque. Glass is right for cards floating over a wallpaper, and wrong for a
+     dialog you are reading a list in: at 0.68 alpha the cards behind it stayed legible through
+     it, and the eye kept resolving them instead of the content. macOS does the same thing —
+     vibrancy on sidebars, solid where the work happens. */
+  --window-bg: #101f3a;
+  --window-head: #16294a;
+  --window-edge: rgba(160, 205, 235, 0.16);
+  --glass-bg-inset: rgba(3, 13, 26, 0.45);
+  --glass-tint: rgba(34, 211, 238, 0.06);
+  --glass-highlight: rgba(186, 230, 253, 0.22);
+  --glass-border: rgba(125, 200, 232, 0.14);
+  --glass-glow: rgba(34, 211, 238, 0.10);
+  --glint: rgba(255, 255, 255, 0.10);
+  --glass-shadow:
+    inset 0 1px 0 0 var(--glass-highlight),
+    0 8px 28px -8px rgba(0, 0, 0, 0.6),
+    0 0 0 1px var(--glass-border);
+  --glass-shadow-raised:
+    inset 0 1px 0 0 var(--glass-highlight),
+    0 16px 48px -12px rgba(0, 0, 0, 0.7),
+    0 0 28px -6px var(--glass-glow),
+    0 0 0 1px var(--glass-border);
+
+  --glow-primary: 0 0 0 1px var(--color-primary-subtle), 0 12px 32px -8px rgba(34, 211, 238, 0.35);
+  --glow-strength: 0.40;
+
+  --color-btn: #22D3EE;
+  --color-btn-hover: #67E8F9;
+  --color-on-primary: #00131c;
+
+  --scene-base: #020912;
+  --scene-gradient: linear-gradient(150deg, #0c3a4d 0%, #082230 48%, #020a12 100%);
+  --aurora-cyan: rgba(34, 211, 238, 0.30);
+  --aurora-navy: rgba(15, 32, 64, 0.60);
+  --aurora-gold: rgba(245, 158, 11, 0.14);
+  --aurora-blur: 48px;
+  --scene-vignette: rgba(0, 0, 0, 0.45);
+  /* Veil drawn over a custom background image so on-image text stays readable. Matches
+     the sibling apps (OpenMasjidDonations/Kiosk) byte-for-byte. */
+  --scrim: linear-gradient(180deg, rgba(2, 9, 18, 0.30), rgba(2, 9, 18, 0.58));
+  --pattern-opacity: 0.5;
+  --geometric-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='%2322D3EE' stroke-width='0.5' opacity='0.15'%3E%3Cpolygon points='30,4 34.5,21 51,15 39,28 56,30 39,32 51,45 34.5,39 30,56 25.5,39 9,45 21,32 4,30 21,28 9,15 25.5,21'/%3E%3Crect x='19' y='19' width='22' height='22' transform='rotate(45 30 30)'/%3E%3Cline x1='0' y1='30' x2='60' y2='30'/%3E%3Cline x1='30' y1='0' x2='30' y2='60'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --color-surface: #F0F9FF;
+  --color-surface-raised: #FFFFFF;
+  --color-surface-overlay: #E0F2FE;
+  --color-surface-hover: rgba(2, 132, 199, 0.06);
+  --color-surface-shimmer: #BAE6FD;
+
+  --color-primary: #0284C7;
+  --color-primary-hover: #0369A1;
+  --color-primary-muted: #BAE6FD;
+  --color-primary-subtle: rgba(2, 132, 199, 0.1);
+
+  --color-accent: #D97706;
+  --color-gold: #D97706;
+  --color-gold-subtle: rgba(217, 119, 6, 0.08);
+
+  --color-ink: #0C4A6E;
+  --color-ink-muted: #44515F;
+  --color-ink-faint: #647281;
+
+  --color-border: rgba(2, 132, 199, 0.12);
+
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-danger: #DC2626;
+
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-raised: rgba(255, 255, 255, 0.72);
+  --window-bg: #ffffff;
+  --window-head: #f2f6fb;
+  --window-edge: rgba(2, 132, 199, 0.18);
+  --glass-bg-inset: rgba(240, 249, 255, 0.60);
+  --glass-tint: rgba(2, 132, 199, 0.04);
+  --glass-highlight: rgba(255, 255, 255, 0.90);
+  --glass-border: rgba(2, 132, 199, 0.16);
+  --glass-glow: rgba(2, 132, 199, 0.08);
+  --glint: rgba(255, 255, 255, 0.32);
+  --glass-shadow:
+    inset 0 1px 0 0 var(--glass-highlight),
+    0 8px 28px -10px rgba(13, 38, 76, 0.18),
+    0 0 0 1px var(--glass-border);
+  --glass-shadow-raised:
+    inset 0 1px 0 0 var(--glass-highlight),
+    0 16px 48px -14px rgba(13, 38, 76, 0.22),
+    0 0 28px -8px var(--glass-glow),
+    0 0 0 1px var(--glass-border);
+
+  --glow-primary: 0 0 0 1px var(--color-primary-subtle), 0 12px 32px -8px rgba(2, 132, 199, 0.22);
+  --glow-strength: 0.22;
+
+  --color-btn: #0369A1;
+  --color-btn-hover: #075985;
+  --color-on-primary: #FFFFFF;
+
+  /* The ambient SCENE is light in light mode. It used to stay dark here — light mode
+     lightened only the glass cards and left the backdrop near-black — because an earlier
+     attempt at a light scene made the on-scene text vanish. The actual cause was ordering,
+     not the light scene: every [data-wallpaper] block below is a dark gradient at the same
+     specificity as this one, so they overwrote it and light theme ended up painting white
+     glass over a near-black backdrop. The fix is the paired
+     [data-theme="light"][data-wallpaper="…"] blocks further down, which win on specificity
+     wherever they sit, plus on-scene ink that follows the scene. */
+  --scene-base: #EAF6FF;
+  --scene-gradient: linear-gradient(150deg, #dbeafe 0%, #eef6ff 50%, #f0f9ff 100%);
+  --aurora-cyan: rgba(2, 132, 199, 0.14);
+  --aurora-navy: rgba(186, 230, 253, 0.42);
+  --aurora-gold: rgba(217, 119, 6, 0.07);
+  --aurora-blur: 56px;
+  --scene-vignette: rgba(2, 40, 70, 0.06);
+  --pattern-opacity: 0.4;
+  /* The same figure as the dark pattern, drawn in the light theme's primary and fainter —
+     the cyan stroke was invisible on a pale backdrop. */
+  --geometric-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='%230284C7' stroke-width='0.5' opacity='0.1'%3E%3Cpolygon points='30,4 34.5,21 51,15 39,28 56,30 39,32 51,45 34.5,39 30,56 25.5,39 9,45 21,32 4,30 21,28 9,15 25.5,21'/%3E%3Crect x='19' y='19' width='22' height='22' transform='rotate(45 30 30)'/%3E%3Cline x1='0' y1='30' x2='60' y2='30'/%3E%3Cline x1='30' y1='0' x2='30' y2='60'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  --ease-settle: linear(0, 0.18, 0.45, 0.73, 0.92, 1.01, 1.02, 1);
+  --dur-micro: 140ms;
+  --dur-settle: 420ms;
+  --lift-y: -6px;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Segoe UI", system-ui, ui-sans-serif, var(--font-sans);
+}
+
+/* On-scene ("on the wallpaper") text — the brand, the clock, page headings, empty states.
+   It follows the SCENE, which is not the same thing as the theme: a custom wallpaper photo
+   replaces the gradient entirely, so its own tone decides. Order matters below — all three
+   blocks have the same specificity, so the later one wins, and the photo must beat the theme. */
+:root,
+[data-theme="dark"] {
+  --ink-scene: #F4F7FB;
+  --ink-scene-muted: #AEBACD;
+  --ink-scene-faint: #8593AD;
+  --text-shadow-scene: 0 1px 12px rgba(0, 0, 0, 0.55);
+}
+/* Light theme now has a light scene, so near-white on-scene text would disappear on it.
+   These are the same inks the glass cards use, so chrome on the backdrop and text on a panel
+   read alike. */
+[data-theme="light"] {
+  --ink-scene: #0C4A6E;
+  --ink-scene-muted: #44515F;
+  --ink-scene-faint: #647281;
+  --text-shadow-scene: 0 1px 10px rgba(255, 255, 255, 0.65);
+}
+/* A custom wallpaper PHOTO overrides both, because it is what is actually behind the text.
+   `data-scene` is set from the image's measured luminance (App.tsx) and is absent whenever
+   there is no photo — which is what lets the theme rules above apply to the gradient. */
+[data-scene="dark"] {
+  --ink-scene: #F4F7FB;
+  --ink-scene-muted: #AEBACD;
+  --ink-scene-faint: #8593AD;
+  --text-shadow-scene: 0 1px 12px rgba(0, 0, 0, 0.55);
+  --scrim: linear-gradient(180deg, rgba(2, 9, 18, 0.30), rgba(2, 9, 18, 0.58));
+}
+[data-scene="light"] {
+  --ink-scene: #0C4A6E;
+  --ink-scene-muted: #44515F;
+  --ink-scene-faint: #647281;
+  --text-shadow-scene: 0 1px 10px rgba(255, 255, 255, 0.65);
+  /* A pale veil, not the dark one: over a light photo the dark scrim was fighting the dark
+     ink it is supposed to be making readable. */
+  --scrim: linear-gradient(180deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.62));
+}
+
+/* Wallpapers (applied via data-wallpaper on <html>) — mirror OpenMasjidOS so the
+   panel can match the platform's look. */
+[data-wallpaper="aurora"] {
+  --scene-gradient: linear-gradient(150deg, #0c3a4d 0%, #082230 48%, #020a12 100%);
+}
+[data-wallpaper="ocean"] {
+  --scene-base: #061427;
+  --scene-gradient: linear-gradient(150deg, #0e4f8a 0%, #0a2750 50%, #04101f 100%);
+  --aurora-cyan: rgba(56, 189, 248, 0.42); --aurora-navy: rgba(37, 99, 235, 0.42); --aurora-gold: rgba(45, 212, 191, 0.20);
+}
+[data-wallpaper="twilight"] {
+  --scene-base: #0a0618;
+  --scene-gradient: linear-gradient(150deg, #5b2da6 0%, #2a1457 50%, #0a0618 100%);
+  --aurora-cyan: rgba(192, 132, 252, 0.42); --aurora-navy: rgba(124, 58, 237, 0.40); --aurora-gold: rgba(236, 72, 153, 0.22);
+}
+[data-wallpaper="berry"] {
+  --scene-base: #1a0518;
+  --scene-gradient: linear-gradient(150deg, #9d2370 0%, #4a1145 50%, #1a0518 100%);
+  --aurora-cyan: rgba(244, 114, 182, 0.40); --aurora-navy: rgba(162, 28, 175, 0.42); --aurora-gold: rgba(251, 113, 133, 0.22);
+}
+[data-wallpaper="sunset"] {
+  --scene-base: #190d08;
+  --scene-gradient: linear-gradient(150deg, #b8632a 0%, #7a2a3a 50%, #190d08 100%);
+  --aurora-cyan: rgba(251, 191, 36, 0.36); --aurora-navy: rgba(244, 63, 94, 0.34); --aurora-gold: rgba(251, 146, 60, 0.30);
+}
+[data-wallpaper="ember"] {
+  --scene-base: #190806;
+  --scene-gradient: linear-gradient(150deg, #b54a1e 0%, #7a1d1d 50%, #190806 100%);
+  --aurora-cyan: rgba(251, 146, 60, 0.40); --aurora-navy: rgba(220, 38, 38, 0.40); --aurora-gold: rgba(250, 204, 21, 0.24);
+}
+[data-wallpaper="forest"] {
+  --scene-base: #04140e;
+  --scene-gradient: linear-gradient(150deg, #1d7a3e 0%, #0f4023 50%, #04140e 100%);
+  --aurora-cyan: rgba(74, 222, 128, 0.38); --aurora-navy: rgba(21, 128, 61, 0.42); --aurora-gold: rgba(132, 204, 22, 0.22);
+}
+[data-wallpaper="night"] {
+  --scene-base: #02060f;
+  --scene-gradient: linear-gradient(150deg, #2a4a8a 0%, #16275a 50%, #02060f 100%);
+  --aurora-cyan: rgba(96, 165, 250, 0.30); --aurora-navy: rgba(30, 58, 138, 0.55); --aurora-gold: rgba(99, 102, 241, 0.16);
+}
+[data-wallpaper="graphite"] {
+  --scene-base: #0b0f17;
+  --scene-gradient: linear-gradient(150deg, #3a4757 0%, #232c39 50%, #0b0f17 100%);
+  --aurora-cyan: rgba(148, 163, 184, 0.20); --aurora-navy: rgba(51, 65, 85, 0.50); --aurora-gold: rgba(203, 213, 225, 0.10);
+}
+
+/* ── Light-theme wallpapers ───────────────────────────────────────────────────
+ * Every [data-wallpaper] block above is a dark gradient, and they sit AFTER
+ * [data-theme="light"] at the same specificity — so without these they would overwrite the
+ * light scene and put white glass and dark ink back on a near-black backdrop. That is the
+ * bug that made light mode look wrong, and it is why these use two-attribute selectors: they
+ * win no matter where in the file they land.
+ *
+ * Each keeps its wallpaper's HUE and inverts the lightness, so Ocean is still blue and
+ * Forest still green — a light mode that collapsed all nine to the same pale blue would lose
+ * the point of choosing one.
+ * ─────────────────────────────────────────────────────────────────────────── */
+[data-theme="light"][data-wallpaper="aurora"] {
+  --scene-base: #EAF6FF;
+  --scene-gradient: linear-gradient(150deg, #cfeaf7 0%, #e3f2fb 50%, #f4fbff 100%);
+  --aurora-cyan: rgba(2, 132, 199, 0.16); --aurora-navy: rgba(186, 230, 253, 0.50); --aurora-gold: rgba(217, 119, 6, 0.08);
+}
+[data-theme="light"][data-wallpaper="ocean"] {
+  --scene-base: #E8F2FD;
+  --scene-gradient: linear-gradient(150deg, #c7dcf7 0%, #dceafc 50%, #f0f7ff 100%);
+  --aurora-cyan: rgba(56, 189, 248, 0.22); --aurora-navy: rgba(37, 99, 235, 0.16); --aurora-gold: rgba(45, 212, 191, 0.12);
+}
+[data-theme="light"][data-wallpaper="twilight"] {
+  --scene-base: #F2EDFC;
+  --scene-gradient: linear-gradient(150deg, #ded0f7 0%, #ebe2fb 50%, #f7f3ff 100%);
+  --aurora-cyan: rgba(147, 51, 234, 0.16); --aurora-navy: rgba(124, 58, 237, 0.14); --aurora-gold: rgba(236, 72, 153, 0.10);
+}
+[data-theme="light"][data-wallpaper="berry"] {
+  --scene-base: #FCEDF6;
+  --scene-gradient: linear-gradient(150deg, #f7d3e8 0%, #fae3f1 50%, #fff2f9 100%);
+  --aurora-cyan: rgba(219, 39, 119, 0.16); --aurora-navy: rgba(162, 28, 175, 0.14); --aurora-gold: rgba(251, 113, 133, 0.12);
+}
+[data-theme="light"][data-wallpaper="sunset"] {
+  --scene-base: #FFF1E8;
+  --scene-gradient: linear-gradient(150deg, #fbd9c0 0%, #fde8d8 50%, #fff6ef 100%);
+  --aurora-cyan: rgba(245, 158, 11, 0.20); --aurora-navy: rgba(244, 63, 94, 0.14); --aurora-gold: rgba(251, 146, 60, 0.18);
+}
+[data-theme="light"][data-wallpaper="ember"] {
+  --scene-base: #FFEDE8;
+  --scene-gradient: linear-gradient(150deg, #fbd2c4 0%, #fde3d8 50%, #fff4f0 100%);
+  --aurora-cyan: rgba(234, 88, 12, 0.20); --aurora-navy: rgba(220, 38, 38, 0.14); --aurora-gold: rgba(250, 204, 21, 0.16);
+}
+[data-theme="light"][data-wallpaper="forest"] {
+  --scene-base: #E9F7EE;
+  --scene-gradient: linear-gradient(150deg, #c8ecd5 0%, #ddf3e5 50%, #f1fbf5 100%);
+  --aurora-cyan: rgba(22, 163, 74, 0.18); --aurora-navy: rgba(21, 128, 61, 0.14); --aurora-gold: rgba(132, 204, 22, 0.14);
+}
+[data-theme="light"][data-wallpaper="night"] {
+  --scene-base: #EBF0FC;
+  --scene-gradient: linear-gradient(150deg, #cdd9f7 0%, #e0e8fb 50%, #f2f6ff 100%);
+  --aurora-cyan: rgba(59, 130, 246, 0.18); --aurora-navy: rgba(30, 58, 138, 0.14); --aurora-gold: rgba(99, 102, 241, 0.10);
+}
+[data-theme="light"][data-wallpaper="graphite"] {
+  --scene-base: #F1F3F6;
+  --scene-gradient: linear-gradient(150deg, #d8dee7 0%, #e6eaf0 50%, #f5f7fa 100%);
+  --aurora-cyan: rgba(100, 116, 139, 0.14); --aurora-navy: rgba(51, 65, 85, 0.12); --aurora-gold: rgba(148, 163, 184, 0.10);
+}
+
+/* Theme-flip fade, scoped to what actually re-colours.
+   It used to be `*` — which left a four-property transition, box-shadow included, on every
+   node in the tree: SVG internals, spacers, the aurora layer, motion wrappers. Naming the
+   surfaces costs a longer selector once and takes the paint work off everything else. */
+body,
+h1, h2, h3, p, a, span, small, label, button, input, select, textarea, pre,
+.glass, .glass-raised, .glass-inset,
+.panel, .btn, .input, .select, .textarea, .chip, .chips, .tag, .pill,
+.icon-btn, .menu-item, .toast, .card-head, .list-row, .screen-card, .nav-item,
+.profile-btn, .modal, .dock, .field, .label, .hint, .muted, .faint,
+.page-title, .page-sub, .section-title, .editor-title, .brand, .topclock {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

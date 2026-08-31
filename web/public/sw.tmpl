@@ -1,0 +1,279 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 OpenMasjid-Solutions
+
+/*
+ * The service worker.
+ *
+ * Served from `<basePath>/sw.js`. The SERVER fills in the two placeholders below and hands
+ * this out from that path, which is what makes the scope right with no `Service-Worker-Allowed`
+ * games. That is the payoff of stripping the prefix before routing: the worker is registered at
+ * the same prefix the app is served under, so it controls exactly this app and nothing else on
+ * the masjid's domain.
+ *
+ * This file is a TEMPLATE, not a module. It is copied verbatim into the image by Vite's public
+ * directory and never bundled, because a service worker has to be a standalone script at a
+ * stable URL.
+ *
+ * What it is for: a musalli standing in a basement prayer hall with no signal should still be
+ * able to see today's times. Not a loading spinner, and not last week's times pretending to be
+ * today's — the page carries its own "last checked" marker for that.
+ */
+
+const VERSION = '__VERSION__';
+const BASE = '__BASE__';
+const SHELL = BASE + '/';
+
+// Versioned by the app's own version, so a new build never reads the previous one's cached
+// HTML — which is how a service worker pins a stale app on someone's phone indefinitely.
+const SHELL_CACHE = 'omc-shell-' + VERSION;
+const ASSET_CACHE = 'omc-assets-' + VERSION;
+const DATA_CACHE = 'omc-data-' + VERSION;
+const OURS = /^omc-(shell|assets|data)-/;
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches
+      .open(SHELL_CACHE)
+      .then((c) => c.add(new Request(SHELL, { cache: 'reload' })))
+      // A failed precache must not leave a broken worker installed. The runtime handlers below
+      // populate the cache on the first successful load anyway.
+      .catch(() => undefined),
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(names.filter((n) => OURS.test(n) && !n.endsWith(VERSION)).map((n) => caches.delete(n)));
+      // Take over open tabs now that the old caches are gone.
+      await self.clients.claim();
+    })(),
+  );
+});
+
+// The page asks for this after the user presses "Refresh" on the update prompt. Never on our
+// own initiative: swapping the worker under someone mid-scroll reloads the page they were
+// reading, which on a prayer times page is worse than being one version behind for a minute.
+self.addEventListener('message', (event) => {
+  if (event.data === 'skip-waiting') self.skipWaiting();
+});
+
+/** Anything the admin touches is NEVER cached — not the panel, not its API. A cached admin
+ *  shell on a shared phone is a small thing that becomes a bad thing later. */
+function isAdmin(url) {
+  const p = url.pathname;
+  return p === BASE + '/admin' || p.startsWith(BASE + '/admin/') || p.startsWith(BASE + '/api/admin');
+}
+
+/** The public timetable: the one thing worth having offline. */
+function isTimetable(url) {
+  return url.pathname === BASE + '/api/public/timetable';
+}
+
+/** The appeals. Worth caching for the same reason as the times — the page should never be half
+ *  drawn on a bad connection — but not worth being precious about: a stale progress bar is a
+ *  progress bar a minute out of date, and the revalidation behind it fixes that. */
+function isCampaigns(url) {
+  return url.pathname === BASE + '/api/public/campaigns';
+}
+
+/** Vite's hashed asset filenames are immutable — a change produces a new name — so they can be
+ *  cached hard and served without revalidation. */
+function isAsset(url) {
+  return url.pathname.startsWith(BASE + '/assets/');
+}
+
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  const fresh = fetch(request)
+    .then((res) => {
+      if (res && res.ok) cache.put(request, res.clone());
+      return res;
+    })
+    .catch(() => undefined);
+  // Serve what we have immediately and update behind it. The page's own "last checked" marker
+  // is what keeps this honest — see the server's /api/public/timetable.
+  return cached || fresh || Response.error();
+}
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return; // never touch another origin's traffic
+  if (isAdmin(url)) return; // straight to the network, uncached, always
+
+  // A navigation: try the network so a returning musalli gets the current app, and fall back to
+  // the cached shell when there is no signal. The shell then loads the cached timetable below,
+  // which is the whole point of this file.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      (async () => {
+        try {
+          const res = await fetch(request);
+          if (res && res.ok) {
+            const cache = await caches.open(SHELL_CACHE);
+            cache.put(SHELL, res.clone());
+          }
+          return res;
+        } catch {
+          const cached = await caches.match(SHELL, { cacheName: SHELL_CACHE });
+          return cached || Response.error();
+        }
+      })(),
+    );
+    return;
+  }
+
+  if (isTimetable(url) || isCampaigns(url)) {
+    event.respondWith(staleWhileRevalidate(request, DATA_CACHE));
+    return;
+  }
+
+  if (isAsset(url)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(ASSET_CACHE);
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const res = await fetch(request);
+        if (res && res.ok) cache.put(request, res.clone());
+        return res;
+      })(),
+    );
+    return;
+  }
+
+  // Everything else — the icons, the masjid's logo — network first, cache as a fallback.
+  event.respondWith(
+    (async () => {
+      try {
+        const res = await fetch(request);
+        if (res && res.ok && (url.pathname.includes('/api/public/logo') || url.pathname.includes('/api/public/icon'))) {
+          const cache = await caches.open(ASSET_CACHE);
+          cache.put(request, res.clone());
+        }
+        return res;
+      } catch {
+        const cached = await caches.match(request);
+        return cached || Response.error();
+      }
+    })(),
+  );
+});
+
+/* ── Prayer notifications ────────────────────────────────────────────────────
+ *
+ * The payload is written by our own server (see server/src/pushScheduler.ts) and is minimal
+ * by design: a prayer name, a time, the masjid. Nothing personal, nothing auth-critical —
+ * this text lands on a lock screen that other people can see.
+ */
+
+self.addEventListener('push', (event) => {
+  // A push with no data, or data that is not ours, still has to show SOMETHING: the browser
+  // will show its own "This site has been updated in the background" if we do not, which is
+  // worse than a plain line of our own.
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+
+  const title = payload.title || 'Prayer time';
+  const options = {
+    body: payload.body || '',
+    // One tag per prayer per day, so a re-delivery REPLACES rather than stacking three
+    // identical Maghrib reminders on a lock screen.
+    tag: payload.tag || 'prayer',
+    renotify: true,
+    icon: BASE + '/api/public/icon/192.png',
+    badge: BASE + '/api/public/icon/192.png',
+    // The URL travels in `data` because `notificationclick` is a separate event with no
+    // access to this one's payload.
+    data: { url: payload.url || SHELL },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+/**
+ * Focus the app if it is already open; otherwise open it.
+ *
+ * Opening a second window when one is already there is the difference between "my app came
+ * to the front" and "my phone now has four copies of the prayer times".
+ */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || SHELL;
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of all) {
+        // Same-origin is enough: the app may be on any of its own routes, and dragging
+        // someone from the Donate tab back to Salah is not what they asked for.
+        if (new URL(client.url).origin === self.location.origin && 'focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+      return undefined;
+    })(),
+  );
+});
+
+/**
+ * The browser rotated this device's subscription.
+ *
+ * It happens on its own schedule and without asking. If nothing re-registers, the phone goes
+ * quiet for ever with nothing on any screen to explain it — so the new endpoint is sent
+ * straight to the server, carrying the SAME preferences the old one had.
+ *
+ * The old endpoint is unsubscribed explicitly rather than left to be pruned on its next
+ * failure: the admin's subscriber count should not count one phone twice.
+ */
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      const old = event.oldSubscription;
+      try {
+        const key = await fetch(BASE + '/api/public/push/key').then((r) => r.json());
+        const applicationServerKey = key && key.data && key.data.key;
+        if (!applicationServerKey) return;
+
+        // Carry the preferences across. Without them the phone silently reverts to whatever
+        // the defaults are, which for someone who had turned Fajr off is a 5am surprise.
+        let prefs = null;
+        if (old) {
+          const got = await fetch(BASE + '/api/public/push/prefs', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ endpoint: old.endpoint }),
+          }).then((r) => r.json());
+          prefs = got && got.data ? got.data.prefs : null;
+        }
+        if (!prefs) return; // nothing to carry over; the page will re-subscribe when opened
+
+        const fresh =
+          event.newSubscription ||
+          (await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey }));
+
+        await fetch(BASE + '/api/public/push/subscribe', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ subscription: fresh.toJSON(), prefs }),
+        });
+        if (old && old.endpoint !== fresh.endpoint) {
+          await fetch(BASE + '/api/public/push/unsubscribe', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ endpoint: old.endpoint }),
+          });
+        }
+      } catch {
+        // Offline at the moment it rotated. The page re-subscribes next time it is opened,
+        // which is the only other chance there is.
+      }
+    })(),
+  );
+});

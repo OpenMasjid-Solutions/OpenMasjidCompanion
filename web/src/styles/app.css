@@ -1,0 +1,2082 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 OpenMasjid-Solutions */
+
+/*
+ * Base + components for OpenMasjid Companion.
+ *
+ * Two surfaces live in this file and they are not the same kind of thing:
+ *
+ *  - The MUSALLI page. Held in one hand, often in a dark prayer hall before Fajr, by
+ *    someone who wants one number and then wants to put their phone away. Generous type,
+ *    a lot of air, tabular numerals everywhere a time appears, and no motion that draws
+ *    the eye. This is the identity of the app.
+ *  - The ADMIN panel. A volunteer at a desk. Denser, closer to the rest of the
+ *    OpenMasjidOS family.
+ *
+ * Everything is written with LOGICAL properties (inline-start, padding-inline, margin-
+ * block) so the same CSS is correct in Arabic and Urdu without a mirrored stylesheet.
+ * Values come from tokens.css — no raw hex here. Sizes are in rem so a musalli who has
+ * turned their phone's text size up gets a bigger timetable, not a broken one.
+ */
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--scene-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* A prayer time must never be re-selected by a stray long-press while scrolling, but
+     the times themselves stay selectable — someone copying a timetable into a message is
+     a thing people genuinely do. */
+  -webkit-tap-highlight-color: transparent;
+}
+#root { min-height: 100vh; min-height: 100dvh; }
+* { box-sizing: border-box; }
+button { font: inherit; color: inherit; cursor: pointer; }
+a { color: var(--color-primary); text-decoration: none; }
+h1, h2, h3, p { margin: 0; }
+
+/* Focus must be VISIBLE — the admin panel is operated by volunteers who may be on a
+   keyboard, and an invisible focus ring is a WCAG failure and a usability one. */
+:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+
+/* Every number that represents a time. Proportional digits make a column of prayer times
+   jitter as the minutes change, which is exactly the thing the eye is trying to scan. */
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* ── Ambient scene ──────────────────────────────────────────────────────────── */
+.scene { position: fixed; inset: 0; z-index: -1; background: var(--scene-gradient); overflow: hidden; }
+.scene::before {
+  content: ""; position: absolute; inset: -30%;
+  background:
+    radial-gradient(40% 50% at 20% 25%, var(--aurora-cyan), transparent 70%),
+    radial-gradient(45% 55% at 80% 20%, var(--aurora-navy), transparent 70%),
+    radial-gradient(50% 50% at 60% 85%, var(--aurora-gold), transparent 75%);
+  filter: blur(var(--aurora-blur)); will-change: transform;
+  animation: auroraDrift 32s ease-in-out infinite alternate;
+}
+@keyframes auroraDrift {
+  0% { transform: translate3d(0,0,0) scale(1); }
+  50% { transform: translate3d(2.5%,-2%,0) scale(1.08) rotate(1.2deg); }
+  100% { transform: translate3d(-2%,2.5%,0) scale(1.04) rotate(-1deg); }
+}
+/* The geometric texture is ORNAMENT and deliberately abstract. No sacred or Qur'anic text
+   is ever used as decoration in this app; prayer names and dates are content. */
+.scene::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: var(--geometric-pattern); opacity: var(--pattern-opacity);
+  box-shadow: inset 0 0 240px 80px var(--scene-vignette);
+}
+@media (prefers-reduced-motion: reduce) { .scene::before { animation: none; } }
+
+/* A custom wallpaper image replaces the preset scene entirely. */
+.scene-img {
+  position: fixed; inset: 0; z-index: -1;
+  background-color: var(--scene-base);
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+}
+.scene-img::after { content: ""; position: absolute; inset: 0; background: var(--scrim); pointer-events: none; }
+
+/* ── Shell ──────────────────────────────────────────────────────────────────── */
+/* The safe-area padding is why index.html sets viewport-fit=cover: the scene reaches
+   under the notch and the home bar, and the CONTENT is inset back out of them. */
+.shell {
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; flex-direction: column;
+  padding-block-start: env(safe-area-inset-top);
+  padding-block-end: env(safe-area-inset-bottom);
+  padding-inline: max(env(safe-area-inset-left), 0px) max(env(safe-area-inset-right), 0px);
+}
+
+.topbar {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.9rem 1.15rem;
+}
+.brand { display: flex; align-items: center; gap: 0.55rem; min-width: 0; color: var(--color-primary); font-weight: 700; }
+.brand-mark {
+  /* The mark is an app TILE with its own white ground — the artwork's lettering is
+     knocked out in white, so a transparent silhouette loses it entirely on a dark
+     background. Rounded to match the PNG's own corner radius, with a hairline so the
+     tile has an edge on the light theme's pale scene too. */
+  border-radius: 22%;
+  box-shadow: 0 0 0 1px var(--glass-border), 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+.brand b {
+  color: var(--ink-scene); font-family: var(--font-display); letter-spacing: -0.01em;
+  text-shadow: var(--text-shadow-scene);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.spacer { flex: 1; }
+
+.icon-btn {
+  width: 2.4rem; height: 2.4rem; border-radius: 0.65rem;
+  display: grid; place-items: center;
+  background: transparent; border: 0; color: var(--ink-scene-muted);
+  transition: color var(--dur-micro) ease, background-color var(--dur-micro) ease, transform var(--dur-micro) var(--ease-settle);
+}
+.icon-btn:hover { background: var(--color-surface-hover); color: var(--ink-scene); }
+.icon-btn:active { transform: scale(0.94); }
+
+/* ── The musalli page ───────────────────────────────────────────────────────── */
+.musalli {
+  flex: 1;
+  width: min(30rem, 100%);
+  margin-inline: auto;
+  padding: 0.25rem 1.15rem 2.5rem;
+  display: flex; flex-direction: column; gap: 1rem;
+}
+
+/* One centred card, for the states where there is nothing else to show yet. */
+.centre-wrap { flex: 1; display: grid; place-items: center; padding: 1.5rem 1.15rem 3rem; }
+.centre-card {
+  width: min(30rem, 100%); padding: 2.2rem 1.6rem;
+  text-align: center; display: flex; flex-direction: column; align-items: center; gap: 0.85rem;
+}
+.centre-emblem {
+  width: 3.9rem; height: 3.9rem; border-radius: 50%;
+  display: grid; place-items: center; color: var(--color-on-primary);
+  background: var(--color-primary); box-shadow: var(--glow-primary);
+}
+.centre-title {
+  font-family: var(--font-display); font-size: 1.55rem; font-weight: 700;
+  letter-spacing: -0.02em; line-height: 1.2;
+  /* Break where a reader would, instead of leaving one word alone on the last line. */
+  text-wrap: balance;
+}
+.centre-lead { color: var(--color-ink-muted); line-height: 1.6; max-width: 26rem; text-wrap: pretty; }
+
+/* A quiet inset strip for the honest states: "last updated", "not set up yet",
+   "remote access is off". Never red — none of these is the musalli's fault or problem. */
+.note {
+  display: flex; align-items: flex-start; gap: 0.55rem; text-align: start;
+  padding: 0.7rem 0.9rem; border-radius: var(--radius-button);
+  background: var(--glass-bg-inset); box-shadow: inset 0 0 0 1px var(--color-border);
+  color: var(--color-ink-muted); font-size: 0.87rem; line-height: 1.5;
+}
+.note svg { color: var(--color-primary); flex: none; margin-block-start: 0.1rem; }
+.note--warn svg { color: var(--color-warning); }
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
+  /* 2.75rem tall: a comfortable thumb target one-handed, and above the 44px floor. */
+  min-height: 2.75rem;
+  padding: 0.55rem 1.05rem; border: 0; border-radius: var(--radius-button); font-weight: 600;
+  background: var(--color-surface-hover); color: var(--color-ink);
+  transition: transform var(--dur-micro) var(--ease-settle), background-color var(--dur-micro) ease, opacity var(--dur-micro) ease;
+}
+.btn:hover { background: var(--color-surface-overlay); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn--primary { background: var(--color-btn); color: var(--color-on-primary); box-shadow: var(--glow-primary); }
+.btn--primary:hover { background: var(--color-btn-hover); }
+.btn--ghost { background: transparent; box-shadow: inset 0 0 0 1px var(--color-border); }
+.btn--ghost:hover { background: var(--color-surface-hover); }
+.btn--block { width: 100%; }
+.btn--sm { min-height: 2.25rem; padding: 0.4rem 0.7rem; font-size: 0.85rem; }
+@media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
+
+/* ── Shared helpers ─────────────────────────────────────────────────────────── */
+.muted { color: var(--color-ink-muted); }
+.faint { color: var(--color-ink-faint); }
+.panel { padding: 1.05rem 1.15rem; }
+.row { display: flex; align-items: center; gap: 0.6rem; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.stack { display: flex; flex-direction: column; gap: 0.85rem; }
+
+.spinner {
+  width: 1.05rem; height: 1.05rem; border-radius: 50%;
+  border: 2px solid var(--color-border); border-top-color: var(--color-primary);
+  animation: spin 0.7s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 1.6s; } }
+
+/* ── Foot ───────────────────────────────────────────────────────────────────── */
+.page-foot {
+  padding: 1.25rem 1.15rem 2rem;
+  text-align: center; font-size: 0.78rem; color: var(--ink-scene-faint);
+  text-shadow: var(--text-shadow-scene);
+}
+/*
+ * The source link sits on the SKY, which changes colour through the day — so it cannot rely on
+ * a fixed ink being readable. Measured across all five phases in both themes, plain on-scene
+ * ink came out at 2.8:1 against the bright midday and dusk skies: a WCAG AA failure, and on the
+ * one element that has a licence obligation to be reachable (AGPL §13).
+ *
+ * So the link carries its own ground. `color-mix` against --scene-base is doing real work here:
+ * it resolves to near-black on the dark theme and near-white on the light one, so a single rule
+ * gives the right backing in both without a second token or a media query.
+ */
+.page-foot a {
+  color: var(--ink-scene);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--scene-base) 62%, transparent);
+}
+.page-foot a:hover { color: var(--color-primary); }
+
+/* ── Screen-reader-only text ────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* ── Admin panel ────────────────────────────────────────────────────────────── */
+/* Denser than the musalli page on purpose: a volunteer at a desk working through a list,
+   rather than one number read one-handed in a dark hall. */
+.admin { width: min(44rem, 100%); margin-inline: auto; padding: 0.25rem 1.15rem 4rem; }
+.page-head { margin-block: 0.5rem 1.25rem; }
+.page-title { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; color: var(--ink-scene); text-shadow: var(--text-shadow-scene); }
+.page-sub { color: var(--ink-scene-muted); margin-block-start: 0.3rem; font-size: 0.94rem; line-height: 1.55; text-shadow: var(--text-shadow-scene); }
+.section-title { font-family: var(--font-display); font-size: 1.02rem; font-weight: 600; }
+.card-head { display: flex; align-items: flex-start; gap: 0.7rem; }
+.card-head__main { min-width: 0; flex: 1; }
+.panel-ico { color: var(--color-primary); flex: none; margin-block-start: 0.15rem; }
+
+.badge {
+  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.18rem 0.5rem; border-radius: 999px; flex: none;
+  background: var(--color-primary-subtle); color: var(--color-primary);
+}
+
+/* ── Forms ──────────────────────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 0.35rem; margin-block-end: 0.9rem; }
+.label { font-size: 0.82rem; font-weight: 600; color: var(--color-ink-muted); }
+.input {
+  width: 100%; padding: 0.65rem 0.8rem; border-radius: var(--radius-button);
+  color: var(--color-ink); font: inherit;
+  background: var(--glass-bg-inset); border: 1px solid var(--color-border);
+}
+.input::placeholder { color: var(--color-ink-faint); }
+.hint { font-size: 0.8rem; color: var(--color-ink-faint); line-height: 1.5; }
+.form-error { color: var(--color-danger); font-size: 0.86rem; margin-block: 0.25rem 0.6rem; }
+
+/* ── Account menu ───────────────────────────────────────────────────────────── */
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; inset-block-start: calc(100% + 0.4rem); inset-inline-end: 0;
+  min-width: 13rem; padding: 0.35rem; z-index: 40;
+  border-radius: var(--radius-card);
+  display: flex; flex-direction: column; gap: 0.1rem;
+}
+.menu-head { padding: 0.55rem 0.65rem 0.5rem; border-block-end: 1px solid var(--color-border); margin-block-end: 0.25rem; }
+.menu-name { font-weight: 600; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-sub { font-size: 0.76rem; color: var(--color-ink-faint); margin-block-start: 0.1rem; }
+.menu-item {
+  display: flex; align-items: center; gap: 0.55rem; width: 100%;
+  padding: 0.55rem 0.65rem; border: 0; border-radius: var(--radius-input);
+  background: transparent; color: var(--color-ink); font-size: 0.9rem; text-align: start;
+  transition: background-color var(--dur-micro) ease;
+}
+.menu-item:hover { background: var(--color-surface-hover); }
+.menu-item svg { color: var(--color-ink-faint); flex: none; }
+.menu-item--danger:hover { color: var(--color-danger); }
+.menu-item--danger:hover svg { color: var(--color-danger); }
+
+/* ── Modal (What's new) ─────────────────────────────────────────────────────── */
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center; padding: 1.15rem;
+  background: rgba(2, 9, 18, 0.55);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.modal {
+  width: min(38rem, 100%); max-height: min(80vh, 44rem);
+  display: flex; flex-direction: column;
+  /* A WINDOW is opaque — glass here would leave the page behind legible through the text
+     you are trying to read. Same reasoning as the platform's own --window-bg token. */
+  background-color: var(--window-bg);
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  padding: 0.9rem 0.7rem 0.9rem 1.15rem;
+  border-block-end: 1px solid var(--color-border);
+}
+.modal-body { padding: 1rem 1.15rem 1.4rem; overflow-y: auto; }
+.release + .release { margin-block-start: 1.4rem; }
+.release-version {
+  font-family: var(--font-display); font-size: 0.98rem; font-weight: 700;
+  color: var(--color-primary); letter-spacing: -0.01em;
+}
+.release-items { margin: 0.5rem 0 0; padding-inline-start: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.release-items li { color: var(--color-ink-muted); font-size: 0.9rem; line-height: 1.6; }
+.release-items b { color: var(--color-ink); }
+.release-items code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.85em; padding: 0.05em 0.3em; border-radius: 4px;
+  background: var(--glass-bg-inset);
+}
+.release-group {
+  font-size: 0.74rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--color-ink-faint); margin-block: 0.9rem 0.1rem;
+}
+.release > div:first-of-type > .release-group:first-child { margin-block-start: 0.6rem; }
+
+/* ── The musalli page ────────────────────────────────────────────────────────
+ *
+ * ONE design, not a different one every few hours (Hasan, 2026-08-24). An earlier build moved
+ * the sky through five phases across the day; it was replaced by this, which is what the
+ * reference screenshots actually show: a day look and a night look, chosen by the reader's
+ * light/dark setting, and otherwise identical everywhere.
+ *
+ * The palette is FIXED here and does not follow the masjid's OpenMasjidOS accent. That is a
+ * deliberate departure from CLAUDE.md §6.2/§12 and applies to the musalli half only — the admin
+ * panel still inherits the dashboard's accent, so a volunteer's settings screen still feels like
+ * part of OpenMasjidOS while the page a musalli opens is always the same app.
+ *
+ * `data-surface="musalli"` is set on <html> by the router. Everything below is scoped to it, so
+ * the admin panel is untouched by any of it.
+ */
+[data-surface="musalli"] {
+  /* Coral, from the reference. Two strengths: one that carries text on the sky, one for
+     large/decorative use where a lighter tone reads better. */
+  --color-primary: #F0A07A;
+  --color-primary-hover: #F7B694;
+  --color-primary-subtle: rgba(240, 160, 122, 0.14);
+  --color-btn: #E8734A;
+  --color-btn-hover: #F08A63;
+  --color-on-primary: #2A1206;
+  --coral: #F0A07A;
+  --coral-strong: #F5B895;
+}
+
+/* On the light theme the same coral would sit at about 2:1 against a near-white card, so the
+   text-carrying tone is darkened while the decorative one stays warm. Measured, not guessed —
+   see the contrast harness in the slice 3 notes. */
+[data-theme="light"][data-surface="musalli"] {
+  --color-primary: #A8461C;
+  --color-primary-hover: #8E3A16;
+  --color-primary-subtle: rgba(168, 70, 28, 0.10);
+  --color-btn: #C2551F;
+  --color-btn-hover: #A8461C;
+  --color-on-primary: #FFFFFF;
+  /* Measured at 4.57:1 against the light sky — over the 4.5 line but not by enough to
+     survive a background tweak. Darkened for headroom; re-measure if either moves. */
+  --coral: #8F3914;
+  --coral-strong: #B04A1B;
+}
+
+/* ── The sky, one per prayer period ──────────────────────────────────────────
+ *
+ * The musalli page themes itself by the TIME OF DAY, not by the browser's light/dark setting
+ * (Hasan, 2026-08-25). Fajr is dark, Duha is light, Maghrib is dark again — and the sun moves
+ * across the day: low and off to the side at Fajr, high overhead at Dhuhr, sinking through Asr,
+ * at the horizon by Maghrib, replaced by the moon at Isha.
+ *
+ * `data-period` is set on the root from the MASJID's timetable, resolved through the IANA zone
+ * Display sent — never the device clock. `periodTheme.ts` maps the same period to light or dark,
+ * which drives `data-theme` and therefore every ink, glass and shadow token. The two tables are
+ * two halves of one decision and neither language can check the other, so `periodTheme.test.ts`
+ * asserts the split and the contrast harness measures the result.
+ *
+ * THREE THINGS THAT LOOK LIKE STYLE AND ARE NOT:
+ *
+ *  1. Every dark-period glow core is capped at 0.20 alpha. Above that the glow composites into a
+ *     pale patch, and on a tall phone the moon sits directly behind the header and the countdown
+ *     — text on a light patch with light ink. The previous two-look sky had this at 0.34 and got
+ *     away with it only because no text happened to land there.
+ *  2. On a LIGHT sky a warm sun SUBTRACTS luminance — saturated orange is darker than pale blue.
+ *     The instinct that a brighter sun is safer is backwards, and the outer warm rings are where
+ *     the light periods' contrast margin actually goes.
+ *  3. `--ink-scene-faint` cannot clear 4.5:1 against any of these skies. It is a large-text token
+ *     only; nothing at body size may use it here.
+ */
+
+.sky {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: var(--sky-gradient);
+}
+
+/* Night, and the fallback for "we do not know what time it is at this masjid yet" — a fresh
+   install, or Display not yet granted. Dark is the safe unknown: it is what the default ink set
+   already assumes, so an unknown period degrades to a correct-looking page rather than a broken
+   one. It is never guessed from the device clock (CLAUDE.md §7). */
+.sky {
+  --sky-gradient: linear-gradient(180deg, #04081a 0%, #070f28 34%, #0b1736 62%, #0f1e40 84%, #132446 100%);
+  --sky-body: radial-gradient(circle, rgba(236, 242, 255, 0.20) 0%, rgba(214, 226, 250, 0.16) 18%, rgba(202, 216, 246, 0.12) 19%, rgba(172, 192, 236, 0.08) 42%, rgba(130, 155, 210, 0.03) 64%, transparent 78%);
+  --sky-body-y: -14%;
+  --sky-body-x: -9%;
+  --sky-body-size: min(56vw, 26rem);
+  --sky-stars: 1;
+}
+
+/* ── Fajr — still night, with the first light low and to the side ──────────── */
+[data-period='fajr'] .sky {
+  --sky-gradient: linear-gradient(180deg, #05081a 0%, #090f2c 30%, #101f3e 58%, #1b2749 80%, #24244a 100%);
+  /* A hue rotation rather than a brightening: a genuinely lightening dawn band fails AA. */
+  --sky-body: radial-gradient(circle, rgba(255, 200, 162, 0.14) 0%, rgba(250, 178, 158, 0.12) 21%, rgba(244, 170, 152, 0.10) 22%, rgba(198, 152, 168, 0.07) 42%, rgba(148, 132, 178, 0.03) 64%, transparent 80%);
+  --sky-body-y: 54%;
+  --sky-body-x: -24%;
+  --sky-body-size: min(46vw, 22rem);
+  /* The stars are going out, not gone. */
+  --sky-stars: 0.35;
+}
+
+/* ── Duha — the reference's own morning screen ─────────────────────────────── */
+[data-period='sunrise'] .sky {
+  --sky-gradient: linear-gradient(180deg, #b7d6f0 0%, #cfe4f7 32%, #dfeefb 58%, #eef6fc 84%, #f7fbfe 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 241, 214, 0.92) 0%, rgba(255, 231, 186, 0.66) 18%, rgba(255, 226, 174, 0.48) 19%, rgba(255, 210, 148, 0.30) 41%, rgba(255, 194, 132, 0.12) 63%, transparent 78%);
+  --sky-body-y: -4%;
+  --sky-body-x: -14%;
+  --sky-body-size: min(62vw, 30rem);
+  --sky-stars: 0;
+}
+
+/* ── Dhuhr — the brightest the page gets, sun high and near centre ─────────── */
+[data-period='dhuhr'] .sky {
+  --sky-gradient: linear-gradient(180deg, #aacfef 0%, #bfdcf5 24%, #d6e9fa 52%, #edf6fd 80%, #fbfdff 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 253, 244, 0.95) 0%, rgba(255, 247, 219, 0.74) 16%, rgba(255, 242, 202, 0.52) 17%, rgba(255, 233, 178, 0.34) 39%, rgba(255, 216, 146, 0.13) 61%, transparent 76%);
+  --sky-body-y: -24%;
+  --sky-body-x: 4%;
+  --sky-body-size: min(78vw, 34rem);
+  --sky-stars: 0;
+}
+
+/* ── Asr — the light going golden, sun lowering ────────────────────────────── */
+[data-period='asr'] .sky {
+  --sky-gradient: linear-gradient(180deg, #b4d0ea 0%, #cfdcec 24%, #e6e0e4 50%, #f8e6d3 76%, #ffefdc 100%);
+  /* The outer warm rings are where this period's contrast margin lives — a warmer sun here eats
+     it first. See note 2 in the header. */
+  --sky-body: radial-gradient(circle, rgba(255, 236, 198, 0.88) 0%, rgba(255, 219, 160, 0.66) 17%, rgba(255, 210, 146, 0.48) 18%, rgba(255, 190, 122, 0.30) 40%, rgba(250, 165, 106, 0.11) 62%, transparent 78%);
+  --sky-body-y: 16%;
+  --sky-body-x: -12%;
+  --sky-body-size: min(64vw, 30rem);
+  --sky-stars: 0;
+}
+
+/* ── Maghrib — deep above, an ember at the horizon ─────────────────────────
+ *
+ * The one place the owner's two instructions pulled apart: his Maghrib screenshot is flat deep
+ * navy, but he also asked for "where the sun is". So the sky keeps the reference's dark polarity
+ * — near-white ink, as on his screen — and puts the sunset where a sunset actually is, low and
+ * warm at the horizon, well below the text. It reads as Maghrib without going light. */
+[data-period='maghrib'] .sky {
+  --sky-gradient: linear-gradient(180deg, #060b20 0%, #0b1836 26%, #1c1638 50%, #35202f 72%, #4a2412 92%, #52250f 100%);
+  --sky-body: radial-gradient(circle, rgba(255, 156, 88, 0.13) 0%, rgba(248, 134, 74, 0.11) 21%, rgba(242, 120, 66, 0.09) 22%, rgba(176, 74, 90, 0.08) 42%, rgba(150, 70, 100, 0.03) 64%, transparent 80%);
+  --sky-body-y: 62%;
+  --sky-body-x: -20%;
+  --sky-body-size: min(72vw, 32rem);
+  --sky-stars: 0.2;
+}
+
+/* ── Isha — full night ─────────────────────────────────────────────────────── */
+[data-period='isha'] .sky {
+  --sky-gradient: linear-gradient(180deg, #03050d 0%, #060b20 36%, #0a1230 68%, #0d1739 100%);
+  --sky-body: radial-gradient(circle, rgba(228, 238, 255, 0.20) 0%, rgba(212, 226, 250, 0.16) 19%, rgba(198, 213, 242, 0.11) 20%, rgba(143, 166, 216, 0.07) 42%, rgba(120, 145, 200, 0.03) 64%, transparent 80%);
+  --sky-body-y: -14%;
+  --sky-body-x: -10%;
+  --sky-body-size: min(56vw, 26rem);
+  --sky-stars: 1;
+}
+
+/* The sun or the moon. Logical inset so it mirrors in Arabic and Urdu along with everything
+   else, rather than being the one thing that stays put. */
+.sky__body {
+  position: absolute;
+  inset-block-start: var(--sky-body-y, -16%);
+  inset-inline-end: var(--sky-body-x, -14%);
+  /* Per period: the midday sun is the largest, which is how Dhuhr reads brightest without
+     pushing the zenith blue past the point where the darkened coral stops clearing AA. */
+  inline-size: var(--sky-body-size, min(62vw, 30rem));
+  aspect-ratio: 1;
+  background: var(--sky-body);
+  border-radius: 50%;
+  will-change: transform;
+  animation: skyBreathe 48s ease-in-out infinite alternate;
+}
+@keyframes skyBreathe {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-1.5%, 2.5%, 0) scale(1.05); }
+}
+
+/* A vignette, so the corners settle and on-sky text keeps its contrast at the edges. */
+.sky::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 260px 90px var(--scene-vignette);
+}
+
+/* Stars, faded by the period rather than switched on and off: the sky does not go from full
+   night to full morning in one step, and neither should this. Zero on the light periods, where
+   they would be white dots on white. */
+.sky__stars {
+  position: absolute;
+  inset: 0;
+  opacity: var(--sky-stars, 0);
+  background-image:
+    radial-gradient(1.4px 1.4px at 24px 38px, rgba(255, 255, 255, 0.85), transparent 60%),
+    radial-gradient(1px 1px at 148px 22px, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(1.2px 1.2px at 268px 96px, rgba(255, 255, 255, 0.70), transparent 60%),
+    radial-gradient(1px 1px at 62px 142px, rgba(214, 232, 255, 0.50), transparent 60%),
+    radial-gradient(1.6px 1.6px at 196px 178px, rgba(255, 255, 255, 0.80), transparent 60%),
+    radial-gradient(1px 1px at 318px 210px, rgba(255, 255, 255, 0.45), transparent 60%),
+    radial-gradient(1.1px 1.1px at 108px 246px, rgba(226, 238, 255, 0.60), transparent 60%),
+    radial-gradient(1px 1px at 246px 44px, rgba(255, 255, 255, 0.40), transparent 60%);
+  background-size: 340px 268px;
+  background-repeat: repeat;
+  transition: opacity 600ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sky__body { animation: none; }
+  .sky__stars { transition: none; }
+}
+
+/* ── The hero: which prayer is on, and how long there is ─────────────────── */
+
+.today { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 1.25rem; }
+
+.hero { padding-block: 0.5rem 0.25rem; }
+.hero__now {
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 12vw, 3.6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+}
+/* The countdown sits in a soft pill so it stays readable wherever the sky is lightest. */
+.hero__until {
+  display: inline-block;
+  margin-block-start: 0.55rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 45%, transparent);
+}
+
+/* ── The day arc ─────────────────────────────────────────────────────────────
+ *
+ * The prayers as points along a curve, with a marker at now. It answers "where am I in the day"
+ * before you have read a single number, which a list of times cannot do.
+ *
+ * An inline SVG rather than a canvas: it scales, it costs nothing, and it can be labelled.
+ */
+/* FULL BLEED. The page has 1.1rem of side padding for its text; the arc is not text, and the
+   reference it is matching runs off both edges of the screen. Pulled back out through that
+   padding rather than the padding being removed, because every other row on this page wants it.
+   Logical margins, so it is still full-bleed under RTL. */
+.arc {
+  display: block;
+  height: auto;
+  overflow: visible;
+  margin-inline: -1.1rem;
+  inline-size: calc(100% + 2.2rem);
+  /* The gap under the countdown. Small on purpose — the arc belongs to the hero above it, not
+     to the list below. */
+  margin-block-start: 1.1rem;
+}
+/* `stroke-linejoin: round` because the path is a polyline sampled from the curve rather than
+   a Bézier — 160 chords over 320 units, so the joins are far below a pixel, but rounding them
+   costs nothing and removes any chance of a mitre spiking at a bend. */
+.arc__track { fill: none; stroke: color-mix(in srgb, var(--ink-scene) 22%, transparent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.arc__done  { fill: none; stroke: var(--coral-strong); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.arc__dot   { fill: color-mix(in srgb, var(--ink-scene) 35%, transparent); }
+.arc__dot--past { fill: var(--ink-scene); }
+.arc__now   { fill: var(--sky-dot-core, #0f2044); stroke: var(--ink-scene); stroke-width: 3; }
+[data-theme="light"] .arc__now { --sky-dot-core: #ffffff; }
+
+.arc__chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.25rem 0.7rem; border-radius: 0.5rem;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--ink-scene);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 30%, transparent);
+  background: color-mix(in srgb, var(--scene-base) 40%, transparent);
+}
+
+/* ── The date stepper ────────────────────────────────────────────────────── */
+
+/* Tighter than it looks it needs to be, and that is the point: three round buttons and three
+   gaps were eating 144px of a 355px row, which left "Wednesday, September 2" without the width
+   for its last word. */
+.datebar { display: flex; align-items: center; gap: 0.3rem; margin-block: 0.9rem 0.35rem; }
+.datebar__main { flex: 1; text-align: center; min-width: 0; }
+/* NEVER WRAPS. A date broken across two lines shifts every row beneath it, and the orphan is
+   always the day number — the one part being read. It scales down instead: at the narrowest
+   phone the longest date there is ("Wednesday, September 30") still fits on one line. */
+.datebar__greg {
+  font-family: var(--font-display);
+  /* The floor has to clear the WORST case, which is not today's date: "Wednesday, September
+     30" is 23 characters, and at a 0.95rem floor it overflowed its box on a 320px screen and
+     spilled over the arrows either side. Sized so that one fits at 320px, which is the
+     narrowest phone anybody still carries. */
+  font-size: clamp(0.75rem, 3.9vw, 1.15rem);
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--ink-scene); text-shadow: var(--text-shadow-scene);
+}
+.datebar__hijri { font-size: 0.92rem; color: var(--coral); margin-block-start: 0.1rem; }
+.datebar__btn {
+  flex: none; display: grid; place-items: center;
+  inline-size: 2.25rem; block-size: 2.25rem; border-radius: 999px;
+  background: transparent; border: 0; color: var(--ink-scene);
+}
+.datebar__btn:hover:not(:disabled) { background: color-mix(in srgb, var(--scene-base) 40%, transparent); }
+.datebar__btn:disabled { opacity: 0.3; cursor: default; }
+
+/* ── The timetable itself ────────────────────────────────────────────────── */
+
+
+/* ── Honest states ───────────────────────────────────────────────────────── */
+
+.stale-note {
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  margin-block-start: 1rem; padding: 0.7rem 0.85rem;
+  border-radius: 0.7rem; font-size: 0.85rem; line-height: 1.5;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 15%, transparent);
+}
+.stale-note svg { flex: none; margin-block-start: 0.15rem; color: var(--coral); }
+
+/* ── Status cards (admin) ───────────────────────────────────────────────────── */
+
+/* The prose inside a panel. Slightly smaller and looser than body text: these are
+   explanations a volunteer reads once, not text they scan. */
+.card-body {
+  color: var(--color-ink-muted);
+  margin-block-start: 0.35rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.8rem;
+}
+
+/* A badge that carries a STATE rather than a label. Colour is never the only signal — each
+   one sits beside wording that says the same thing, because "amber means needed" is not
+   something a reader can be assumed to know, or to be able to see. */
+.badge--ok {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success);
+}
+.badge--warn {
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--color-warning);
+}
+
+/* The numbered instructions for a step done in another app. */
+.steps {
+  margin: 0.7rem 0 0;
+  padding-inline-start: 1.15rem;
+  color: var(--color-ink-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.steps li { margin-block-end: 0.3rem; }
+.steps li::marker { color: var(--color-primary); font-weight: 700; }
+
+/* The app's real public address. Monospaced-ish and allowed to break anywhere, because it is
+   a URL a volunteer may need to read aloud or copy, and a tunnel hostname is long. */
+.url-chip {
+  margin-block-start: 0.7rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-input);
+  background: var(--glass-bg-inset);
+  border: 1px solid var(--color-border);
+  color: var(--color-ink);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+/* ── The timetable picker (admin) ───────────────────────────────────────────── */
+.picker { list-style: none; margin: 0.8rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.picker__item {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  padding: 0.65rem 0.8rem; border-radius: var(--radius-button);
+  background: var(--glass-bg-inset); border: 1px solid var(--color-border);
+  color: var(--color-ink); text-align: start;
+}
+.picker__item:hover:not(:disabled) { background: var(--color-surface-hover); }
+.picker__item:disabled { opacity: 0.6; cursor: not-allowed; }
+/* The chosen one is outlined in the accent rather than filled: this is a list a volunteer
+   scans, and one filled row in a stack of five reads as a warning. */
+.picker__item--on { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); color: var(--color-primary); }
+.picker__name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+
+/* ── The install dialog (musalli) ────────────────────────────────────────────
+ *
+ * In the middle of the screen, over a dimmed page. This was a strip at the foot of the page
+ * until 2026-08-28 — on the reasoning that an install ask must not stand in front of the
+ * prayer times — but on a phone the foot of the page is below the fold, and an ask nobody
+ * scrolls to is not a polite ask, it is a broken one.
+ *
+ * The dim is a plain black wash rather than a themed token on purpose: it has to read as "the
+ * page is behind this" against six different skies, three of which are already dark, and a
+ * tinted scrim over a navy Isha sky is invisible.
+ */
+.modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(2, 4, 12, 0.62);
+  backdrop-filter: blur(3px);
+  animation: modalFade 180ms ease-out;
+}
+
+.modal {
+  position: relative;
+  width: min(23rem, 100%);
+  padding: 1.6rem 1.35rem 1.25rem;
+  text-align: center;
+  border-radius: 1.35rem;
+  color: var(--ink-scene);
+  /* Nearly opaque, unlike the glass elsewhere. A translucent card over a busy sky makes the
+     text underneath show through the text on top, and this is the one card that always has
+     something behind it. */
+  background: color-mix(in srgb, var(--scene-base) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  animation: modalRise 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+/* The card takes focus so a screen reader lands inside the dialog, but it is not something
+   you can DO anything to — and a ring drawn round the whole card reads as an error state.
+   The buttons inside keep their own focus rings, which is where the ring belongs. */
+.modal:focus, .modal:focus-visible { outline: none; }
+
+.modal__close { position: absolute; inset-block-start: 0.5rem; inset-inline-end: 0.5rem; }
+
+/* `display: block` + auto margins rather than leaning on the card's `text-align: center`.
+   An <img> is inline by default and would centre — until any rule anywhere makes images
+   blocks, at which point it silently sticks to the start edge. Centring it explicitly is one
+   line and cannot be undone from a distance. `margin-inline`, so it stays centred under RTL. */
+.modal__icon {
+  display: block;
+  margin-inline: auto;
+  inline-size: 64px;
+  block-size: 64px;
+  border-radius: 1rem;
+  object-fit: cover;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+/* The address, shown only when the clipboard refused. Wraps rather than overflowing: it exists
+   to be read and retyped, so every character has to be on screen. */
+.modal__addr {
+  margin-block-start: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--ink-scene-muted);
+}
+
+.modal__title {
+  margin-block-start: 0.85rem;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.modal__text {
+  margin-block-start: 0.45rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ink-scene-muted);
+}
+
+/* Stacked, full width, primary on top: one thumb, one column, and the affirmative reachable
+   without a stretch. */
+.modal__actions { display: flex; flex-direction: column; gap: 0.5rem; margin-block-start: 1.15rem; }
+.modal__go, .modal__later { width: 100%; justify-content: center; }
+
+@keyframes modalFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalRise {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-back, .modal { animation: none; }
+}
+
+/* ── The update banner (musalli) ─────────────────────────────────────────────
+ *
+ * Across the TOP, and fixed. It appears while someone is already reading, so putting it in the
+ * document flow would push the page down under their thumb — on a page of times, that is how
+ * you tap the wrong day. Fixed costs no layout and stays visible as they scroll.
+ *
+ * Below the install dialog's z-index and above everything else: it is an offer, not a demand.
+ */
+.update {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  padding-block-start: calc(0.55rem + env(safe-area-inset-top));
+  color: var(--ink-scene);
+  /* OPAQUE, unlike the frosted tab bar. This one carries a message that has to be read,
+     and at 92% the masjid name behind it showed straight through the words. A tab bar can be
+     translucent because its labels are short and always in the same place; a sentence cannot. */
+  background: var(--scene-base);
+  border-block-end: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  animation: updateDrop 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.update__text { flex: 1; min-width: 0; font-size: 0.9rem; font-weight: 600; }
+.update__go, .update__close { flex: none; }
+.update__go { padding-block: 0.35rem; }
+
+@keyframes updateDrop {
+  from { opacity: 0; transform: translate3d(0, -100%, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update { animation: none; }
+}
+
+/* ── The bottom tab bar (musalli) ────────────────────────────────────────────
+ *
+ * Where a thumb already is. Fixed, so it does not scroll away from someone half way down a
+ * month — `.shell--tabs` pays for the space it covers, rather than each page remembering to.
+ *
+ * Only drawn when there are at least two places to go (see Tabs.tsx): a masjid with no appeals
+ * would otherwise get a bar with one lit tab on it, which is a label, not navigation.
+ */
+.tabbar {
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline: 0;
+  z-index: 25;
+  display: flex;
+  justify-content: space-around;
+  padding-block: 0.4rem;
+  padding-block-end: calc(0.4rem + env(safe-area-inset-bottom));
+  padding-inline: max(env(safe-area-inset-left), 0.5rem) max(env(safe-area-inset-right), 0.5rem);
+  background: color-mix(in srgb, var(--scene-base) 88%, transparent);
+  backdrop-filter: blur(14px);
+  border-block-start: 1px solid color-mix(in srgb, var(--ink-scene) 14%, transparent);
+}
+
+.tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.18rem;
+  padding-block: 0.3rem;
+  border-radius: 0.7rem;
+  text-decoration: none;
+  /* Muted rather than faint: this is body-sized text on the sky, and --ink-scene-faint cannot
+     clear 4.5:1 against any of the six skies. */
+  color: var(--ink-scene-muted);
+  transition: color 140ms ease;
+}
+.tab--on { color: var(--coral); }
+.tab:active { transform: scale(0.96); }
+.tab__label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; }
+
+/* The bar covers the foot of the page, so the shell gives that height back. One rule, rather
+   than every page inside it remembering to leave room. */
+.shell--tabs { padding-block-end: calc(4.4rem + env(safe-area-inset-bottom)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tab:active { transform: none; }
+}
+
+/* ── The Donate page ─────────────────────────────────────────────────────────── */
+.give { width: min(30rem, 100%); margin-inline: auto; padding: 0.5rem 1.1rem 1.5rem; }
+
+.give__head {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  margin-block-end: 0.9rem;
+}
+
+/* Reachable by a bookmark after the last appeal ended. Says so, rather than showing nothing. */
+.give__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--ink-scene-muted);
+  text-shadow: var(--text-shadow-scene);
+}
+
+/* ── The home-screen preview (admin) ────────────────────────────────────────── */
+/* Shows the icon and the label together, at roughly the size a launcher draws them, because
+   "512px PNG" tells a volunteer nothing about whether their logo survives being an icon. */
+.home-preview {
+  display: flex; align-items: center; gap: 0.8rem;
+  margin-block-start: 0.9rem; padding: 0.8rem;
+  border-radius: var(--radius-card);
+  background: var(--glass-bg-inset); border: 1px solid var(--color-border);
+}
+.home-preview__icon { border-radius: 0.9rem; flex: none; object-fit: contain; background: #0F2044; }
+.home-preview__label { font-weight: 600; overflow-wrap: anywhere; }
+
+/* ── Share: QR + poster (admin) ─────────────────────────────────────────────── */
+.share { display: flex; align-items: flex-start; gap: 1rem; margin-block-start: 0.9rem; flex-wrap: wrap; }
+/* The QR itself is always black on WHITE, whatever the theme. A code rendered in theme colours
+   is a code a phone camera struggles with, and this one ends up printed. */
+.share__qr { flex: none; background: #fff; padding: 0.5rem; border-radius: 0.6rem; line-height: 0; }
+.share__side { flex: 1; min-width: 12rem; }
+
+.poster-bar {
+  display: flex; gap: 0.5rem; justify-content: flex-end;
+  width: min(44rem, 100%); margin-inline: auto; padding: 0.75rem 1.15rem 0;
+}
+
+/* ── The poster ─────────────────────────────────────────────────────────────
+ * Always light, whatever the admin's theme: it is going through a printer, and a dark poster
+ * is a cartridge of ink and an unreadable QR code. */
+.poster {
+  width: min(44rem, 100%);
+  margin: 0.5rem auto 3rem;
+  padding: 2.5rem 2rem 2rem;
+  background: #fff;
+  color: #111;
+  border-radius: var(--radius-card);
+  text-align: center;
+}
+.poster__head { margin-block-end: 1.5rem; }
+.poster__masjid {
+  font-size: 1.05rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: #444;
+}
+.poster__title {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 800; line-height: 1.15;
+  margin-block-start: 0.5rem; color: #111;
+}
+.poster__qr { display: flex; justify-content: center; margin-block: 1.5rem; line-height: 0; }
+.poster__steps {
+  text-align: start; max-width: 26rem; margin: 1.5rem auto 0; padding-inline-start: 1.4rem;
+  font-size: 1.05rem; line-height: 1.7; color: #222;
+}
+.poster__steps li { margin-block-end: 0.6rem; }
+.poster__steps li::marker { font-weight: 800; color: #666; }
+.poster__hints {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  margin-block-start: 0.4rem; font-size: 0.9rem; color: #555;
+}
+.poster__url {
+  margin-block-start: 1.6rem; font-size: 0.85rem; color: #666; overflow-wrap: anywhere;
+}
+
+/* Printing: the poster alone, on white, edge to edge of the margin. */
+@media print {
+  .no-print, .topbar, .page-foot, .sky, .scene, .scene-img { display: none !important; }
+  html, body { background: #fff !important; }
+  .poster {
+    width: auto; margin: 0; padding: 0; border-radius: 0;
+    background: #fff; color: #000;
+  }
+  /* Keep a step and its hints together rather than breaking across the fold. */
+  .poster__steps li { break-inside: avoid; }
+  .poster__qr { break-inside: avoid; }
+}
+@page { size: auto; margin: 16mm; }
+
+/* ── Revision, 2026-08-25 ────────────────────────────────────────────────────
+ * Iqamah-first rows under real column headings, a "go to today" control, swipeable
+ * days, and the month view. The per-period skies are in the block after this one.
+ */
+
+/* Visible to a screen reader, to nobody else. The prayer-name column has a heading for
+   semantics but no visible label — "Prayer" over a list of prayer names is noise. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── The timetable, in three columns ─────────────────────────────────────────
+ * The IQAMAH is the emphasised one. A musalli looking at their phone is working out when to
+ * leave the house, and that is the jamā'ah time; the Adhan is the context that makes it make
+ * sense. The old layout led with the Adhan and tucked the jamā'ah behind the word "Jamā'ah",
+ * which put the small print where the answer belonged.
+ *
+ * A fixed column template on BOTH the heading row and the data rows, so the two line up — a
+ * grid whose columns are `auto` would size each row independently and the headings would sit
+ * over nothing in particular. */
+/* The headings sat 45px under the Hijri date and 84px above the row they label, so they read
+   as part of the date block rather than as the top of the table. More room above, a little less
+   below: they belong to what is under them. */
+.times { margin-block-start: 1.35rem; }
+
+/* The Iqamah column is the wider of the two, and the Adhan sits a little further left than it
+   used to. "10:15 PM" at the Iqamah's size is the longest thing this grid ever has to hold, and
+   at the old width its "PM" wrapped onto a second line — which pushed the row's own baseline out
+   of line with every other row. */
+.time-head,
+.time-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.9rem 6.1rem;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.time-head {
+  padding: 0 0.9rem 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  /* MUTED, not faint. --ink-scene-faint cannot reach 4.5:1 against ANY tinted sky in any
+     period — it measures 3.2-3.9 across the six — so it is structurally a large-text token
+     and must never carry copy at this size. */
+  color: var(--ink-scene-muted);
+  text-shadow: var(--text-shadow-scene);
+}
+.time-head > span { text-align: end; }
+.time-head > span:first-child { text-align: start; }
+
+.time-row {
+  padding: 0.8rem 0.9rem;
+  border-block-end: 1px solid color-mix(in srgb, var(--ink-scene) 12%, transparent);
+}
+/* The separator under the last row is dropped — but NOT when that row is the outlined current
+   one, whose bottom edge is part of a box rather than a rule between rows. `:last-child` beats
+   `.time-row--now` on specificity, so Isha at Isha time lost the bottom of its outline. */
+.time-row:last-child:not(.time-row--now) { border-block-end: 0; }
+
+.time-row__name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The Adhan: present, legible, and quieter than the answer beside it. */
+.time-row__adhan {
+  text-align: end;
+  font-size: 0.92rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--ink-scene-muted);
+}
+
+/* Shurūq has no jamā'ah, so its one time spans both time columns and centres between them
+   rather than sitting under a heading that does not apply to it. */
+.time-row__suntime {
+  grid-column: 2 / 4;
+  text-align: center;
+  font-size: 0.98rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--ink-scene-muted);
+}
+
+/* The Iqamah: the number the reader came for. */
+.time-row__iqamah {
+  text-align: end;
+  font-size: 1.24rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  letter-spacing: -0.01em;
+}
+
+/* Passed prayers recede rather than disappear — the day so far is still information. */
+.time-row--past .time-row__name,
+.time-row--past .time-row__iqamah { color: var(--ink-scene-muted); font-weight: 500; }
+/* Muted rather than faint, for the same reason as the column headings above: at this size
+   the faint token cannot clear AA on a tinted sky. The row still recedes — it is smaller,
+   lighter in weight, and sits beside an un-outlined name. */
+.time-row--past .time-row__adhan { color: var(--ink-scene-muted); }
+
+/* The current one is OUTLINED, not filled. A filled row shouts; an outline says "here" and
+   leaves the column of times even. */
+.time-row--now {
+  border: 2px solid var(--ink-scene);
+  border-radius: 0.85rem;
+  margin-block: 0.25rem;
+  padding-block: 0.75rem;
+  /* The border is INSIDE the box, so without this the current row's content sits 2px in from
+     every other row's — its time no longer lines up with the column it belongs to. Two pixels
+     is small enough to look like bad kerning rather than a bug, which is exactly why it would
+     never have been reported. */
+  padding-inline: calc(0.9rem - 2px);
+}
+.time-row--now .time-row__name,
+.time-row--now .time-row__iqamah { font-weight: 800; color: var(--ink-scene); }
+
+/* The day this jamā'ah changed. No badge, no asterisk, no note at the foot of the page:
+   someone who knows their usual time sees that this one is not it, and someone who does not is
+   not made to read an explanation of a thing that does not concern them. The same coral the
+   Hijri date uses, measured at 5.4–9.4 : 1 across all six skies.
+
+   THE PAST AND CURRENT SELECTORS ARE NOT OPTIONAL. `.time-row--past .time-row__iqamah` and
+   `.time-row--now .time-row__iqamah` are both (0,2,0) and set their own colour, so a bare
+   `.time-row__iqamah--changed` lost to them — which silenced the mark on every prayer that had
+   already passed today and on the one happening now. In other words it worked on every day
+   except the one anybody looks at.
+
+   The weight is held at 700 rather than receding with the rest of a past row, because coral and
+   the muted ink sit within 1.08 : 1 of each other in luminance: as pure colour this mark is a
+   hue difference, which WCAG 1.4.1 will not accept as the only signal and a red-green colour
+   blind reader cannot see at all. Weight is the second signal, and it costs no chrome. */
+.time-row__iqamah--changed,
+.time-row--past .time-row__iqamah--changed,
+.time-row--now .time-row__iqamah--changed {
+  color: var(--coral);
+  font-weight: 700;
+}
+
+/* Shurūq is a sun event, not a jamā'ah: lighter, and its Iqamah cell stays empty. */
+.time-row--sun .time-row__name { font-weight: 500; }
+
+/* ── Swiping between days ────────────────────────────────────────────────────
+ * The new day slides in from the side it came from, the way a photo does. `touch-action` keeps
+ * vertical scrolling native — only horizontal panning is ours to interpret. */
+.today { touch-action: pan-y; }
+
+/* One motion, two views. The day's table and the month's grid slide the same way for the same
+   gesture, because from the reader's side it IS the same gesture — the only difference is how
+   much of the calendar moves. Named for what it does rather than for the day view it started
+   in. */
+.times[data-slide="next"],
+.month__grid[data-slide="next"] { animation: slideInFromRight 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+.times[data-slide="prev"],
+.month__grid[data-slide="prev"] { animation: slideInFromLeft 220ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+@keyframes slideInFromRight {
+  from { opacity: 0; transform: translate3d(14px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes slideInFromLeft {
+  from { opacity: 0; transform: translate3d(-14px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .times[data-slide],
+  .month__grid[data-slide] { animation: none; }
+}
+
+/* ── "Today" ─────────────────────────────────────────────────────────────────
+ * On today it is a label. On any other day it becomes a button whose arrow points back the way
+ * today lies, so it reads as somewhere to go rather than as a caption. */
+/* Pulled UP into the arc, the way the reference composes it: the chip floats between the
+   two descending limbs, where there is nothing but sky. Sitting below the arc instead left a
+   band of empty page between the curve and the date for no reason. It never touches the line —
+   at the chip's height the curve is already out at the screen edges. */
+.todaybar { text-align: center; margin-block-start: -2.6rem; }
+
+.arc__chip--btn {
+  cursor: pointer;
+  gap: 0.2rem;
+  padding-inline: 0.55rem;
+  color: var(--ink-scene);
+  border-color: color-mix(in srgb, var(--coral) 55%, transparent);
+}
+.arc__chip--btn:hover { background: color-mix(in srgb, var(--scene-base) 60%, transparent); }
+.arc__chip--btn:active { transform: scale(0.97); }
+
+/* ── The month ───────────────────────────────────────────────────────────────
+ * Thirty days of near-identical numbers is the worst possible way to find the one day the
+ * jamā'ah times change, which is the day somebody turns up at the wrong time. So that is the
+ * only thing this view marks. */
+/* `touch-action: pan-y` for the same reason as the day view: it tells the browser that
+   vertical scrolling is the page's and horizontal panning is ours. Without it a touch device
+   can claim the gesture before a single pointer event reaches the handler, and the swipe
+   silently does nothing on exactly the devices it exists for. */
+.month { width: min(30rem, 100%); margin-inline: auto; padding: 0 1.1rem 1.25rem; touch-action: pan-y; }
+
+.month__bar { display: flex; align-items: center; gap: 0.35rem; margin-block: 0.5rem 1rem; }
+.month__title {
+  flex: 1; text-align: center; min-width: 0;
+  font-family: var(--font-display); font-size: 1.2rem; font-weight: 700;
+  color: var(--ink-scene); text-shadow: var(--text-shadow-scene);
+}
+
+.month__grid { display: flex; flex-direction: column; gap: 0.25rem; }
+.month__week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.25rem; }
+
+.month__wd {
+  text-align: center; padding-block-end: 0.3rem;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  /* Muted, not faint — see .time-head. */
+  color: var(--ink-scene-muted); text-shadow: var(--text-shadow-scene);
+}
+
+.month__cell {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem;
+  border: 0; border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--scene-base) 34%, transparent);
+  color: var(--ink-scene);
+  font-size: 0.95rem;
+}
+.month__cell:hover:not(:disabled) { background: color-mix(in srgb, var(--scene-base) 60%, transparent); }
+.month__cell--pad { background: none; }
+/* A day this masjid has not published times for. Inert and obviously so, rather than a button
+   that leads to a blank page. */
+.month__cell--empty { opacity: 0.28; cursor: default; background: none; }
+/* Today is RINGED, matching how the current prayer is marked in the day view. */
+.month__cell--today { box-shadow: inset 0 0 0 2px var(--ink-scene); font-weight: 800; }
+/* A change day is tinted as well as dotted: colour alone is never the only signal, and the
+   bolder number is a third. The tint is a fixed warm orange rather than var(--coral), because
+   the LIGHT theme's coral is a dark brown-red — at a low alpha over a pale sky it desaturates
+   into grey and the marked day reads as disabled rather than as flagged. */
+.month__cell--changed {
+  background: rgba(238, 138, 84, 0.30);
+  font-weight: 700;
+}
+[data-theme="dark"] .month__cell--changed { background: rgba(240, 150, 100, 0.26); }
+
+.month__num { line-height: 1; }
+.month__dot { inline-size: 5px; block-size: 5px; border-radius: 50%; background: var(--coral); }
+.month__dot--key { flex: none; margin-block-start: 0.4rem; }
+
+.month__key {
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  margin-block-start: 1rem; padding: 0.7rem 0.85rem;
+  border-radius: 0.7rem; font-size: 0.85rem; line-height: 1.5;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 15%, transparent);
+}
+.month__key svg { flex: none; margin-block-start: 0.15rem; color: var(--coral); }
+
+/* ── A switch row (admin) ────────────────────────────────────────────────────
+ * A label, a sentence of consequence, and a checkbox — for settings where the wording is the
+ * hard part and the control is trivial. */
+.switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin-block-start: 0.9rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+}
+.switch input { margin-block-start: 0.2rem; flex: none; inline-size: 1.05rem; block-size: 1.05rem; accent-color: var(--color-primary); }
+/* Spans, because the whole row is a <label> and a <label> may not contain a <p>. So they
+   have to be told to be blocks — inline they run into one sentence. */
+.switch__main { min-width: 0; }
+.switch__title { display: block; font-weight: 600; font-size: 0.95rem; }
+.switch__hint { display: block; margin-block-start: 0.2rem; font-size: 0.83rem; line-height: 1.5; color: var(--color-ink-muted); }
+
+/* ── Appeals (musalli) ───────────────────────────────────────────────────────
+ *
+ * Under the times, and quieter than them. The prayer times are why the page exists; an appeal
+ * that outshouted them would be this app failing at its actual job — so the tiles are cards on
+ * the scene rather than another thing competing with the countdown.
+ *
+ * Nothing here takes money. The tile is a picture, a title, a bar and a link out.
+ */
+.appeals__list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.appeal {
+  display: block;
+  overflow: hidden;
+  border-radius: 1rem;
+  text-decoration: none;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 14%, transparent);
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+.appeal:hover { border-color: color-mix(in srgb, var(--ink-scene) 30%, transparent); }
+.appeal:active { transform: scale(0.995); }
+
+/* A fixed ratio, so a masjid's cover image cannot decide how tall the page is. `object-fit`
+   crops rather than letterboxing — a band of background around a photo looks like a mistake. */
+.appeal__cover {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 16 / 7;
+  object-fit: cover;
+  background: color-mix(in srgb, var(--ink-scene) 8%, transparent);
+}
+
+.appeal__body { padding: 0.85rem 0.95rem 0.9rem; }
+.appeal__title { font-size: 1.02rem; font-weight: 700; line-height: 1.35; }
+
+/* Two lines. A masjid's description can be a paragraph, and the tile is a summary — the whole
+   thing is on the page they are one tap from. */
+.appeal__text {
+  margin-block-start: 0.25rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ink-scene-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.appeal__bar {
+  margin-block-start: 0.75rem;
+  block-size: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ink-scene) 16%, transparent);
+}
+.appeal__fill { display: block; block-size: 100%; border-radius: 999px; background: var(--coral); }
+
+.appeal__nums { margin-block-start: 0.4rem; font-size: 0.88rem; }
+.appeal__goal { color: var(--ink-scene-muted); margin-inline-start: 0.3rem; }
+
+.appeal__foot {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  margin-block-start: 0.7rem;
+}
+.appeal__go {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.88rem; font-weight: 700; color: var(--coral);
+}
+.appeal__monthly {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  font-size: 0.76rem; color: var(--ink-scene-muted);
+}
+
+/* ── Appeals (admin) ─────────────────────────────────────────────────────────
+ * A textarea of links, then the truth about each one. The list below is the point of the
+ * screen: an appeal that quietly stopped showing on phones has to say so HERE. */
+.textarea { resize: vertical; min-block-size: 5rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; line-height: 1.6; }
+
+.appeal-list { list-style: none; margin-block-start: 0.9rem; display: flex; flex-direction: column; gap: 0.5rem; }
+
+.appeal-row {
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  border: 1px solid var(--color-border);
+}
+.appeal-row__main { min-width: 0; }
+.appeal-row__title { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-weight: 600; font-size: 0.95rem; }
+.appeal-row__url {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  margin-block-start: 0.15rem;
+  font-size: 0.78rem; color: var(--color-ink-faint);
+  overflow-wrap: anywhere;
+}
+.appeal-row__note {
+  display: flex; align-items: flex-start; gap: 0.4rem;
+  margin-block-start: 0.4rem;
+  font-size: 0.83rem; line-height: 1.5; color: var(--color-ink-muted);
+}
+.appeal-row__note svg { flex: none; margin-block-start: 0.15rem; }
+.appeal-row__note--warn { color: var(--color-warning); }
+
+/* The one-line technical cause under a failing appeal. Quiet, monospace, and never the only
+   thing said — the sentence above it is what a volunteer reads. */
+.appeal-row__detail {
+  margin-block-start: 0.25rem;
+  margin-inline-start: 1.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+  overflow-wrap: anywhere;
+}
+
+/* ── Prayer reminders (musalli sheet) ────────────────────────────────────────
+ * A sheet rather than the install dialog's card: this one has choices in it, so it wants the
+ * room and the choices want to be reachable with a thumb. */
+.notify__group { margin-block-start: 1.1rem; }
+.notify__label {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+  /* Muted, not faint: --ink-scene-faint cannot clear 4.5:1 on any of the six skies, and this
+     sheet is drawn over all of them. */
+  color: var(--ink-scene-muted);
+  margin-block-end: 0.5rem;
+}
+.notify__chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.notify__hint { margin-block-start: 0.5rem; font-size: 0.82rem; color: var(--ink-scene-muted); }
+
+/* A chip is a checkbox that reads as a choice rather than as a form. `aria-pressed` carries
+   the state for a screen reader; the tick carries it for everyone else, so colour is never
+   the only signal. */
+.chip {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem; font-weight: 600;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 20%, transparent);
+  cursor: pointer;
+}
+.chip--on {
+  color: var(--color-on-primary);
+  background: var(--color-btn);
+  border-color: var(--color-btn);
+}
+/* On the LIGHT sky the standard coral button puts white text at 4.55:1 — over the line and
+   with nothing to spare, which is how the Hijri date nearly failed once already. Chip text is
+   small text, so it has the 4.5 floor and no room to lose any. The darker tone takes it to
+   ~5.9 and is already in the palette. */
+[data-theme="light"][data-surface="musalli"] .chip--on {
+  background: var(--color-btn-hover);
+  border-color: var(--color-btn-hover);
+}
+.chip:active { transform: scale(0.97); }
+
+/* A single number the admin actually wants: how many phones. */
+.stat { display: flex; align-items: baseline; gap: 0.5rem; margin-block-start: 0.9rem; }
+.stat__n { font-family: var(--font-display); font-size: 2rem; font-weight: 800; line-height: 1; }
+.stat__label { font-size: 0.9rem; color: var(--color-ink-muted); }
+
+.spin { animation: spinny 900ms linear infinite; }
+@keyframes spinny { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } .chip:active { transform: none; } }
+
+/* ── Send an announcement (admin) ────────────────────────────────────────────
+ *
+ * Visually separated from the rest of the panel by a rule and its own ground, because it is
+ * the one control here that reaches every musalli's phone and cannot be undone. It should not
+ * look like the buttons around it.
+ */
+.announce {
+  margin-block-start: 1.1rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--color-border);
+}
+.announce__title {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.95rem; font-weight: 700;
+}
+.announce__text { font-family: inherit; font-size: 0.9rem; }
+
+/* The gate. Warm-toned and boxed so it reads as a stop rather than as more form. */
+.announce__confirm {
+  margin-block-start: 0.7rem;
+  padding: 0.85rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+}
+.announce__ask {
+  display: flex; align-items: flex-start; gap: 0.45rem;
+  font-size: 0.9rem; line-height: 1.5;
+}
+.announce__ask svg { flex: none; margin-block-start: 0.15rem; color: var(--color-warning); }
+
+/* The message, quoted back. The thing being confirmed is the WORDS, so they have to be on
+   screen at the moment of confirming rather than in a field above it. */
+.announce__quote {
+  margin-block-start: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.5rem;
+  border-inline-start: 3px solid var(--color-warning);
+  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* A nested choice under a chip that turns it on — "which Jumuʿah" only exists because
+   "Jumuʿah" is ticked, and the indent says so without a label explaining the relationship. */
+.notify__sub {
+  margin-block-start: 0.7rem;
+  margin-inline-start: 0.9rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 2px solid color-mix(in srgb, var(--ink-scene) 18%, transparent);
+}
+.notify__sub .notify__label { font-size: 0.66rem; margin-block-end: 0.4rem; }
+
+/* ── Settings, and the onboarding page ──────────────────────────────────────
+ *
+ * Both are musalli-facing, so both live on the sky and use `--ink-scene*` rather than the
+ * admin panel's ink tokens. The rule from the sky's own header applies to every line below:
+ * `--ink-scene-faint` cannot clear 4.5:1 against any of these skies and is a LARGE-TEXT token
+ * only — every hint and caption here is `--ink-scene-muted`, which can.
+ */
+
+.settings {
+  flex: 1;
+  width: 100%;
+  max-width: 34rem;
+  margin-inline: auto;
+  padding: 0.5rem 1.15rem 1.5rem;
+}
+.settings__title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  margin-block-end: 0.9rem;
+}
+
+/* Nearly opaque for the same reason the install dialog is: these cards always have a sky
+   behind them, and a translucent card over a gradient shows the sky through the text. */
+.set-card {
+  margin-block-end: 0.85rem;
+  padding: 1.05rem 1.1rem 1.15rem;
+  border-radius: 1.1rem;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 14%, transparent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+.set-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.set-title svg { flex: none; color: var(--coral); }
+.set-lead {
+  margin-block-start: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink-scene-muted);
+}
+.set-card .btn { margin-block-start: 0.9rem; }
+.set-card .notify__group:first-of-type { margin-block-start: 0.95rem; }
+
+/* One question, three answers. Full-width rows rather than chips, because each one needs a
+   line of explanation under it and a chip cannot carry one. */
+/* A <fieldset>, so the group is one thing to a screen reader and the radios inside it are one
+   tab stop the arrow keys move within. Its default border, padding and min-inline-size are all
+   removed — the last one is the one that catches people out: a fieldset will not shrink below
+   its content without it, and a long hint would push the card wider than the phone. */
+.set-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-block-start: 0.85rem;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+.set-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  text-align: start;
+  cursor: pointer;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+}
+/* The border carries the state as well as the tint, so the chosen row is still obvious in
+   forced-colours mode and to anyone who cannot separate the two grounds. `aria-checked` on
+   the element is what actually announces it. */
+.set-option--on {
+  border-color: var(--color-btn);
+  background: color-mix(in srgb, var(--color-btn) 16%, color-mix(in srgb, var(--scene-base) 70%, transparent));
+  box-shadow: inset 0 0 0 1px var(--color-btn);
+}
+.set-option__ico { flex: none; margin-block-start: 0.1rem; color: var(--ink-scene-muted); }
+.set-option--on .set-option__ico { color: var(--coral); }
+.set-option__main { display: flex; flex-direction: column; gap: 0.12rem; min-width: 0; }
+.set-option__label { font-size: 0.92rem; font-weight: 650; }
+.set-option__hint { font-size: 0.78rem; line-height: 1.45; color: var(--ink-scene-muted); }
+.set-option:active { transform: scale(0.995); }
+/* The input is visually hidden, so the ring has to be drawn on the row it labels — otherwise
+   keyboard focus lands somewhere nothing on screen reacts to. */
+.set-option:focus-within { outline: 2px solid var(--color-btn); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .set-option:active { transform: none; } }
+
+/* ── Onboarding ─────────────────────────────────────────────────────────────
+ *
+ * The page behind the QR code. A wider measure than the prayer times and a much larger first
+ * tap target: it is read once, standing up, by somebody who has just pointed a camera at a
+ * noticeboard and does not yet know what this is.
+ */
+.ob {
+  flex: 1;
+  width: 100%;
+  max-width: 30rem;
+  margin-inline: auto;
+  padding: 1.5rem 1.15rem 2rem;
+}
+.ob__head { text-align: center; margin-block-end: 1.4rem; }
+.ob__head .brand-mark { margin-inline: auto; }
+.ob__title {
+  margin-block-start: 0.7rem;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  overflow-wrap: anywhere;
+}
+.ob__lead {
+  margin-block-start: 0.3rem;
+  font-size: 0.94rem;
+  color: var(--ink-scene-muted);
+  text-shadow: var(--text-shadow-scene);
+}
+
+.ob__step {
+  display: flex;
+  gap: 0.8rem;
+  margin-block-end: 0.7rem;
+  padding: 1rem 1.05rem 1.1rem;
+  border-radius: 1.1rem;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--scene-base) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 14%, transparent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+.ob__step--warn { border-color: color-mix(in srgb, var(--color-warning) 55%, transparent); }
+
+.ob__num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  inline-size: 1.85rem;
+  block-size: 1.85rem;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--ink-scene) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 22%, transparent);
+}
+.ob__num--done { color: var(--color-on-primary); background: var(--color-btn); border-color: var(--color-btn); }
+.ob__num--warn {
+  color: var(--color-warning);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--color-warning) 55%, transparent);
+}
+
+.ob__body { min-width: 0; flex: 1; }
+.ob__step-title { font-family: var(--font-display); font-size: 1.02rem; font-weight: 700; line-height: 1.3; }
+.ob__text {
+  margin-block-start: 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--ink-scene-muted);
+}
+.ob__text--small { font-size: 0.82rem; }
+.ob__body .set-lead { margin-block-start: 0.4rem; }
+.ob__body .btn { margin-block-start: 0.85rem; }
+
+.ob__steps {
+  margin-block-start: 0.6rem;
+  padding-inline-start: 1.15rem;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: var(--ink-scene-muted);
+}
+.ob__steps li::marker { color: var(--coral); font-weight: 700; }
+
+/* An icon or a phrase quoted exactly as it appears on the reader's own screen, so "tap this"
+   points at something they can match by shape rather than by name. */
+.ob__glyph {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.35rem;
+  margin-inline: 0.1rem;
+  border-radius: 0.4rem;
+  vertical-align: -0.2em;
+  font-weight: 650;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--ink-scene) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 18%, transparent);
+}
+
+/* A screenshot of the step. Bounded rather than full-bleed: these are portrait phone captures,
+   and one at the card's full width would be taller than the screen and push the next step out
+   of sight — which on a numbered list is how somebody concludes there are only two steps. */
+.ob__shot { margin-block-start: 0.9rem; text-align: center; }
+.ob__shot img {
+  display: block;
+  margin-inline: auto;
+  inline-size: 100%;
+  max-inline-size: 15rem;
+  block-size: auto;
+  border-radius: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+  /* The captures are of a dark phone UI on both platforms, so they sit on the light sky as a
+     dark block. The shadow is what stops that reading as a hole in the card. */
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+.ob__shot figcaption {
+  margin-block-start: 0.4rem;
+  font-size: 0.76rem;
+  color: var(--ink-scene-muted);
+}
+
+/* "Can't see it?" — wrong for most readers, and the whole install for the few it is right for.
+   A native <details>, so it is keyboard-operable, announced, and findable by the browser's own
+   in-page search, which is exactly how somebody looks for this. */
+.ob__more { margin-block-start: 0.9rem; }
+.ob__more > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--ink-scene);
+  background: color-mix(in srgb, var(--ink-scene) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-scene) 16%, transparent);
+}
+.ob__more > summary::-webkit-details-marker { display: none; }
+/* The marker is drawn rather than inherited so it can be a logical rotation — the default
+   triangle points the wrong way in Arabic and cannot be told otherwise. */
+.ob__more > summary::before {
+  content: '';
+  inline-size: 0.42rem;
+  block-size: 0.42rem;
+  flex: none;
+  border-inline-end: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+.ob__more[open] > summary::before { transform: rotate(45deg); }
+.ob__more > summary:hover { background: color-mix(in srgb, var(--ink-scene) 14%, transparent); }
+@media (prefers-reduced-motion: reduce) {
+  .ob__more > summary::before { transition: none; }
+}
+
+/* The address in full. Wraps rather than overflowing: it is here to be read aloud or retyped
+   when an in-app browser refuses the clipboard, so every character has to be on screen. */
+.ob__addr {
+  margin-block-start: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--ink-scene-muted);
+}
+
+/* Deliberately plain, and last. Somebody who does not want to install anything should be able
+   to leave without feeling they failed a form — but it must not compete with the step above
+   it, or nobody installs anything. */
+.ob__skip {
+  display: block;
+  margin: 1.1rem auto 0;
+  padding: 0.5rem 0.9rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0.6rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  color: var(--ink-scene-muted);
+  cursor: pointer;
+}
+.ob__skip:hover { color: var(--ink-scene); }
+
+/* ── The admin's breakdown bars ──────────────────────────────────────────────
+ *
+ * A count and a percentage BESIDE every bar, never a bar alone. A bar communicates a share at
+ * a glance and nothing at all about how big the sample is — three phones and three hundred
+ * draw the same picture — and this panel's whole problem is that a masjid will believe a
+ * number it is shown. The bar is the ornament; the figure is the content, which is also why
+ * the bar is `aria-hidden` and the row reads out as "Safari 12 (40%)".
+ */
+.bars { margin-block-start: 1rem; }
+.bars .label { margin-block-end: 0.35rem; }
+.bars__row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 9rem) 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding-block: 0.22rem;
+  font-size: 0.86rem;
+}
+.bars__label { color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bars__track {
+  block-size: 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-ink) 10%, transparent);
+  overflow: hidden;
+}
+.bars__fill {
+  display: block;
+  block-size: 100%;
+  border-radius: 999px;
+  background: var(--color-primary);
+  /* A share of zero still has to be a row rather than nothing, so the fill can legitimately be
+     0% wide. min-inline-size would draw a lie at that width. */
+  min-inline-size: 0;
+}
+.bars__n { font-variant-numeric: tabular-nums; color: var(--color-ink); white-space: nowrap; }
+.bars__pct { color: var(--color-ink-muted); }
+
+/* Narrow phones: the label needs the full width or every row ellipsises to "Samsung In…". */
+@media (max-width: 26rem) {
+  .bars__row { grid-template-columns: 1fr auto; }
+  .bars__track { grid-column: 1 / -1; order: 3; }
+}
+
+/* ── Standing announcements (admin) ──────────────────────────────────────────
+ *
+ * Inside the announcement block, and sharing its ground on purpose: setting a notice to send
+ * itself is the same act as sending one, done in advance, and giving it its own card would
+ * suggest otherwise.
+ */
+.sched { list-style: none; margin-block-start: 0.8rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.sched__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+  border: 1px solid var(--glass-border);
+}
+/* Paused, not broken. Dimmed but never hidden and never inert — the controls on the row are
+   how it comes back, so they have to stay usable. */
+.sched__row--off .sched__main { opacity: 0.55; }
+.sched__main { min-width: 0; flex: 1; }
+.sched__text {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--color-ink);
+  /* The message, in full, wrapping. Truncating it would hide the half of the sentence that
+     says which notice this is. */
+  overflow-wrap: anywhere;
+}
+.sched__when {
+  margin-block-start: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+}
+.sched__next { font-weight: 500; color: var(--color-ink-muted); }
+.sched__acts { display: flex; gap: 0.15rem; flex: none; }
+
+.sched__new {
+  margin-block-start: 0.9rem;
+  padding-block-start: 0.9rem;
+  border-block-start: 1px dashed var(--glass-border);
+}
+/* The chip groups. A fieldset for the same reason the musalli settings use one: "how often" is
+   one question with one answer and the browser should say so, and "which days" is one question
+   with several. Its default border and min-inline-size are removed — the latter is the one that
+   catches people out, since a fieldset will not shrink below its content without it. */
+.sched__opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+.sched__opts > .label { inline-size: 100%; margin-block-end: 0.1rem; }
+/* The chips are <label>s here rather than buttons, so the hidden input inside each one carries
+   focus, the arrow keys and the announced state. The ring has to be drawn on the label, because
+   the thing actually focused is a pixel somewhere off screen. */
+.sched__opts .chip:focus-within { outline: 2px solid var(--color-btn); outline-offset: 2px; }
+.sched__row2 { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.sched__row2 .field { flex: 1 1 9rem; }
+
+/* ── Qibla ───────────────────────────────────────────────────────────────────
+ *
+ * The dial is the largest single thing this app draws, on purpose: it is looked at from arm's
+ * length while somebody is turning on the spot, which is a worse reading position than any
+ * other screen here has to survive.
+ */
+.qibla {
+  flex: 1;
+  width: 100%;
+  max-width: 34rem;
+  margin-inline: auto;
+  padding: 0.5rem 1.15rem 1.5rem;
+}
+.qibla__title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink-scene);
+  text-shadow: var(--text-shadow-scene);
+  margin-block-end: 0.9rem;
+}
+
+.qibla__dial { margin-block: 0.4rem 1rem; display: grid; place-items: center; }
+.qibla__svg { inline-size: 100%; max-inline-size: 17rem; block-size: auto; }
+
+/* The rose turns; the needle marking where the PHONE points does not. Both are inside the same
+   SVG so they share a coordinate system and cannot drift apart. */
+.qibla__rose { will-change: transform; }
+
+/* ── The face, as an object rather than as page ink ──────────────────────────
+ *
+ * A deliberate exception to CLAUDE.md §12's "never hardcode a colour in a component": these are
+ * the colours of a THING sitting on the page, not of the page. A compass whose card inverted
+ * between Fajr and Duha would stop reading as a compass — you would not know whether you were
+ * looking at an object or at a hole in the screen — and the whole point of drawing one is that
+ * somebody already knows what it is. They live here rather than inline so a component still has
+ * no hex in it, and they are the same in both themes on purpose.
+ */
+.qibla__bezel { fill: #e7dfe0; }
+.qibla__face { fill: #fdfcfb; }
+.qibla__tick { stroke: #c3bcb8; stroke-width: 2; stroke-linecap: round; }
+.qibla__tick--card { stroke: #a49c97; stroke-width: 2.5; }
+.qibla__card {
+  fill: #a49c97;
+  font-size: 14px;
+  font-weight: 700;
+  text-anchor: middle;
+  font-family: var(--font-display);
+}
+
+/* Where the reader is pointing: two faces of one folded blade, the lit side and the shaded one.
+   That is the entire 3D effect and it costs two fills — a gradient or an SVG filter would say the
+   same thing and make a low-end phone work for it. The hairline is what gives the silhouette a
+   defined edge against a near-white face. */
+.qibla__arrow-a { fill: #f7c6a2; stroke: #d9793f; stroke-width: 0.8; }
+.qibla__arrow-b { fill: #e8905c; stroke: #d9793f; stroke-width: 0.8; }
+
+/* The Kaaba. Drawn rather than lettered: recognised instantly, and needs no translating. */
+.qibla__kaaba { fill: #17130f; }
+.qibla__kiswa { fill: #c9a227; }
+.qibla__door { fill: #5a4d3c; }
+
+/* Aligned. The bezel, because it rings the whole thing and is therefore visible in the corner of
+   the eye of somebody who is looking at the room rather than at the phone. */
+.qibla__dial--on .qibla__bezel { fill: var(--color-btn); }
+/* Aligned, the arrow keeps its fold — flattening it to one colour would make the moment it
+   lines up the moment it stops looking like an object. */
+.qibla__dial--on .qibla__arrow-a { fill: var(--color-btn-hover); stroke: var(--color-btn); }
+.qibla__dial--on .qibla__arrow-b { fill: var(--color-btn); stroke: var(--color-btn); }
+
+.qibla__read { text-align: center; }
+.qibla__deg {
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--ink-scene);
+}
+.qibla__point { margin-block-start: 0.2rem; font-size: 0.95rem; color: var(--ink-scene-muted); }
+/* The live line. Given a fixed height so the card does not grow and shrink as the reader turns
+   — a layout that jumps under a thumb is how somebody taps the wrong thing. */
+.qibla__state {
+  min-block-size: 1.6rem;
+  margin-block-start: 0.6rem;
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--coral);
+}
+/* The height is reserved only when there IS a live reading to put in it. Without a compass the
+   line never fills, and holding 1.6rem of nothing open under the distance is a gap that reads
+   as something failing to load. */
+.qibla__state--quiet { min-block-size: 0; margin-block-start: 0; }
+.qibla__read .set-lead { text-align: start; }
+.qibla__read .card-actions { justify-content: center; }
+.qibla__read .btn { margin-inline: auto; }
+
+
+/* ── The masjid's own details (musalli Settings) ─────────────────────────────
+ *
+ * Rows a thumb can hit rather than a definition list: every one of these is a link, and the
+ * whole row is the target because a phone number set in body text is a 14px tap area.
+ */
+/* `margin: 0.8rem 0 0` AND `padding: 0` — BOTH halves of the same oversight.
+ *
+ * Tailwind's preflight is off and this app's only base rules zero the body's margin and the
+ * headings', so a <ul> keeps the user agent's 1em bottom margin AND its 40px inline start
+ * padding. The margin was found first, by measuring a gap; the padding survived it and was
+ * indenting every contact row 32px past the card's own title, which is worse and was in front of
+ * me in a screenshot the whole time. `.picker` (above) spells out `padding: 0` for exactly this
+ * reason — the precedent was already in the file. */
+.contact {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.contact__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  /* 44px of height at the default font size, which is the smallest target anybody should have
+     to hit on a phone with one hand. */
+  min-block-size: 2.75rem;
+  padding: 0.55rem 0.5rem;
+  margin-inline: -0.5rem;
+  border-radius: 0.6rem;
+  color: var(--ink-scene);
+  text-decoration: none;
+}
+a.contact__row:hover { background: color-mix(in srgb, var(--ink-scene) 8%, transparent); }
+a.contact__row:active { background: color-mix(in srgb, var(--ink-scene) 14%, transparent); }
+/* The address is not a link — see contactLinks.ts for why the map is a separate, deliberate
+   press — so it must not look like one or feel like one under a finger. */
+.contact__row--static { cursor: default; }
+.contact__row svg { flex: none; margin-block-start: 0.15rem; color: var(--coral); }
+.contact__val {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  min-width: 0;
+  /* A long email or a hyphenated domain has to wrap rather than push the card wider than the
+     phone. `anywhere`, because there is no space in an address to break at. */
+  overflow-wrap: anywhere;
+}
+/* The lines the masjid typed, kept. This is the one field somebody may copy onto an envelope. */
+.contact__val--address { white-space: pre-line; }
+
+/* Close under the address it is about. `.set-card .btn` gives every button in a card a 0.9rem
+   lead, which is right for a button that follows a paragraph and far too much for one that is
+   the second half of the line above it — a gap that size read as two unrelated things. */
+.contact__maps { margin-block-start: 0.35rem; }
+.set-card .btn.contact__maps { margin-block-start: 0.35rem; }
+.contact__choose { display: flex; flex-direction: column; gap: 0.35rem; }
+.contact__choose-ask { font-size: 0.8rem; font-weight: 600; color: var(--ink-scene-muted); }
+.contact__choose-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+/* The two choices are already spaced by the row; the card's blanket button margin would stack a
+   second gap on top of it. */
+.set-card .contact__choose-row .btn { margin-block-start: 0; }
+
+.contact__socials { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-block-start: 0.9rem; }
+/* The chips here are links, not switches. Same shape — they are the same size of thing to a
+   thumb — but they must not inherit the pressed look, which would say "on". */
+.contact__socials .chip { text-decoration: none; }
+
+/* The Qibla's opening screen is one button and nothing else (Hasan, 2026-08-30), so the card
+   around it should not look like a card with something missing. */
+.qibla__start { text-align: center; }
+.qibla__start .btn { margin-block-start: 0; margin-inline: auto; }

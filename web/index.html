@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 OpenMasjid-Solutions -->
+<html lang="en" dir="ltr" data-theme="dark" data-wallpaper="aurora">
+  <head>
+    <meta charset="utf-8" />
+    <!-- viewport-fit=cover so the page reaches under a phone's notch and home bar; the
+         layout pads itself back with env(safe-area-inset-*). This is a page people hold
+         in one hand at Fajr, not a desktop panel. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#030D1A" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#F0F9FF" media="(prefers-color-scheme: light)" />
+    <meta name="description" content="Your masjid's prayer times, on your phone." />
+    <title>Prayer times</title>
+    <!-- Every href here is RELATIVE on purpose: the server injects a `<base href>` per
+         request, so they resolve under the tunnel prefix as well as at the root without
+         either path being baked into the build. -->
+
+    <!-- The manifest is GENERATED per request — it carries the masjid's own name, their
+         icon, and a scope that follows the tunnel path. Linked here rather than injected
+         later because a browser reads it while parsing the head to decide whether the app
+         is installable at all. Over plain http on the LAN it is simply ignored, which is
+         the correct outcome rather than a bug (CLAUDE.md §6.4). -->
+    <link rel="manifest" href="manifest.webmanifest" />
+
+    <!-- The browser TAB keeps Companion's own mark: it is shown before anything is
+         installed and costs no work on the server. -->
+    <link rel="icon" type="image/png" sizes="128x128" href="favicon.png" />
+    <!-- The HOME SCREEN gets the masjid's, derived from their logo. iOS reads this in
+         preference to the manifest's icons, and it is the icon a musalli actually keeps. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="api/public/icon/192.png" />
+
+    <!-- Ask iOS and Android to run this without browser chrome once it is on a home
+         screen. The manifest's `display` covers Android; iOS still reads these. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Prayer times" />
+    <script>
+      // Apply the persisted look before first paint, so opening the app in a dark room
+      // never flashes a white screen. The full prefs module hydrates immediately after.
+      try {
+        var p = JSON.parse(localStorage.getItem('omc-prefs') || '{}');
+        var t = p.theme === 'light' || p.theme === 'dark'
+          ? p.theme
+          : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', t);
+        if (p.wallpaper) document.documentElement.setAttribute('data-wallpaper', p.wallpaper);
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

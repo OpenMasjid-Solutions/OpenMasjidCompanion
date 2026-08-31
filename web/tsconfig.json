@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    // ES2021.Intl is here for one API and is declared rather than cast around: `Intl.ListFormat`,
+    // which is what turns [Friday, Sunday] into "Friday and Sunday" in the READER'S language
+    // instead of a comma this app would then have to translate. Runtime-only, so the emit target
+    // stays where it was, and every call site is inside a try/catch for the browser that lacks it.
+    "lib": ["ES2020", "ES2021.Intl", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "useDefineForClassFields": true,
+    "noEmit": true
+  },
+  "include": ["src"]
+}

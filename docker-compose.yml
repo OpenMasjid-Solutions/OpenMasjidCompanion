@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 OpenMasjid-Solutions
+
+# OpenMasjid Companion — one container that runs everything: the musalli app, the
+# admin panel, the API, the push scheduler and the SQLite store. One image to
+# install, one to update. Least-privilege: no privileged mode, no host networking,
+# no devices, no Docker socket.
+#
+# Nothing to configure at install time. The platform will ask one question — whether
+# to share this app over the internet — because manifest.yaml sets `tunnel: true`,
+# and that is the one answer this app genuinely needs. Everything else is chosen
+# inside the app and saved to /data.
+services:
+  app:
+    # ── MAIN BRANCH: the stable channel ──────────────────────────────────────
+    # The release version, pinned to the manifest-list @sha256 digest of the image CI
+    # published for it. The digest is what protects an existing install: every push to
+    # main republishes :<version> and :latest, so a version tag on its own is NOT
+    # immutable — the digest is the only thing that is.
+    #
+    # It must be the MANIFEST-LIST digest, never a per-architecture one: a per-arch
+    # digest pins amd64 and breaks every Raspberry Pi in the catalog.
+    #
+    # The order that produces this line is publish -> pin -> tag (CLAUDE.md §0). It is
+    # written in its own commit, after main has published, from a digest read out of
+    # the registry for THIS version — never carried over from the previous release and
+    # never guessed. `verify-release-tag.yml` re-checks it against GHCR on every v* tag.
+    #
+    # On `dev` this line is the exact prerelease tag with no digest. Never carry that
+    # form into main.
+    image: ghcr.io/openmasjid-solutions/openmasjidcompanion:0.1.0
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATA_DIR: /data
+      # OpenMasjidOS Fabric: the platform writes these into the app's .env and runs
+      # compose with --env-file, which only feeds ${VAR} SUBSTITUTION — so they must
+      # be referenced here to actually reach the container. Without these four lines
+      # single sign-on, the public-URL lookup and the timetable broker call all
+      # silently no-op, and nothing anywhere says why. (This is the exact trap that
+      # left OpenMasjid Display's SSO dead for several releases.) Empty defaults keep
+      # a standalone `docker compose up` quiet.
+      OPENMASJID_BASE_URL: ${OPENMASJID_BASE_URL:-}
+      OPENMASJID_APP_ID: ${OPENMASJID_APP_ID:-}
+      OPENMASJID_APP_SECRET: ${OPENMASJID_APP_SECRET:-}
+      # Injected empty when the admin has not shared this app over the tunnel. The
+      # live source of truth is GET /api/fabric/site; this is its convenience mirror,
+      # and the app treats an empty value as "not exposed yet" rather than a failure.
+      OPENMASJID_PUBLIC_URL: ${OPENMASJID_PUBLIC_URL:-}
+    ports:
+      # host:container. OpenMasjidOS offers "Open" on the lowest published port and
+      # picks a different free host port automatically if 7880 is already taken — so
+      # nothing in the app may ever depend on this number.
+      - "7880:8080"
+    volumes:
+      - data:/data
+    # ── Least-privilege, from day one ────────────────────────────────────────
+    # Runs as an unprivileged user with a READ-ONLY root filesystem. The sibling apps
+    # both record not having this as a known gap; a new app has no upgrade path to
+    # protect, so it starts with it rather than inheriting the gap.
+    #
+    # The two things this needs in order to work, both handled in the Dockerfile:
+    #   * /data is created in the image owned by 1000:1000, so Docker gives a FRESH
+    #     named volume that same ownership and the app can write its database.
+    #   * nothing is written anywhere else. /tmp is the tmpfs below; the app writes to
+    #     /data and nowhere else on disk.
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+
+volumes:
+  data:

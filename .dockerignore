@@ -1,0 +1,22 @@
+**/node_modules
+**/dist
+**/data
+.git
+.github
+docs
+screenshots
+assets
+*.md
+# CHANGELOG.md ships INSIDE the image (the account menu's "What's new" reads it), so the
+# blanket *.md above must not swallow it — an image built without it shows an empty panel.
+!CHANGELOG.md
+# Never let a developer's local secrets into the build context. `COPY server/ ./` and
+# `COPY web/ ./` would otherwise bake a local .env into an image layer, where it survives
+# even if a later step deletes the file.
+.env
+**/.env
+**/.env.*
+*.pem
+*.key
+*.p12
+*.pfx
