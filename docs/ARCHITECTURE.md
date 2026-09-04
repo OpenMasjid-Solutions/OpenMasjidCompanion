@@ -1575,6 +1575,17 @@ It does mean the two stable releases want ordering, and the order is Display fir
 cross-repo fact, so it is written down here and in the README and flagged to Hasan, and it is
 not fixed from this repo (§2).
 
+**Outcome (2026-09-04): resolved, in the order it wanted.** Display v0.70.0 was released on
+2026-09-04 and the stable catalog was rebuilt to serve it alongside Companion 0.2.0, so both
+halves of the grant are on the stable channel and no Development-channel box is needed.
+
+The paragraph above stayed in this repo asserting "stable Display is v0.69.0" for five days after
+it stopped being true, and so did the README — where it was telling masjids to switch to the
+Development channel for no reason. Nothing here could have caught it: it is a fact about another
+repository, and a doc cannot notice the world moving. **A version claim about another app is
+perishable.** Re-read the live `catalog.json` before repeating one, which is the same instinct
+§17 step 10 encodes for our own releases.
+
 ### A release-tooling trap, found the hard way at 0.2.0
 
 CLAUDE.md §17 says to bump the version in "both lockfiles (which each carry it twice)", and the

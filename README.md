@@ -16,15 +16,16 @@
 ---
 
 > **Status: v0.2.0, on the stable channel.** The app is listed in the OpenMasjid catalog and
-> installable from **OpenMasjidOS → App Store** on the default (stable) channel. Release notes for
-> each version are on the [releases page](https://github.com/OpenMasjid-Solutions/OpenMasjidCompanion/releases),
-> and [`CHANGELOG.md`](CHANGELOG.md) is what is in a build today.
+> installable from **OpenMasjidOS → App Store** on the default (stable) channel — there is nothing
+> to switch over to Development for. Release notes for each version are on the
+> [releases page](https://github.com/OpenMasjid-Solutions/OpenMasjidCompanion/releases), and
+> [`CHANGELOG.md`](CHANGELOG.md) is what is in a build today.
 >
-> **Before you install, one honest caveat.** The prayer times come from OpenMasjid Display's
-> `timetable` capability, and that capability is on Display's **dev** channel — it has not landed
-> in a stable Display release yet (stable is v0.69.0). On an all-stable box Companion installs and
-> opens, but it has nothing to read and says so plainly rather than inventing times. To see it
-> work end to end, put **both** apps on the Development channel.
+> **The prayer times come from OpenMasjid Display**, through its `timetable` capability, which
+> ships in **Display v0.70.0** — on the stable channel as well — so a box running both apps from
+> the default channel has both halves and needs nothing further. Paired with an older Display,
+> Companion still installs and opens; it simply has no timetable to read, and says so plainly
+> rather than inventing times.
 
 **OpenMasjid Companion** is an app for
 [OpenMasjidOS](https://github.com/OpenMasjid-Solutions/OpenMasjidOS) that puts the masjid in a
@@ -172,10 +173,11 @@ it never takes the app down and it never invents anything.
 ## What it needs
 
 - **OpenMasjidOS** with the app installed from the catalog.
-- **OpenMasjid Display**, with a timetable set up and the `timetable` capability available. That
-  capability ships in **Display v0.70.0**, which is **not released yet** — it is on Display's dev
-  channel today, and stable Display is v0.69.0. Without it Companion has no prayer times and says
-  so; it never falls back to calculating them.
+- **OpenMasjid Display v0.70.0 or newer**, with a timetable set up and the `timetable` capability
+  available to this app. v0.70.0 is the release that capability ships in, and it is on the stable
+  channel, so installing both apps from the default channel is enough. On an older Display —
+  v0.69.0 and before — the capability does not exist, so Companion has no prayer times and says so;
+  it never falls back to calculating them. Update Display and the times appear on their own.
 - **Remote access turned on** in OpenMasjidOS → Settings → Remote access, with this app shared.
   This one is not optional: an installable app, push notifications and a QR code all need a public
   HTTPS address, and none of them can work from an address inside your building. Until it is on,
@@ -185,8 +187,8 @@ it never takes the app down and it never invents anything.
 
 ## Install
 
-Through **OpenMasjidOS → App Store**, once the app is listed. There is nothing to fill in at
-install; the platform will ask one question — whether to share the app over the internet — and
+Through **OpenMasjidOS → App Store**, where it is listed on the default channel. There is nothing
+to fill in at install; the platform will ask one question — whether to share the app over the internet — and
 everything else is set up inside the app afterwards.
 
 Running it by hand is possible for development (`docker compose up -d --build`), but without

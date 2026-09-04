@@ -12,6 +12,9 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- The README no longer tells you to switch to the Development channel. It was written when the
+  prayer-times connection was only on Display's development builds; Display 0.70.0 has since been
+  released, so installing both apps from the normal App Store is all that is needed.
 - Release notes are now published on the GitHub releases page for every version. OpenMasjidOS
   shows them to you as "What's new" after it updates the app in the background, so an update no
   longer arrives without an explanation of what changed.

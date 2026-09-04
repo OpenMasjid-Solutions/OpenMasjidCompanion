@@ -116,11 +116,17 @@ release moved the catalog's `main`, which is what a masjid actually reads. Until
 happened, "released" meant only that the tag and the image existed — never that anybody was being
 offered them. Check the live `catalog.json`; never infer shipping from a merged PR.
 
-**What a stable listing still waits on, and it is not ours:** `display/timetable` ships in
-**Display v0.70.0**, which is unreleased — stable Display is v0.69.0. Companion on an all-stable
-box installs, opens, and honestly reports that it has no timetable. That is the designed degraded
-state and not a bug, but it means the two stable releases want ordering, and the order is
-Display first. Flag it; never "fix" it from here (§2).
+**The Display dependency, resolved (2026-09-04).** `display/timetable` ships in **Display
+v0.70.0**, which was released on 2026-09-04 and is what the stable catalog now serves. Both halves
+of the grant therefore exist on the stable channel, and the ordering this section used to worry
+about resolved itself in the order it wanted: Display first, Companion second.
+
+Keep the shape of the lesson, because the next cross-repo dependency will repeat it. A capability
+this app consumes can be **merged, tagged and even released** in the other repo and still not be
+on a masjid's box — what settles it is the live `catalog.json`, never the other repo's `dev`
+branch and never a doc in this one. This paragraph asserted "stable Display is v0.69.0" for five
+days after it stopped being true. **Re-check before repeating a version claim**; never "fix" the
+other repo from here (§2).
 
 ---
 
