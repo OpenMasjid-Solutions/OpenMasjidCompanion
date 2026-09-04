@@ -77,13 +77,18 @@ that doesn't match `manifest.yaml`.
 
 ### Releases, in one paragraph (full chain in §17)
 
-Only on Hasan's words. The order is **publish → pin → tag**: bump the version everywhere, merge
-to `main`, let CI publish the image, commit the **manifest-list** `@sha256` digest into
-`docker-compose.yml` in a compose-only commit, then **tag `vX.Y.Z` at that digest-pin commit** —
-never its parent. Display has shipped this mistake three times; its `CLAUDE.md §0` is the
-authoritative runbook and this repo follows it exactly, including `verify-release-tag.yml`. Then
-merge `main` back into `dev`, restore the dev compose form, open the next `-dev.1`, and re-open
-an empty `## Unreleased` in the changelog.
+Only on Hasan's words. The order is **publish → pin → tag → announce**: bump the version
+everywhere, merge to `main`, let CI publish the image, commit the **manifest-list** `@sha256`
+digest into `docker-compose.yml` in a compose-only commit, then **tag `vX.Y.Z` at that digest-pin
+commit** — never its parent. Display has shipped this mistake three times; its `CLAUDE.md §0` is
+the authoritative runbook and this repo follows it exactly, including `verify-release-tag.yml`.
+
+**Then publish the GitHub release, because a tag is not a release** — OpenMasjidOS shows those
+notes to the admin as *"What's new"* after it updates the app, so stopping at the tag hands a
+masjid new software with no explanation. Propose the catalog entry, merge `main` back into `dev`,
+restore the dev compose form, open the next `-dev.1`, re-open an empty `## Unreleased` — and then
+**verify**: `gh release view` shows the notes, and the catalog's `main` actually serves the new
+version. Full numbered chain in §17; it has ten steps and the tag is the sixth.
 
 ### The catalog is somebody else's `main` — you may only propose
 
@@ -98,13 +103,18 @@ and why the image must be **published before** the version bump is pushed (the c
 exact tag; an entry whose image doesn't exist yet is a pull failure on someone's phone-facing
 server).
 
-**Listing status (2026-08-30).** Done, and it stays done — this paragraph is history, not a task.
-The entry exists in `registry.yaml` with `dev_ref: dev`, so the dev channel has followed this
-branch since PR #28. `v0.1.0` was released and proposed for the **stable** channel in
-[catalog PR #29](https://github.com/OpenMasjid-Solutions/OpenMasjidAPPS/pull/29), which is
-**open, not merged**: a catalog maintainer runs that release, and until they do the stable catalog
-keeps serving what it served before. "Released" means the tag and the image exist, never that
-masjids are being offered it.
+**Listing status (2026-09-04) — SHIPPED.** History, not a task. The entry has been in
+`registry.yaml` with `dev_ref: dev` since PR #28, so the dev channel follows this branch.
+[Catalog PR #29](https://github.com/OpenMasjid-Solutions/OpenMasjidAPPS/pull/29) merged on
+2026-09-04 and a catalog maintainer has cut the release, so the catalog's `main` now serves
+**companion 0.2.0** pinned to its manifest-list digest: real masjids on the stable channel are
+being offered this app.
+
+That took two moves that are **not** interchangeable, and the distinction is the one §17 step 10
+exists to enforce. Merging the PR put the entry on the catalog's `dev`. Only the maintainer's
+release moved the catalog's `main`, which is what a masjid actually reads. Until that second move
+happened, "released" meant only that the tag and the image existed — never that anybody was being
+offered them. Check the live `catalog.json`; never infer shipping from a merged PR.
 
 **What a stable listing still waits on, and it is not ours:** `display/timetable` ships in
 **Display v0.70.0**, which is unreleased — stable Display is v0.69.0. Companion on an all-stable
@@ -831,14 +841,57 @@ Before any PR/push, run what CI runs — anything less is a weaker signal than i
   lands, in plain language; a release **condenses** it to what a masjid would notice. Never
   rewrite a released section. Mirror Display §0b, including the parser tests against the real
   file.
-- **The release chain** (only on Hasan's words, §0): bump the version across **manifest.yaml,
-  both package.jsons, and both lockfiles (which each carry it twice)** — verify with a
-  `grep -rn "<old version>"` that must come back empty except the compose line; merge to `main`
-  resolving compose to main's form with the *previous* digest intact; let CI publish; fetch the
-  **manifest-list** digest; commit the new `tag@sha256` pin touching compose only; **tag that
-  commit** (`git rev-list -n1 v<version>` must print the digest-pin SHA); then the catalog PR;
-  then bring `dev` back in line with the next `-dev.1` and a fresh `## Unreleased`. Display's
-  `CLAUDE.md §0` is the full runbook with the war stories — follow it exactly.
+- **The release chain** (only on Hasan's words, §0). **Numbered because it has been got wrong by
+  stopping early: the tag is step 6 of 10, not the end.** Display's `CLAUDE.md §0` is the full
+  runbook with the war stories; the steps below are this repo's, with what it has learned.
+
+  1. **Bump the version** in `manifest.yaml`, both `package.json`s and both lockfiles. In a
+     lockfile set the **root version only** — `.version` and `.packages[""].version`, by parsing
+     the JSON. A blind `"<old>"` → `"<new>"` replacement also rewrites any **dependency** sitting
+     on that version (0.2.0 hit `real-require@0.2.0`, a transitive dependency of pino), leaving a
+     lockfile whose `version` and `resolved` URL disagree. It could not have fired at 0.1.0, which
+     is what makes it the kind of bug that waits for a version number to collide. Then
+     `grep -rn "<old version>"` must come back empty except the compose line.
+  2. **Condense `## Unreleased` into `## X.Y.Z`** — only what a masjid would notice. Match the
+     heading **line-anchored**: a bare `indexOf('## Unreleased')` also matches the phrase in this
+     changelog's own intro paragraph, and has mangled the file once.
+  3. **Point compose at the bare `:X.Y.Z` tag** and commit the release on `dev` — **but do not
+     push `dev`.** A non-prerelease version on `dev` fails the `channel` job; `dev` catches up
+     from the merge-back in step 9. (Compose carries the bare tag, not the *previous* release's
+     digest: `manifest.test.ts` asserts the compose tag equals the manifest version, and that
+     invariant is worth more than a green `channel` job on a commit that is never tagged.)
+  4. **Merge to `main` and push.** CI publishes `:X.Y.Z` and `:latest`. **`Checks` goes red on
+     this one commit and that is expected** — `channel` requires every image on `main`
+     digest-pinned, and the digest cannot exist before the push that creates it. `server` and
+     `web` must both be green; if anything else is red, stop.
+  5. **Pin the digest.** Read it from GHCR (`docker buildx imagetools inspect`), **never from the
+     build log**, and confirm it is the **manifest-list / OCI image index** carrying `linux/amd64`
+     *and* `linux/arm64` — a per-architecture digest pins amd64 and breaks every Raspberry Pi in
+     the catalog. Commit `:X.Y.Z@sha256:<digest>` touching **compose only**.
+  6. **Tag that commit**, and check both of these **before pushing the tag**: `git rev-list -n1
+     v<version>` prints the digest-pin SHA and not its parent (Display has shipped that off-by-one
+     three times), and the tagged tree's digest equals what GHCR serves. After the push, a red CI
+     run is all that is left to tell you.
+  7. **Publish the GitHub release.**
+     `gh release create vX.Y.Z --title "vX.Y.Z — <the headline>" --notes-file notes.md`
+     **A tag is not a release.** OpenMasjidOS shows these notes to the admin as *"What's new"*
+     after it updates the app in the background, so a tag without a release means a masjid gets
+     new software and no explanation of what changed. Write for a **volunteer**, not a changelog:
+     what they can now do that they could not, what got fixed, and what needs no action. No bullet
+     soup of commit subjects. `CHANGELOG.md`'s condensed section is the raw material, not the text.
+  8. **Propose the catalog entry** — a PR against the catalog's `dev` only (§0), `ref:` the new
+     tag and `commit:` the SHA of the **tagged digest-pin commit**.
+  9. **Put `dev` back to work:** merge `main` back, restore the dev compose form, open the next
+     `-dev.1`, re-open an empty `## Unreleased`. Not tidying — the catalog only accepts a dev entry
+     at or ahead of the stable release, so a `dev` left behind makes the dev channel silently fall
+     back to stable while looking perfectly healthy.
+  10. **Verify it actually shipped.** Two checks, both required:
+      - `gh release view vX.Y.Z` prints the notes, with `draft: false`.
+      - `curl -fsSL https://raw.githubusercontent.com/OpenMasjid-Solutions/OpenMasjidAPPS/main/catalog.json | grep '"companion"' -A3`
+        reports the new version. **A merged PR against the catalog's `dev` is not shipped** —
+        the catalog's `main` moves only when a catalog maintainer cuts a release. If this still
+        shows the old version, your part is done and you are waiting on them: **say so plainly
+        rather than reporting the release as delivered.**
 
 ---
 

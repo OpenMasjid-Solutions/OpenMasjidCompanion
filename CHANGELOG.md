@@ -12,6 +12,10 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- Release notes are now published on the GitHub releases page for every version. OpenMasjidOS
+  shows them to you as "What's new" after it updates the app in the background, so an update no
+  longer arrives without an explanation of what changed.
+
 ## 0.2.0
 
 - **A screen that fails now says so.** If something goes wrong while the app is drawing a

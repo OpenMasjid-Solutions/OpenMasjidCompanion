@@ -15,12 +15,10 @@
 
 ---
 
-> **Status: v0.1.0 — the first release.** The image is built, published and tagged. The catalog
-> entry that would put it on the **stable** channel is
-> [proposed, not merged](https://github.com/OpenMasjid-Solutions/OpenMasjidAPPS/pull/29) — a
-> catalog maintainer runs that release — so for now install it from the **Development** channel:
-> **OpenMasjidOS → Settings → Update Channel → Development**, then the App Store.
-> [`CHANGELOG.md`](CHANGELOG.md) is what is actually in a build today.
+> **Status: v0.2.0, on the stable channel.** The app is listed in the OpenMasjid catalog and
+> installable from **OpenMasjidOS → App Store** on the default (stable) channel. Release notes for
+> each version are on the [releases page](https://github.com/OpenMasjid-Solutions/OpenMasjidCompanion/releases),
+> and [`CHANGELOG.md`](CHANGELOG.md) is what is in a build today.
 >
 > **Before you install, one honest caveat.** The prayer times come from OpenMasjid Display's
 > `timetable` capability, and that capability is on Display's **dev** channel — it has not landed
