@@ -308,20 +308,6 @@ export function formatUntil(ms: number): string {
 }
 
 /** "Monday 24 August", in the masjid's own language. */
-export function formatDate(date: string, language = 'en'): string {
-  const [y, m, d] = date.split('-').map(Number);
-  try {
-    return new Intl.DateTimeFormat(language || 'en', {
-      timeZone: 'UTC',
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    }).format(new Date(Date.UTC(y, m - 1, d)));
-  } catch {
-    return date;
-  }
-}
-
 // ── Which part of the day we are in ──────────────────────────────────────────
 
 /**

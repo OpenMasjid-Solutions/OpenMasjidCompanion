@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarClock, Check, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { Note } from '../ui';
+import { formatStamp } from '../dates';
 
 export interface TimetableStatus {
   id: string;
@@ -147,7 +148,7 @@ export function TimetablePicker({ status, onChanged }: { status: TimetableStatus
           {status.id && !status.problem && status.days > 0 && (
             <p className="card-body">
               Showing <b>{status.masjidName}</b> &mdash; {status.days} days of times, in {status.timezone}.
-              {status.at ? ` Last read ${new Date(status.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.` : ''}
+              {status.at ? ` Last read ${formatStamp(status.at)}.` : ''}
             </p>
           )}
 

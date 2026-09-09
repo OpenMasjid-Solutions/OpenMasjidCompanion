@@ -14,6 +14,8 @@
  * a thing you can assert on cheaply.
  */
 
+import { formatDayLong } from '../dates';
+
 export type Repeat = 'once' | 'daily' | 'weekly';
 
 export interface ScheduleLike {
@@ -69,9 +71,8 @@ export function weekdayNames(locale?: string, width: 'long' | 'short' = 'long'):
 export function prettyDate(date: string, locale?: string): string {
   const [y, m, d] = date.split('-').map(Number);
   if (!y || !m || !d) return date;
-  const at = Date.UTC(y, m - 1, d);
   try {
-    return new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' }).format(at);
+    return formatDayLong(date, locale);
   } catch {
     return date;
   }

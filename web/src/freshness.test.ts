@@ -65,13 +65,17 @@ test('an entry stored before the phone stamped them falls back to the server’s
 
 test('the age is an absolute date, not a relative one', () => {
   const now = new Date(2026, 8, 9, 18, 30).getTime();
+
+  // Same day is the one case that reads better without a date: the reader is judging an age, and
+  // three numbers to compare against today's tell them nothing they did not already know.
   const earlier = new Date(2026, 8, 9, 6, 4).getTime();
   assert.match(describeWhen(earlier, now, 'en-GB'), /^today at /);
 
+  // Anything older gets the real date, in the same MM/DD/YYYY order as everywhere else — not
+  // "3 days ago", which reads as an app being chatty about itself rather than a fact to weigh
+  // against "did the committee change Iqamah this week?".
   const daysAgo = new Date(2026, 8, 6, 6, 4).getTime();
-  const s = describeWhen(daysAgo, now, 'en-GB');
-  assert.match(s, /Sunday/, 'names the day, so it can be weighed against "did they change it this week?"');
-  assert.match(s, /September/);
+  assert.match(describeWhen(daysAgo, now, 'en-GB'), /^on 09\/06\/2026 at /);
 });
 
 test('a missing or impossible timestamp never prints a wrong date', () => {

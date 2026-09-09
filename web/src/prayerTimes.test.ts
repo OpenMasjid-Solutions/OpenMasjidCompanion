@@ -18,7 +18,6 @@ import test from 'node:test';
 import {
   type Day,
   changedPrayers,
-  formatDate,
   formatMonth,
   formatTime,
   formatUntil,
@@ -318,13 +317,6 @@ test('the countdown reads like a person would say it', () => {
   assert.equal(formatUntil(61 * 60_000), '1 hr 1 min');
   assert.equal(formatUntil(120 * 60_000), '2 hr');
   assert.equal(formatUntil(5 * 3_600_000 + 60_000), '5 hr 1 min');
-});
-
-test('the date reads as a date, and does not slip a day', () => {
-  // Formatted in UTC from a date with no clock, so no zone can move it onto the day before.
-  assert.match(formatDate('2026-08-24'), /Monday/);
-  assert.match(formatDate('2026-08-24'), /24/);
-  assert.match(formatDate('2026-01-01'), /January/);
 });
 
 test('TWO JUMU‘AHS DO NOT LAND ON THE SAME INSTANT', () => {

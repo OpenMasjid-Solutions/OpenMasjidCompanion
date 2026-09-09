@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { BellRing, Megaphone, RefreshCw, Send, TriangleAlert } from 'lucide-react';
 import { api } from '../api';
 import { Note } from '../ui';
+import { formatStamp } from '../dates';
 import { Scheduled } from './Scheduled';
 
 export interface PushStatus {
@@ -41,7 +42,7 @@ interface AnnounceResult {
   audience: number;
 }
 
-const WHEN = (at: number) => (at ? new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'never');
+const WHEN = (at: number) => formatStamp(at);
 
 export function Notifications(): JSX.Element {
   const [status, setStatus] = useState<PushStatus | null>(null);

@@ -24,7 +24,6 @@ import {
   type Slot,
   MONTH_MARKS,
   changedOn,
-  formatDate,
   formatTime,
   formatUntil,
   positionAt,
@@ -38,6 +37,7 @@ import { useSwipe } from './swipe';
 import { haptic } from './haptics';
 import { MasjidLogo, Note } from './ui';
 import { describeWhen, noticeFor, type FeedMeta } from './freshness';
+import { formatDayLong, formatStamp } from './dates';
 
 export interface Timetable {
   configured: boolean;
@@ -197,7 +197,7 @@ export function Today({ data, feed }: { data: Timetable; feed?: FeedMeta | null 
           <ChevronLeft size={22} aria-hidden="true" />
         </button>
         <div className="datebar__main">
-          <div className="datebar__greg">{formatDate(day.date, masjid.language)}</div>
+          <div className="datebar__greg">{formatDayLong(day.date, masjid.language)}</div>
           {/* Display's own already-localised label. This app never computes or reformats a
               Hijri date — see the work order's divergence 5. */}
           <div className="datebar__hijri">{day.hijri.label}</div>
@@ -215,7 +215,7 @@ export function Today({ data, feed }: { data: Timetable; feed?: FeedMeta | null 
       <CacheNote feed={feed} serverAt={data.at} now={now} locale={masjid.language} />
 
       {/* Keyed on the date so a day change remounts and the slide replays. */}
-      <div className="times" key={day.date} data-slide={slide ?? undefined} role="table" aria-label={`Prayer times for ${formatDate(day.date, masjid.language)}`}>
+      <div className="times" key={day.date} data-slide={slide ?? undefined} role="table" aria-label={`Prayer times for ${formatDayLong(day.date, masjid.language)}`}>
         <div className="time-head" role="row">
           <span role="columnheader">
             <span className="sr-only">Prayer</span>
@@ -520,7 +520,7 @@ function CacheNote({
 
 /** Serving a cache is only honest with this on the page. */
 function StaleNote({ at }: { at: number }): JSX.Element {
-  const when = at ? new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'a while ago';
+  const when = at ? formatStamp(at) : 'a while ago';
   return (
     <p className="stale-note">
       <Clock3 size={16} aria-hidden="true" />

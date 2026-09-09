@@ -23,6 +23,7 @@
  * browser: the failure being prevented is silent by construction, so the logic that prevents it
  * must not itself be untestable.
  */
+import { formatClock, formatStamp } from './dates';
 
 /** What the service worker told us about where this body came from — see `sw.tmpl`. */
 export interface FeedMeta {
@@ -66,17 +67,18 @@ export function noticeFor(meta: FeedMeta | null, serverAt: number, online: boole
 }
 
 /**
- * "on Tuesday at 6:04 pm", or "a while ago" when nothing knows.
+ * "today at 6:04 pm", "on 09/06/2026 at 6:04 pm", or "a while ago" when nothing knows.
  *
  * Deliberately absolute rather than "3 days ago". A relative age reads as an app being chatty
  * about itself; a date and a time is the thing a reader can actually weigh against "did the
- * committee change Iqamah this week?".
+ * committee change Iqamah this week?". Same day is the one exception — there the reader is
+ * judging an age, and a date would be three numbers to compare against today's first.
  */
 export function describeWhen(at: number, now: number, locale?: string): string {
   if (!at || at > now + 60_000) return 'a while ago';
-  const then = new Date(at);
-  const sameDay = new Date(now).toDateString() === then.toDateString();
-  const time = then.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
-  if (sameDay) return `today at ${time}`;
-  return `${then.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} at ${time}`;
+  // "today at 6:04 pm" beats "09/09/2026 at 6:04 pm" for something that happened hours ago: the
+  // reader is judging an age, and on the same day the date is three numbers they have to compare
+  // against today's before learning anything.
+  if (new Date(now).toDateString() === new Date(at).toDateString()) return `today at ${formatClock(at, locale)}`;
+  return `on ${formatStamp(at, locale)}`;
 }

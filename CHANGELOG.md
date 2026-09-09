@@ -12,6 +12,9 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- **Dates now read month/day/year** — 09/11/2026 — everywhere they appear: the day you are
+  looking at, the scheduled announcements, and the "last checked" lines. The weekday is still
+  shown next to it, because Jumuʿah is a weekday and it should not need working out.
 - **The times now refresh the moment you open the app, and a saved copy says so.** If your phone
   can reach the masjid, you always see the current times — before this, opening the app could
   show you the previous ones while the new ones were still loading, so a changed Iqamah might not
