@@ -4,26 +4,29 @@
 /**
  * dates.ts — one place that decides what a date looks like.
  *
- * Asked for by Hasan on 2026-09-09: dates read **MM/DD/YYYY**. Before this the app had five
- * separate formatters, each calling `Intl` with its own options, so "what does a date look like"
- * had five answers and changing it meant finding all five. It has one now.
+ * Before this the app had five separate formatters, each calling `Intl` with its own options, so
+ * "what does a date look like" had five answers and changing it meant finding all five.
  *
- * WHY THE LOCALE IS PINNED. Everywhere else this app follows the masjid's own `language` from
- * Display, and for the numeric date it deliberately does not: `Intl` would order the numbers by
- * the reader's locale, so the same masjid's timetable would read 09/06 on one phone and 06/09 on
- * another, and neither phone would say which it was. A numeric date is only unambiguous if
- * everyone agrees on the order, so the order is fixed rather than negotiated. **This is a
- * deliberate override, not an oversight** — the day and month names elsewhere still follow the
- * masjid's language, because a word cannot be misread as a different date.
+ * TWO SHAPES, and which one is used is a deliberate choice each time (Hasan, 2026-09-09):
  *
- * If a masjid outside the US ever needs DD/MM/YYYY, this is a one-line change here (and the
- * honest fix is an admin setting, not a locale guess — see the note on `ORDER`).
+ *  - **Worded — "September 9, 2026" — is the default**, and is what a musalli reads on the day
+ *    view, what the admin sees on a scheduled announcement, and what every "last checked" line
+ *    uses. A month name cannot be misread; `09/11` versus `11/09` can.
+ *  - **Numeric — "09/11/2026" — is for the offline banner only.** It sits inside a sentence that
+ *    is already doing work ("you are offline, so these are the times saved on this phone …"), and
+ *    a short date keeps that sentence readable.
+ *
+ * WHY THE NUMERIC ORDER IS PINNED. `Intl` orders the fields by the READER's locale, so the same
+ * masjid's timetable would read 09/11 on one phone and 11/09 on another and neither would say
+ * which. A numeric date is only unambiguous if everyone agrees on the order, so the order is
+ * fixed rather than negotiated. Month and weekday NAMES still follow the masjid's own language,
+ * because a word cannot be misread as a different date.
  */
 
 /**
- * The fixed field order. `en-CA` would give ISO, `en-GB` day-first; `en-US` is month-first, which
- * is what was asked for. Named rather than inlined so the day this becomes a masjid setting,
- * there is exactly one value to make configurable.
+ * The fixed field order for the numeric form. `en-CA` would give ISO, `en-GB` day-first; `en-US`
+ * is month-first, which is what was asked for. Named rather than inlined so the day this becomes
+ * a masjid setting, there is exactly one value to make configurable.
  */
 const ORDER = 'en-US';
 
@@ -35,46 +38,58 @@ function parts(date: string): { y: number; m: number; d: number } | null {
 }
 
 /**
- * `09/09/2026` — a calendar date from Display's `YYYY-MM-DD`.
- *
  * Fixed to UTC on purpose. The string is already the masjid's own calendar date, so building a
  * local `Date` from it and formatting it back could land a day either side depending on where the
- * phone is — the one bug a prayer timetable cannot afford to have in its date line.
+ * phone is — the one bug a prayer timetable cannot afford in its date line.
  */
-export function formatDay(date: string): string {
+function atUtc(p: { y: number; m: number; d: number }): Date {
+  return new Date(Date.UTC(p.y, p.m - 1, p.d));
+}
+
+/** `09/11/2026`. The offline banner, and nothing else — see the file comment. */
+export function formatDayNumeric(date: string): string {
   const p = parts(date);
   if (!p) return date;
   try {
-    return new Intl.DateTimeFormat(ORDER, {
-      timeZone: 'UTC',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date(Date.UTC(p.y, p.m - 1, p.d)));
+    return new Intl.DateTimeFormat(ORDER, { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(atUtc(p));
   } catch {
     return date;
   }
 }
 
 /**
- * `Sunday, 09/09/2026`.
+ * `September 9, 2026` — the ordinary way this app writes a date.
  *
- * The weekday survives the change to numerals and is not decoration: this is a prayer timetable,
- * Jumuʿah is a weekday, and somebody swiping through days needs to see which one they have landed
- * on without doing arithmetic. Its NAME still follows the masjid's language — only the numbers
- * are pinned (see the file comment).
+ * ASSEMBLED rather than handed whole to `Intl`, and that is the point. Given a locale, `Intl`
+ * picks the field ORDER as well as the words: `en-GB` returns "9 September 2026" and others put
+ * the year first. Only the month NAME is a translation; the order was asked for. So the name is
+ * localised and the arrangement is ours — the same split the numeric form makes.
+ */
+export function formatDayWorded(date: string, language = 'en'): string {
+  const p = parts(date);
+  if (!p) return date;
+  try {
+    const month = new Intl.DateTimeFormat(language || 'en', { timeZone: 'UTC', month: 'long' }).format(atUtc(p));
+    return `${month} ${p.d}, ${p.y}`;
+  } catch {
+    return date;
+  }
+}
+
+/**
+ * `Friday, September 11, 2026`.
+ *
+ * The weekday is not decoration: this is a prayer timetable, Jumuʿah is a weekday, and somebody
+ * swiping through days needs to see which one they landed on without doing arithmetic.
  */
 export function formatDayLong(date: string, language = 'en'): string {
   const p = parts(date);
   if (!p) return date;
   try {
-    const weekday = new Intl.DateTimeFormat(language || 'en', {
-      timeZone: 'UTC',
-      weekday: 'long',
-    }).format(new Date(Date.UTC(p.y, p.m - 1, p.d)));
-    return `${weekday}, ${formatDay(date)}`;
+    const weekday = new Intl.DateTimeFormat(language || 'en', { timeZone: 'UTC', weekday: 'long' }).format(atUtc(p));
+    return `${weekday}, ${formatDayWorded(date, language)}`;
   } catch {
-    return formatDay(date);
+    return formatDayWorded(date, language);
   }
 }
 
@@ -83,16 +98,22 @@ export function formatClock(at: number, locale?: string): string {
   return new Date(at).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
 }
 
-/**
- * `09/06/2026 at 6:04 pm` — a moment in time, for "last checked" and "last sent" lines.
- *
- * A wall-clock instant rather than a calendar date, so this one IS rendered in the phone's own
- * zone: it answers "how long ago was that for me", and converting it to the masjid's zone would
- * make a reader subtract two numbers to find out.
- */
+/** The calendar date of a moment, in the phone's own zone rather than the masjid's — these
+ *  answer "how long ago was that for me", and converting would make a reader subtract. */
+function dayOfMoment(at: number): string {
+  const d = new Date(at);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** `September 6, 2026 at 6:04 pm` — "last checked", "last read", "last sent". */
 export function formatStamp(at: number, locale?: string): string {
   if (!at) return 'never';
-  const d = new Date(at);
-  const day = new Intl.DateTimeFormat(ORDER, { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-  return `${day} at ${formatClock(at, locale)}`;
+  return `${formatDayWorded(dayOfMoment(at), locale)} at ${formatClock(at, locale)}`;
+}
+
+/** `09/06/2026 at 6:04 pm` — the offline banner only. */
+export function formatStampNumeric(at: number, locale?: string): string {
+  if (!at) return 'never';
+  return `${formatDayNumeric(dayOfMoment(at))} at ${formatClock(at, locale)}`;
 }

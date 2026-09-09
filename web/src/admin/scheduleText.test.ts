@@ -62,7 +62,7 @@ test('the three kinds each read as themselves', () => {
   assert.equal(describeSchedule({ repeat: 'weekly', time: '11:00', days: [5], date: '' }, EN), 'Every Friday at 11:00');
   assert.equal(
     describeSchedule({ repeat: 'once', time: '08:00', days: [], date: '2026-08-30' }, EN),
-    'Once, on Sunday, 08/30/2026 at 08:00',
+    'Once, on Sunday, August 30, 2026 at 08:00',
   );
 });
 
@@ -81,8 +81,8 @@ test('a weekly schedule with no days does not claim to send on any', () => {
 test('a date is read as a bare calendar date, with no zone applied', () => {
   // "2026-08-30" is a Sunday. Parsing it as local midnight and formatting it back through a
   // zone is how a date silently becomes the day before west of Greenwich.
-  assert.equal(prettyDate('2026-08-30', EN), 'Sunday, 08/30/2026');
-  assert.equal(prettyDate('2026-01-01', EN), 'Thursday, 01/01/2026');
+  assert.equal(prettyDate('2026-08-30', EN), 'Sunday, August 30, 2026');
+  assert.equal(prettyDate('2026-01-01', EN), 'Thursday, January 1, 2026');
   assert.equal(prettyDate('nonsense', EN), 'nonsense');
 });
 

@@ -23,7 +23,7 @@
  * browser: the failure being prevented is silent by construction, so the logic that prevents it
  * must not itself be untestable.
  */
-import { formatClock, formatStamp } from './dates';
+import { formatClock, formatStampNumeric } from './dates';
 
 /** What the service worker told us about where this body came from — see `sw.tmpl`. */
 export interface FeedMeta {
@@ -69,6 +69,9 @@ export function noticeFor(meta: FeedMeta | null, serverAt: number, online: boole
 /**
  * "today at 6:04 pm", "on 09/06/2026 at 6:04 pm", or "a while ago" when nothing knows.
  *
+ * The ONE place this app writes a numeric date (see dates.ts): it sits inside a sentence that is
+ * already doing work, and a short date keeps that sentence readable.
+ *
  * Deliberately absolute rather than "3 days ago". A relative age reads as an app being chatty
  * about itself; a date and a time is the thing a reader can actually weigh against "did the
  * committee change Iqamah this week?". Same day is the one exception — there the reader is
@@ -80,5 +83,38 @@ export function describeWhen(at: number, now: number, locale?: string): string {
   // reader is judging an age, and on the same day the date is three numbers they have to compare
   // against today's before learning anything.
   if (new Date(now).toDateString() === new Date(at).toDateString()) return `today at ${formatClock(at, locale)}`;
-  return `on ${formatStamp(at, locale)}`;
+  return `on ${formatStampNumeric(at, locale)}`;
+}
+
+/**
+ * When this phone last got times it KNOWS were live.
+ *
+ * Kept here, on the phone, because it is the only record of the fact. The worker's stamp says
+ * "this body came out of the cache"; it cannot say when the masjid was last actually reached if
+ * the worker was not the one that answered — and the worker is not always in a position to
+ * answer. Right after an app update the previous worker is still in control until the reader
+ * accepts the refresh, on the masjid's own LAN over plain http there is no worker at all, and a
+ * request can simply fail. In every one of those the times on screen are of unknown age, and
+ * this is what lets the page still put a date on them.
+ *
+ * Losing it — private browsing, cleared site data — costs a date, not the warning: `noticeFor`
+ * still fires, and `describeWhen` says "a while ago". That is the right way round for something
+ * whose job is to be honest about not knowing.
+ */
+const LIVE_KEY = 'omc-live-at';
+
+export function rememberLive(at: number): void {
+  try {
+    localStorage.setItem(LIVE_KEY, String(at));
+  } catch {
+    /* private browsing — the notice still appears, just without a date */
+  }
+}
+
+export function lastLive(): number {
+  try {
+    return Number(localStorage.getItem(LIVE_KEY) ?? 0) || 0;
+  } catch {
+    return 0;
+  }
 }

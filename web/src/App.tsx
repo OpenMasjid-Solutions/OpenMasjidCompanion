@@ -15,7 +15,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Clock3, Compass, Github, HandCoins, Settings2 } from 'lucide-react';
 import { api, type AppInfo } from './api';
-import type { FeedMeta } from './freshness';
+import { lastLive, rememberLive, type FeedMeta } from './freshness';
 import { ONBOARDING_PATH, stripBase, withBase } from './base';
 import { useAppearanceSync, usePrefs, setThemeOverride } from './prefs';
 import { surfaceFor } from './periodTheme';
@@ -240,9 +240,29 @@ export function App(): JSX.Element {
     const timers: ReturnType<typeof setTimeout>[] = [];
     const pull = (retries = 1) =>
       void api.get<Timetable>('/api/public/timetable').then((r) => {
-        if (!alive || !r.ok) return;
+        if (!alive) return;
+        if (!r.ok) {
+          /**
+           * WE COULD NOT REACH THE MASJID, and something may already be on screen.
+           *
+           * The worker's stamp is not enough on its own, because the worker is not always the
+           * one answering. Right after an app update the PREVIOUS worker is still in control
+           * until the reader accepts the refresh; on the masjid's LAN over plain http there is
+           * no worker at all; and a versioned cache is empty for the first load after an update.
+           * In every one of those the request simply fails — and until this branch existed, the
+           * times already drawn stayed on screen with nothing said about them, which is the
+           * exact silence this whole change was meant to end.
+           *
+           * `lastLive()` rather than "now": the question is how old the times are, not when we
+           * last failed to check.
+           */
+          setFeed((prev) => (prev?.fromCache ? prev : { fromCache: true, cachedAt: lastLive() }));
+          return;
+        }
         setTimes(r.data);
         setFeed(r.meta);
+        // Only a body that did NOT come from the cache proves the masjid was reachable.
+        if (!r.meta.fromCache) rememberLive(Date.now());
         // A copy served because the network was SLOW, not absent. The worker bounds its wait so
         // a phone on one bar is not left staring at nothing, and finishes the real fetch behind
         // us — so asking once more a moment later usually replaces the copy with live times, and
