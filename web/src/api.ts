@@ -15,8 +15,17 @@
  */
 import { withBase } from './base';
 import type { Contact } from './contactLinks';
+import type { FeedMeta } from './freshness';
 
-export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+/**
+ * A successful response carries WHERE IT CAME FROM as well as what it said.
+ *
+ * The service worker may answer from this phone's own cache when the network cannot be reached
+ * (see `sw.tmpl`), and a cached prayer timetable is indistinguishable from a live one by
+ * looking at it — which is exactly how a musalli ends up at the wrong jamāʿah. The worker stamps
+ * what it serves; this is where the page reads the stamp. See `freshness.ts`.
+ */
+export type Result<T> = { ok: true; data: T; meta: FeedMeta } | { ok: false; error: string };
 
 const GENERIC = 'Something went wrong. Please try again.';
 
@@ -31,7 +40,14 @@ async function request<T>(pathname: string, init?: RequestInit): Promise<Result<
     const body = (await res.json().catch(() => null)) as { data?: T; error?: string } | null;
     if (!res.ok) return { ok: false, error: typeof body?.error === 'string' ? body.error : GENERIC };
     if (!body || body.data === undefined) return { ok: false, error: GENERIC };
-    return { ok: true, data: body.data };
+    // Absent on every response that did not come through the worker — a direct hit on the
+    // server, or the LAN over plain http where there is no worker at all. Absent therefore
+    // means "live", which is the safe way round: it is a claim we only make when told.
+    const meta: FeedMeta = {
+      fromCache: res.headers.get('x-omc-from-cache') === '1',
+      cachedAt: Number(res.headers.get('x-omc-cached-at') ?? 0) || 0,
+    };
+    return { ok: true, data: body.data, meta };
   } catch {
     // Offline, or the box is off. Both are ordinary here.
     return { ok: false, error: 'No connection to the masjid right now.' };

@@ -642,6 +642,16 @@ h1, h2, h3, p { margin: 0; }
 }
 .stale-note svg { flex: none; margin-block-start: 0.15rem; color: var(--coral); }
 
+/* The saved-copy notice (Today.tsx). Sits ABOVE the times and is weighted a little harder than
+   the stale marker below them — not as an error, but because a reader who skims past it may act
+   on a time that has since moved. Same shape as .stale-note so the two never look like two
+   different kinds of thing. */
+.stale-note--cache {
+  margin-block: 0.9rem 0.2rem;
+  background: color-mix(in srgb, var(--coral) 14%, color-mix(in srgb, var(--scene-base) 45%, transparent));
+  border-color: color-mix(in srgb, var(--coral) 38%, transparent);
+}
+
 /* ── Status cards (admin) ───────────────────────────────────────────────────── */
 
 /* The prose inside a panel. Slightly smaller and looser than body text: these are

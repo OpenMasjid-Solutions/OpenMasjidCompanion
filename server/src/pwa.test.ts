@@ -270,6 +270,44 @@ test('THE WORKER REFUSES TO CACHE ANYTHING BEHIND THE ADMIN LOGIN', async () => 
   }
 });
 
+test('THE TIMETABLE IS NETWORK-FIRST, and the cache is only its fallback', async () => {
+  // The failure this prevents, and it is the worst one this app has: the masjid moves Iqamah, a
+  // phone opens the app, and the worker answers instantly from its own cache with the OLD time.
+  // Under stale-while-revalidate the new times were fetched but only landed for the NEXT open —
+  // so a musalli with full signal was shown yesterday's Iqamah and had no way to tell.
+  const s = await scenario();
+  try {
+    const body = (await s.app.inject({ method: 'GET', url: '/sw.js' })).body;
+    assert.match(body, /function networkFirst/, 'the timetable needs a network-first path to take');
+    // Anchored on the ROUTING site — `if (isTimetable(url))` — not on the predicate's own
+    // definition, which is what the policy is actually decided by.
+    assert.match(
+      body,
+      /if \(isTimetable\(url\)\) \{[\s\S]{0,160}?networkFirst\(/,
+      'the timetable route must call networkFirst — stale-while-revalidate here serves an old prayer time',
+    );
+    // The appeals keep the old policy on purpose: a progress bar a minute out of date is a
+    // progress bar a minute out of date, and network-first would cost a round trip for nothing.
+    assert.match(body, /if \(isCampaigns\(url\)\) \{[\s\S]{0,160}?staleWhileRevalidate\(/);
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('A COPY SERVED FROM THE PHONE IS STAMPED, so the page can say so', async () => {
+  // Without the stamp the page cannot tell a cached body from a live one — they are the same
+  // JSON — and an unlabelled cached timetable is exactly the thing that sends somebody to the
+  // wrong jamāʿah. See web/src/freshness.ts.
+  const s = await scenario();
+  try {
+    const body = (await s.app.inject({ method: 'GET', url: '/sw.js' })).body;
+    assert.match(body, /x-omc-from-cache/, 'a served copy is marked as one');
+    assert.match(body, /x-omc-cached-at/, 'and carries when THIS PHONE stored it');
+  } finally {
+    await s.cleanup();
+  }
+});
+
 test('icons are derived on demand and served as real PNGs at the declared sizes', async () => {
   const s = await scenario();
   try {

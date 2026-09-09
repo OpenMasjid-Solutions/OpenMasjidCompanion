@@ -15,6 +15,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Clock3, Compass, Github, HandCoins, Settings2 } from 'lucide-react';
 import { api, type AppInfo } from './api';
+import type { FeedMeta } from './freshness';
 import { ONBOARDING_PATH, stripBase, withBase } from './base';
 import { useAppearanceSync, usePrefs, setThemeOverride } from './prefs';
 import { surfaceFor } from './periodTheme';
@@ -123,6 +124,9 @@ export function App(): JSX.Element {
   const [route, setRoute] = useState<Route>(() => routeOf(location.pathname));
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [times, setTimes] = useState<Timetable | null>(null);
+  /** Where the times on screen came from — the masjid just now, or this phone's own cache.
+   *  Only the phone can answer that, so it is never read out of the payload. See freshness.ts. */
+  const [feed, setFeed] = useState<FeedMeta | null>(null);
 
   useEffect(() => {
     const on = () => setRoute(routeOf(location.pathname));
@@ -233,17 +237,56 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (isAdmin) return;
     let alive = true;
-    const pull = () =>
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const pull = (retries = 1) =>
       void api.get<Timetable>('/api/public/timetable').then((r) => {
-        if (alive && r.ok) setTimes(r.data);
+        if (!alive || !r.ok) return;
+        setTimes(r.data);
+        setFeed(r.meta);
+        // A copy served because the network was SLOW, not absent. The worker bounds its wait so
+        // a phone on one bar is not left staring at nothing, and finishes the real fetch behind
+        // us — so asking once more a moment later usually replaces the copy with live times, and
+        // the notice disappears on its own. Bounded to a single retry: never a loop against a
+        // masjid's own box, and never at all when the phone knows it is offline.
+        if (r.meta.fromCache && retries > 0 && navigator.onLine) {
+          timers.push(setTimeout(() => pull(retries - 1), 4_000));
+        }
       });
     pull();
     // A page left open in the prayer hall should pick up an Iqamah change without being
     // reloaded. Rare enough to cost nothing; the server's own cache absorbs it.
     const id = setInterval(pull, 10 * 60_000);
+
+    /**
+     * RE-CHECK THE MOMENT THE APP COMES BACK TO THE FRONT.
+     *
+     * The interval alone is not enough, and the gap is the dangerous one. An installed PWA is
+     * almost never "left open" — it is opened, read for ten seconds, and dismissed. Phones
+     * freeze timers in a backgrounded page, so the app somebody reopens after three days can
+     * hand them a three-day-old screen before any interval fires. That is the case where an
+     * Iqamah change is missed, so it is the case that has to trigger a fetch.
+     *
+     * `pageshow` as well as `visibilitychange` because iOS restores from its back/forward
+     * cache without ever firing the latter, which would leave exactly the phones this app is
+     * mostly read on out of the fix.
+     */
+    const recheck = () => {
+      if (document.visibilityState === 'visible') pull();
+    };
+    document.addEventListener('visibilitychange', recheck);
+    window.addEventListener('pageshow', recheck);
+    // Signal came back — ask again immediately rather than showing a saved copy for ten minutes.
+    // Wrapped rather than passed directly: a listener is handed the Event, which would arrive as
+    // `retries` and quietly disable the retry above.
+    const onOnline = () => pull();
+    window.addEventListener('online', onOnline);
     return () => {
       alive = false;
       clearInterval(id);
+      timers.forEach(clearTimeout);
+      document.removeEventListener('visibilitychange', recheck);
+      window.removeEventListener('pageshow', recheck);
+      window.removeEventListener('online', onOnline);
     };
   }, [isAdmin]);
 
@@ -273,7 +316,7 @@ export function App(): JSX.Element {
 
         {route === '/' &&
           (times ? (
-            <Today data={times} />
+            <Today data={times} feed={feed} />
           ) : (
             <main className="centre-wrap">
               <span className="spinner" />

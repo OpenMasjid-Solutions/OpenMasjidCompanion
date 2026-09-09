@@ -644,11 +644,20 @@ the one secret that *does* belong on the volume; never log the private key).
   relayed from the platform when one exists, else a bundled generic mark.
 - **Service worker at `/sw.js`** (the browser-visible path is `<basePath>/sw.js`, which makes
   the scope correct with no `Service-Worker-Allowed` games — this is the payoff of the
-  strip-the-prefix pattern in §6.3). It precaches the app shell, uses stale-while-revalidate for
-  the timetable/campaign JSON, serves an offline page, handles `push` /
+  strip-the-prefix pattern in §6.3). It precaches the app shell, is **network-first for the
+  timetable** and stale-while-revalidate for the campaign JSON, serves an offline page, handles `push` /
   `notificationclick` / `pushsubscriptionchange`, and **never caches `/admin` or
   `/api/admin/*`**. Cache names are versioned with the app version; updates use the
   "new version ready — refresh" prompt pattern, never a silent forced reload mid-use.
+- **A cached prayer time is never served unlabelled.** The two payloads get different policies
+  because being out of date costs different things: a progress bar a minute old is a progress bar
+  a minute old, and a prayer time a day old sends somebody to the wrong jamāʿah. So the timetable
+  is fetched from the network on every open — including when the app is merely brought back to
+  the front, which is how an installed PWA is actually used — and the cache is the FALLBACK. When
+  the cache does answer, the worker stamps the response and the page says so, with a date
+  (`freshness.ts`). **Only the phone can know this**: the payload's own `stale` flag describes whether
+  the SERVER reached Display, and on a cached body it is frozen at whatever it said when the copy
+  was taken.
 - On the LAN (plain HTTP) the SW and manifest are quietly inert and the page still works as a
   normal website — correct, not a bug (§6.4).
 - The QR encodes `OPENMASJID_PUBLIC_URL`/`publicUrl` exactly; the poster is a print-styled admin

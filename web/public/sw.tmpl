@@ -16,7 +16,19 @@
  *
  * What it is for: a musalli standing in a basement prayer hall with no signal should still be
  * able to see today's times. Not a loading spinner, and not last week's times pretending to be
- * today's — the page carries its own "last checked" marker for that.
+ * today's.
+ *
+ * THE TIMETABLE IS NETWORK-FIRST, and the rest is not. Everything else here can be a moment out
+ * of date at no cost — a progress bar, an icon, the shell. A prayer time cannot: if the masjid
+ * moved Iqamah, a stale copy sends somebody to the wrong jamāʿah, and they cannot tell by
+ * looking. So the timetable is fetched from the network on every load and the cache is the
+ * FALLBACK, not the answer. It used to be stale-while-revalidate, which meant a phone with full
+ * signal was shown the previous copy and the new one only landed for the NEXT open — the reader
+ * saw an old time precisely when the app could have told them the new one.
+ *
+ * When the cache does answer, the response is stamped so the page can say so — see
+ * `freshness.ts`. A cache served silently is the actual danger; a cache served with a date on
+ * it is the feature.
  */
 
 const VERSION = '__VERSION__';
@@ -84,18 +96,71 @@ function isAsset(url) {
   return url.pathname.startsWith(BASE + '/assets/');
 }
 
+/** Headers on a Response are immutable, so "adding" one means rebuilding it. Only ever called
+ *  on our own JSON, which is small enough to buffer without a second thought. */
+async function withHeaders(res, extra) {
+  const body = await res.clone().arrayBuffer();
+  const headers = new Headers(res.headers);
+  for (const key of Object.keys(extra)) headers.set(key, extra[key]);
+  return new Response(body, { status: res.status, statusText: res.statusText, headers });
+}
+
+/** Store it with the time THIS PHONE received it. The body carries the server's own timestamp,
+ *  but that one is frozen at whatever it was when the copy was taken — it cannot answer "how old
+ *  is the thing in front of me", which is the only question a reader has. */
+async function put(cache, request, res) {
+  await cache.put(request, await withHeaders(res, { 'x-omc-cached-at': String(Date.now()) }));
+}
+
+/**
+ * The network is the answer; the cache is the fallback.
+ *
+ * Bounded, because "network-first" on a phone with one bar must not mean an empty screen for
+ * thirty seconds — after `timeoutMs` we serve the copy we have and let the request finish in the
+ * background, so the cache is fresh for next time either way. With no copy at all there is
+ * nothing to fall back TO, so the wait is unbounded rather than an error a musalli cannot act on.
+ */
+async function networkFirst(request, cacheName, timeoutMs) {
+  const cache = await caches.open(cacheName);
+  const network = fetch(request).then(async (res) => {
+    if (res && res.ok) await put(cache, request, res);
+    return res;
+  });
+  // Without this, a rejection that loses the race below is an unhandled rejection in the worker.
+  network.catch(() => undefined);
+
+  const cached = await cache.match(request);
+  if (!cached) {
+    try {
+      return await network;
+    } catch {
+      return Response.error();
+    }
+  }
+
+  try {
+    const raced = await Promise.race([network, new Promise((r) => setTimeout(() => r(null), timeoutMs))]);
+    if (raced && raced.ok) return raced;
+  } catch {
+    // Offline, or the box is off. Both are ordinary; the copy below is why this file exists.
+  }
+  return withHeaders(cached, { 'x-omc-from-cache': '1' });
+}
+
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   const fresh = fetch(request)
-    .then((res) => {
-      if (res && res.ok) cache.put(request, res.clone());
+    .then(async (res) => {
+      if (res && res.ok) await put(cache, request, res);
       return res;
     })
     .catch(() => undefined);
-  // Serve what we have immediately and update behind it. The page's own "last checked" marker
-  // is what keeps this honest — see the server's /api/public/timetable.
-  return cached || fresh || Response.error();
+  // Serve what we have immediately and update behind it. Correct HERE and nowhere else in this
+  // file: a progress bar a minute out of date is a progress bar a minute out of date. The
+  // timetable used to share this path and must not — see networkFirst above.
+  if (cached) return withHeaders(cached, { 'x-omc-from-cache': '1' });
+  return (await fresh) || Response.error();
 }
 
 self.addEventListener('fetch', (event) => {
@@ -128,7 +193,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (isTimetable(url) || isCampaigns(url)) {
+  // The one payload where being out of date is dangerous rather than untidy.
+  if (isTimetable(url)) {
+    event.respondWith(networkFirst(request, DATA_CACHE, 3500));
+    return;
+  }
+
+  if (isCampaigns(url)) {
     event.respondWith(staleWhileRevalidate(request, DATA_CACHE));
     return;
   }

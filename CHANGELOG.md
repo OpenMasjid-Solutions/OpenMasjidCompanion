@@ -12,6 +12,12 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- **The times now refresh the moment you open the app, and a saved copy says so.** If your phone
+  can reach the masjid, you always see the current times — before this, opening the app could
+  show you the previous ones while the new ones were still loading, so a changed Iqamah might not
+  appear until the next time you opened it. If your phone cannot reach the masjid, you still get
+  the times saved on it, but now with a line above them saying when they were saved and that a
+  time may have changed since. Nothing to turn on.
 - The README no longer tells you to switch to the Development channel. It was written when the
   prayer-times connection was only on Display's development builds; Display 0.70.0 has since been
   released, so installing both apps from the normal App Store is all that is needed.

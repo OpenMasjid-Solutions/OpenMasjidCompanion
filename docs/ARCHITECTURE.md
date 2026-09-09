@@ -1605,3 +1605,68 @@ expected two. But it would not have been caught at `0.1.0` — no dependency in 
 **Bump the root version only.** Parse the JSON and set `.version` and `.packages[""].version`;
 never touch anything under `packages["node_modules/..."]`. Any future version is one npm publish
 away from colliding with a dependency, so the string form is not "fine so far", it is untriggered.
+
+## The cached prayer time nobody could see was cached
+
+Reported by Hasan on 2026-09-09, and it is the most serious bug this app has had: a masjid moves
+Iqamah, a musalli opens the app days later, and the old time is drawn with exactly the same
+confidence as a live one. They pray at the wrong time, and nothing on screen could have told them.
+
+### Two defects, and the second one hid the first
+
+**The times were not being refreshed on open.** The service worker ran stale-while-revalidate for
+`/api/public/timetable`: it answered instantly from its own cache and fetched the new copy
+*behind* the page. The new copy therefore landed in the cache for the NEXT open. A phone with
+full signal was shown yesterday's Iqamah, and the app had the right answer in flight while
+drawing the wrong one. `App.tsx` re-pulled on a 10-minute interval, which is no help at all in
+the case that matters: an installed PWA is opened, read for ten seconds and dismissed, and phones
+freeze timers in a backgrounded page, so the interval had usually not fired since the last
+session.
+
+**And the staleness marker could not fire.** `Today.tsx` already had a `StaleNote`, gated on
+`data.stale` — which is a **server-side** flag meaning *our box could not reach Display*. It is
+computed on the server, so it describes the server's health at the moment the response was
+**written**. A body cached by a phone while everything was healthy says `stale: false` for ever,
+however old the phone's copy becomes. So in exactly the reported scenario — phone offline,
+serving a three-day-old copy — the marker was structurally incapable of appearing.
+
+That is the part worth remembering: there are **two different stalenesses**, server↔Display and
+phone↔server, and only the phone can answer the second one. The code had one flag and treated it
+as both.
+
+### The fix
+
+- **The timetable is network-first**; everything else keeps its policy. The two payloads are not
+  alike: a progress bar a minute out of date is a progress bar a minute out of date. The wait is
+  bounded (3.5 s) so a phone on one bar is not left staring at nothing, and the fetch finishes
+  behind the fallback so the cache is warm either way.
+- **A copy is stamped when it is served** — `x-omc-from-cache`, plus `x-omc-cached-at` written at
+  `cache.put` time. The page reads the stamps through `api.ts` and decides in `freshness.ts`. The
+  absence of a stamp means live, which is the safe way round: it is a claim only made when told.
+- **The notice sits ABOVE the times**, not under them. It changes how every number below should
+  be read, and a caveat underneath a list is a caveat found after the decision was made.
+- **The app re-checks whenever it comes back to the front** — `visibilitychange`, `pageshow` and
+  `online`. `pageshow` is not redundant: iOS restores from its back/forward cache without firing
+  `visibilitychange`, which would have left out most of the phones this app is read on.
+
+### Deliberate choices inside the fix
+
+**Every copy is declared, with no minimum age.** There is no threshold below which serving an
+unlabelled copy becomes honest, because the reader cannot see how old it is unless we say so. A
+copy twenty minutes old reads as reassurance *because the timestamp says twenty minutes*. The
+proportionality is carried by the date, not by suppressing the notice.
+
+**`navigator.onLine` decides the wording, never whether to show it.** It reports a network
+interface, not whether the masjid's box answered, and it is famously optimistic on captive-portal
+wifi. What decides the notice is the worker having actually served a copy. What `onLine` picks is
+"you are offline" versus "we could not reach the masjid" — one sentence being wrong is a reader
+told to check their signal when the box is off.
+
+**One bounded retry.** A copy served because the network was *slow* rather than absent would
+otherwise carry the notice until the next visibility change, even though the real response
+arrived seconds later. One retry after 4 s, only when `onLine`, never recursive — a masjid's own
+box should not be asked twice for nothing.
+
+**Not styled as an error.** Nothing is broken: the app is doing the thing it was built to do,
+which is to still show times in a basement. A red panel over a prayer timetable says "this
+masjid's app is faulty" when what is true is much narrower.

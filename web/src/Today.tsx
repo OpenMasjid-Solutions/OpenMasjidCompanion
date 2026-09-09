@@ -15,7 +15,7 @@
  *    when to leave the house, and that is the jamā'ah time. The Adhan is context beside it.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react';
+import { CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock3, WifiOff } from 'lucide-react';
 import {
   type Day,
   type DailyKey,
@@ -37,6 +37,7 @@ import { Month } from './Month';
 import { useSwipe } from './swipe';
 import { haptic } from './haptics';
 import { MasjidLogo, Note } from './ui';
+import { describeWhen, noticeFor, type FeedMeta } from './freshness';
 
 export interface Timetable {
   configured: boolean;
@@ -70,7 +71,7 @@ export function useMinuteTick(): number {
   return now;
 }
 
-export function Today({ data }: { data: Timetable }): JSX.Element {
+export function Today({ data, feed }: { data: Timetable; feed?: FeedMeta | null }): JSX.Element {
   const now = useMinuteTick();
   const [offset, setOffset] = useState(0);
   const [view, setView] = useState<'day' | 'month'>('day');
@@ -208,6 +209,10 @@ export function Today({ data }: { data: Timetable }): JSX.Element {
           <CalendarDays size={20} aria-hidden="true" />
         </button>
       </div>
+
+      {/* ABOVE the times, deliberately. This changes how every number below it should be read,
+          and a caveat underneath a list is a caveat found after the decision was made. */}
+      <CacheNote feed={feed} serverAt={data.at} now={now} locale={masjid.language} />
 
       {/* Keyed on the date so a day change remounts and the slide replays. */}
       <div className="times" key={day.date} data-slide={slide ?? undefined} role="table" aria-label={`Prayer times for ${formatDate(day.date, masjid.language)}`}>
@@ -464,6 +469,52 @@ function Arc({ slots, day, zone, now, isToday }: { slots: Slot[]; day: Day; zone
         return <circle cx={p.x} cy={p.y} r={6} className="arc__now" />;
       })()}
     </svg>
+  );
+}
+
+/**
+ * "These are the times this phone saved, not the times the masjid is showing now."
+ *
+ * The failure this exists for: the masjid moves Iqamah, a phone opens the app days later with
+ * no signal, and the saved time is drawn with exactly the same confidence as a live one.
+ * Somebody prays at the wrong time and there was nothing on screen that could have told them.
+ *
+ * Worded as a fact with a date on it rather than as an alarm. Nothing is broken — the app is
+ * doing the thing it was built to do, which is to still show times in a basement — and a red
+ * panel over a prayer timetable says "this masjid's app is faulty" when what is true is much
+ * narrower. The date is what carries the weight: a copy taken twenty minutes ago reads as
+ * reassurance, and one from last Tuesday reads as a reason to check the noticeboard.
+ */
+function CacheNote({
+  feed,
+  serverAt,
+  now,
+  locale,
+}: {
+  feed?: FeedMeta | null;
+  serverAt: number;
+  now: number;
+  locale?: string;
+}): JSX.Element | null {
+  // `navigator.onLine` is only ever trusted for the WORDING, never for whether to show this:
+  // it reports a network interface, not whether the masjid's box answered, and it is famously
+  // optimistic on captive-portal wifi. What decides the notice is the worker having actually
+  // served a copy.
+  const online = typeof navigator === 'undefined' ? true : navigator.onLine;
+  const notice = noticeFor(feed ?? null, serverAt, online);
+  if (!notice) return null;
+
+  const when = describeWhen(notice.at, now, locale);
+  return (
+    <p className="stale-note stale-note--cache" role="status">
+      <WifiOff size={16} aria-hidden="true" />
+      <span>
+        {notice.kind === 'offline'
+          ? `You are offline, so these are the times saved on this phone ${when}.`
+          : `We could not reach the masjid just now, so these are the times saved on this phone ${when}.`}{' '}
+        If a time has changed since, it will not be here until you are connected again.
+      </span>
+    </p>
   );
 }
 
