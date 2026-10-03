@@ -33,6 +33,11 @@
   --color-success: #34D399;
   --color-warning: #FBBF24;
   --color-danger: #F87171;
+  /* Ink chosen FOR the danger fill, not for the theme — white on this red is 2.77:1 — dark ink is 7.6:1.
+     Nothing in this app draws on a danger fill today (it is text only), so this is here so that
+     the first filled Delete button has ink waiting rather than borrowing the theme's. That
+     borrowing is exactly what broke every accent's button until 0.3.0-dev.4. */
+  --color-on-danger: #00131C;
 
   --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.5);
   --radius-card: 1rem;
@@ -121,6 +126,11 @@
   --color-success: #16A34A;
   --color-warning: #D97706;
   --color-danger: #DC2626;
+  /* Ink chosen FOR the danger fill, not for the theme — white passes here, 4.83:1.
+     Nothing in this app draws on a danger fill today (it is text only), so this is here so that
+     the first filled Delete button has ink waiting rather than borrowing the theme's. That
+     borrowing is exactly what broke every accent's button until 0.3.0-dev.4. */
+  --color-on-danger: #FFFFFF;
 
   --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.08);
   --glass-bg: rgba(255, 255, 255, 0.55);

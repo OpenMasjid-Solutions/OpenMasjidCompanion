@@ -1769,3 +1769,68 @@ decision with a bundle budget attached (§12), not a version bump.
 One stale sentence is deliberately left standing: the slice-17 note above still says "Preflight is
 off (`corePlugins: { preflight: false }`…)". It was true when it was written and it explains a fix
 that is still in the file. History is not rewritten here; this section is the outcome.
+
+## Implementing the platform UI spec — two dialogs, and one of them was lying
+
+Hasan pointed this repo at `OpenMasjidAPPS/docs/DESIGN.md` — the platform's UI/UX spec for apps.
+Most of its checklist already passed (recorded in the accent section above). Two items did not.
+
+### The dialog the spec predicted
+
+§7 asks that dialogs trap focus, close on Escape, and **return focus to whatever opened them**,
+and then says: *"Prefer a real primitive over hand-rolling this — every hand-rolled one we have
+audited was missing at least two of the three."*
+
+This app had two hand-rolled dialogs and the prediction was exact. `InstallPrompt` did all three,
+correctly, including the scroll lock. The admin's **"What's new" modal did one**: an Escape
+listener on `window`. Nothing moved focus into it, so Tab walked straight out of an element
+carrying `aria-modal="true"` into the page behind the scrim — and its own comment claimed *"focus
+starts inside"* while no code did that. A comment asserting a behaviour nobody implemented is
+worse than no comment: it answers the question a reviewer would otherwise ask.
+
+**Why not Radix**, which the spec suggests. A dialog primitive is a dependency, and the bundle
+here is a product constraint rather than a preference — `chunkSizeWarningLimit: 260` with a comment
+about Fajr on mobile data. Radix's dialog plus focus-scope and dismissable-layer is a large
+fraction of that for two dialogs. `dialog.ts` is the same correctness shared once instead. The
+operative word is *shared*: the behaviour existed and was correct, in one of the two places that
+needed it, which is the failure mode a copied implementation always has.
+
+`trapTarget` is pure and index-based so the two edges can be tested without a DOM — Tab on the
+last element, Shift+Tab on the first. Those are exactly the cases hand-testing never reaches,
+because a dialog behaves perfectly until you hit them. Two more are pinned: a dialog with one
+focusable element is still a trap, and focus on the card itself (`indexOf` → −1, which is where
+the hook puts it on open) must not be mistaken for "on the last element" and bounced.
+
+### The live region, and why the countdown is silent
+
+§7 also asks for live regions on anything that changes by itself, naming "a prayer time rolling
+over". The hero does two things at once, and they are not alike:
+
+- the **prayer name** changes a handful of times a day, and each change is the news — Maghrib has
+  come in;
+- the **countdown** underneath it changes every single minute.
+
+So the name is `aria-live="polite"` and the countdown is explicitly `aria-live="off"`. Making the
+whole hero live would read the literal spec and produce 1,440 interruptions a day, which a screen
+reader user answers by closing the app — a worse outcome than silence, achieved by compliance.
+
+### `--color-on-danger`, added before it is needed
+
+§2 names it alongside `--color-on-primary` and gives the same warning: white on dark's `#F87171` is
+2.77:1 and that is the *delete* button. Nothing in this app draws on a danger fill — danger is text
+only (`.form-error`, `.menu-item--danger`), measured at 7.05:1 dark and 4.53:1 light, so the bug
+could not occur. The token is defined anyway, with both inks, so the first filled Delete button has
+ink waiting rather than borrowing the theme's. Borrowing the theme's is precisely what broke every
+accent until 0.3.0-dev.4.
+
+### Left alone, deliberately
+
+§5 says "skeleton shimmer while loading, never a bare spinner". The admin's first-load spinner
+stays: it guards the moment before the session answer, and the existing comment argues the case —
+*"a flash of a login form for someone who is already signed in is worse than a moment of nothing"*.
+A shimmer implies content is arriving; here what is arriving is a decision about which screen to
+show. Flagged rather than changed.
+
+§4 asks for self-hosted Inter and Space Grotesk; this app uses a system stack. The hard constraint
+is "no CDNs", which a system stack satisfies absolutely, and two variable fonts is weight on a
+phone opening this on one bar of signal.

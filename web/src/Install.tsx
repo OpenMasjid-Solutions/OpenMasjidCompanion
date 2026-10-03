@@ -23,6 +23,7 @@
  * The update notice stays a strip: nobody needs to be stopped to be told about a version.
  */
 import { useEffect, useRef, useState } from 'react';
+import { useDialog } from './dialog';
 import { ArrowUpFromLine, Compass, Copy, Plus, RefreshCw, Share, X } from 'lucide-react';
 import { withBase } from './base';
 import { preferredBrowser, type InstallRoute, type Os } from './platform';
@@ -70,41 +71,12 @@ export function InstallPrompt({
     return () => clearTimeout(t);
   }, [eligible]);
 
-  // Move focus into the dialog and hold the page still behind it. Both are undone on the way
-  // out, including when the component unmounts mid-animation.
-  useEffect(() => {
-    if (!shown) return;
-    const returnTo = document.activeElement as HTMLElement | null;
-    card.current?.focus();
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = overflow;
-      returnTo?.focus?.();
-    };
-  }, [shown]);
+  // Focus in, trapped, and returned on the way out — plus the scroll lock. This dialog had all
+  // three already and the admin's did not, which is why the implementation now lives in one
+  // place instead of being a thing each dialog remembers to do. See dialog.ts.
+  useDialog(shown, onDismiss, card);
 
   if (!eligible || !shown) return null;
-
-  /** Keep Tab inside the dialog. It is three controls at most, so this is the whole trap. */
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      onDismiss();
-      return;
-    }
-    if (e.key !== 'Tab') return;
-    const items = card.current?.querySelectorAll<HTMLElement>('button');
-    if (!items || items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
 
   return (
     // Clicking the backdrop dismisses; clicking the card must not. A modal that closes when you
@@ -118,7 +90,6 @@ export function InstallPrompt({
         aria-labelledby="install-title"
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={onKeyDown}
       >
         <button className="icon-btn modal__close" onClick={onDismiss} aria-label="Not now">
           <X size={18} aria-hidden="true" />

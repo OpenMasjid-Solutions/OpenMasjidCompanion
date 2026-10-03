@@ -12,6 +12,13 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- **The "What's new" window now behaves like a window.** Using only a keyboard, Tab could walk
+  out of it into the page behind, and closing it left you at the top of the admin page instead of
+  back on the button you opened it from. Both fixed.
+- **A screen reader is now told when the prayer rolls over** — when Maghrib comes in, it says so.
+  The countdown underneath deliberately stays silent: it changes every minute, and announcing
+  that would interrupt someone 1,440 times a day.
+
 - Removed a styling library the app had stopped needing. Nothing on any screen changes; the
   download is very slightly smaller, and it closes five security advisories that came with it.
 

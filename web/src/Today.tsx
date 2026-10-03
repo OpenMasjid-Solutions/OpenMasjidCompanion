@@ -166,10 +166,20 @@ export function Today({ data, feed }: { data: Timetable; feed?: FeedMeta | null 
 
   return (
     <main className="today" {...swipe}>
+      {/* A LIVE REGION ON THE PRAYER, NOT ON THE COUNTDOWN (spec §7: "live regions for anything
+          that changes on its own — a prayer time rolling over").
+
+          The distinction is the whole point. The prayer name changes a handful of times a day and
+          each change is the news: Maghrib has come in. The countdown beneath it changes every
+          single minute, and announcing that is 1,440 interruptions a day — a screen reader user
+          would turn the page off, which is a worse outcome than silence. So the rollover is
+          polite-live and the ticking number is explicitly not. */}
       <section className="hero">
-        <h1 className="hero__now">{position.label || masjid.name}</h1>
+        <h1 className="hero__now" aria-live="polite">
+          {position.label || masjid.name}
+        </h1>
         {position.next && (
-          <p className="hero__until tnum">
+          <p className="hero__until tnum" aria-live="off">
             {formatUntil(position.until)} until {position.next.label}
           </p>
         )}

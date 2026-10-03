@@ -14,6 +14,7 @@
  * offer of source has to be reachable from the interface.
  */
 import { useEffect, useRef, useState } from 'react';
+import { useDialog } from '../dialog';
 import { Github, LogOut, Sparkles, UserRound, X } from 'lucide-react';
 import { api } from '../api';
 
@@ -73,16 +74,30 @@ function WhatsNew({ onClose }: { onClose: () => void }): JSX.Element {
     });
   }, []);
 
-  // Escape closes, and focus starts inside — a dialog a keyboard cannot leave is a trap.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  /**
+   * Escape, a focus trap, focus moved in, and focus returned on the way out.
+   *
+   * This comment used to say "focus starts inside" and nothing did that: there was an Escape
+   * listener and no more, so Tab walked straight out of a dialog carrying `aria-modal="true"`
+   * into the page behind the scrim. The platform spec (§7) predicts exactly this — every
+   * hand-rolled dialog it audited was missing at least two of the three — so the behaviour moved
+   * to dialog.ts and both dialogs share it.
+   */
+  const card = useRef<HTMLDivElement>(null);
+  useDialog(true, onClose, card);
 
   return (
     <div className="modal-scrim" onClick={onClose} role="presentation">
-      <div className="glass-raised modal" role="dialog" aria-modal="true" aria-label="What's new" onClick={(e) => e.stopPropagation()}>
+      {/* tabIndex -1 so focus has somewhere to land when the dialog opens; it is not a tab stop. */}
+      <div
+        ref={card}
+        tabIndex={-1}
+        className="glass-raised modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="What's new"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-head">
           <h2 className="section-title">What&rsquo;s new</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close">
