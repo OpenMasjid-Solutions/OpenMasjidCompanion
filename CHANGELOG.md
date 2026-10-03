@@ -12,6 +12,8 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- Security update to the web server this app runs on. Nothing to do, and nothing you can see.
+
 - **Fixed: buttons could be unreadable when the masjid uses a light theme with a coloured accent.**
   The button took its background from your chosen accent but its text colour from the theme, so a
   gold or teal accent on the light theme produced white text on a bright button. Each accent now
