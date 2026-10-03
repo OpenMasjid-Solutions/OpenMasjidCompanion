@@ -16,7 +16,7 @@ store, and (from a later slice) the push scheduler. One image to install, one to
 
 ```
 server/   Node 22 + Fastify 5 + better-sqlite3 + zod
-web/      React 18 + Vite + Tailwind (utilities only) over Display's design tokens
+web/      React 18 + Vite, hand-written CSS over Display's design tokens
 ```
 
 The web half is one bundle serving two very different audiences — a musalli's phone and a
@@ -1727,3 +1727,45 @@ deliberately.
 One deliberate deviation: the spec suggests self-hosting Inter and Space Grotesk; this app uses a
 system font stack instead. The hard constraint is "no CDNs", which a system stack satisfies
 absolutely — and two variable fonts is weight on a phone opening this on one bar of signal (§12).
+
+## Tailwind was removed, not migrated
+
+`npm audit` went from clean to five high-severity findings in the web half on 2026-10-03, all of
+them `braces` reaching us through `tailwindcss` → `chokidar` / `micromatch` / `fast-glob`. npm
+offered one remedy: `tailwindcss@4.3.3`, a major version.
+
+### Why migrating would have been the larger change
+
+v4 drops the JS config for CSS `@theme`, drops `corePlugins`, and replaces the PostCSS plugin with
+`@tailwindcss/vite`. **`corePlugins: { preflight: false }` was load-bearing here**: this app's
+~2,100 lines of hand-written base CSS are authoritative and assume Tailwind is additive only.
+v4's preflight is on by default and is a full reset — turning it on breaks every screen at once.
+So the "version bump" was really a reset-compatibility audit across the entire stylesheet.
+
+### What the measurement said
+
+Rather than assume Tailwind was load-bearing, the two builds were compared. Tailwind contributed
+**1.66 KB** and **24 rules**, and all but one were its content scanner matching bare English words
+in the TypeScript — `table`, `grid`, `fixed`, `relative`, `absolute`, `hidden`, `transition`,
+`filter`, `transform`, `ring` — and emitting the utility nothing had asked for.
+
+Scanning every `className` / `class` attribute in `web/src` and `index.html` for a real usage found
+exactly one: **`.sr-only`**, in three files. That is now nine lines in `app.css`, carrying the note
+that `clip` is deprecated and still required because it is what Safari honours.
+
+So the choice was between a reset-compatibility migration across 2,100 lines of CSS, or deleting a
+build dependency that was earning one rule. Nothing uses `@apply`, `@layer` or `theme()` anywhere,
+so there was no pipeline to preserve. PostCSS keeps autoprefixer and loses the other plugin.
+
+The CSS came out 61.46 KB against 62.98 KB before, the JS is unchanged, and all 575 tests pass.
+
+### What this does not resolve
+
+The `docs/design-system/audit.md` migration plan lists "Tailwind 3 → v4" as a prerequisite for a
+React Bits Pro rebuild. That prerequisite is now **moot rather than met** — there is no Tailwind to
+migrate. A rebuild that wants a utility framework would be adding one from scratch, which is a
+decision with a bundle budget attached (§12), not a version bump.
+
+One stale sentence is deliberately left standing: the slice-17 note above still says "Preflight is
+off (`corePlugins: { preflight: false }`…)". It was true when it was written and it explains a fix
+that is still in the file. History is not rewritten here; this section is the outcome.

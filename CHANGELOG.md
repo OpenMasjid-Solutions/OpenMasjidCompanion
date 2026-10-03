@@ -12,6 +12,9 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- Removed a styling library the app had stopped needing. Nothing on any screen changes; the
+  download is very slightly smaller, and it closes five security advisories that came with it.
+
 - Security update to the web server this app runs on. Nothing to do, and nothing you can see.
 
 - **Fixed: buttons could be unreadable when the masjid uses a light theme with a coloured accent.**

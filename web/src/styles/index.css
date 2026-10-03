@@ -1,13 +1,14 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 OpenMasjid-Solutions */
 
-/* Token system first (copied from OpenMasjid Display, which mirrors OpenMasjidOS), then
-   the glass material, then this app's own base + components, then Tailwind's ADDITIVE
-   utilities. Tailwind's preflight is disabled in the config so it never fights the
-   hand-written base styles. */
+/* Token system first (copied from OpenMasjid Display, which mirrors OpenMasjidOS), then the
+   glass material, then this app's own base + components. That is the whole of it.
+
+   There was a Tailwind layer here until 0.3.0-dev.5, configured as additive utilities with
+   preflight off so it could never fight the hand-written base styles. It turned out to be
+   carrying exactly one rule the app used — `.sr-only`, now in app.css — while its scanner
+   emitted two dozen more from bare words in the TypeScript. It was removed rather than migrated
+   to v4: see docs/ARCHITECTURE.md. */
 @import './tokens.css';
 @import './glass.css';
 @import './app.css';
-
-@tailwind components;
-@tailwind utilities;

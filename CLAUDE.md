@@ -697,7 +697,7 @@ masjid's own OpenMasjidOS appearance, not from a palette of ours. Read it before
 musalli half; it refines this section rather than replacing it.
 
 - **Tokens via CSS variables**, copied verbatim from Display (`tokens.css`, `glass.css`) with
-  Tailwind utilities only (preflight off) mapped onto them. Dark default; light and
+  no utility framework — Tailwind was removed in 0.3.0-dev.5 (§14). Dark default; light and
   follow-system first-class; never hardcode hex in components. No component library.
 - **Inherit the live appearance via the Fabric** (§6.2) so the app tracks the dashboard's
   theme/wallpaper/accent; standalone falls back to its own setting.
@@ -769,7 +769,13 @@ musalli half; it refines this section rather than replacing it.
   library for §7/§9. No WebSockets (nothing here needs a live channel; the countdown is
   client-side).
 - **`web/`** — React 18 + Vite + TS, Display's tokens, lucide-react, `qrcode.react`. No
-  animation library: motion is CSS (§12).
+  animation library: motion is CSS (§12). **No CSS framework either**, since 0.3.0-dev.5: Tailwind
+  was configured as additive utilities with preflight off, and an audit found the app used exactly
+  **one** of them (`.sr-only`, now a rule in `app.css`) while its content scanner emitted two dozen
+  more from bare English words in the TypeScript. It was carrying five high-severity advisories
+  whose only remedy was a v4 migration — and v4's preflight-on default would have fought the ~2,100
+  lines of hand-written base CSS that are authoritative here. Removing it was the smaller change.
+  The styles are hand-written semantic classes; add a token, then a rule.
 - **Tests** are `node --test` via tsx, **listed explicitly in the `test` script of BOTH
   `server/package.json` and `web/package.json` — an unlisted test file silently never runs.**
   Each half has a `testFileCoverage.test.ts` that fails the suite when the list and the disk

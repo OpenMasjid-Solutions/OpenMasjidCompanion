@@ -42,6 +42,24 @@ h1, h2, h3, p { margin: 0; }
    keyboard, and an invisible focus ring is a WCAG failure and a usability one. */
 :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
 
+/* Visible to a screen reader, invisible to everyone else.
+   This was the ONLY Tailwind utility this app ever used — the rest of what Tailwind emitted was
+   its content scanner matching bare English words in the TypeScript ("table", "grid", "fixed",
+   "transition") and generating utilities nothing asked for. One rule is not worth a build
+   dependency, still less one that arrived with five high-severity advisories.
+   `clip` is deprecated and still required: it is what Safari honours. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
 /* Every number that represents a time. Proportional digits make a column of prayer times
    jitter as the minutes change, which is exactly the thing the eye is trying to scan. */
 .tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
