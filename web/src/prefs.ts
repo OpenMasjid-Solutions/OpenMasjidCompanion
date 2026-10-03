@@ -75,28 +75,74 @@ const DEFAULTS: Prefs = { theme: 'system', sky: 'period', haptics: true, wallpap
 
 /** Accent palette — mirrors OpenMasjidOS so the app matches the dashboard's accent.
  *  cyan is the tokens' built-in primary, so selecting it just clears the overrides. */
-export const ACCENTS: Record<string, { primary: string; hover: string; subtle: string }> = {
-  cyan: { primary: '#22D3EE', hover: '#67E8F9', subtle: 'rgba(34,211,238,0.12)' },
-  teal: { primary: '#2DD4BF', hover: '#5EEAD4', subtle: 'rgba(45,212,191,0.12)' },
-  sky: { primary: '#38BDF8', hover: '#7DD3FC', subtle: 'rgba(56,189,248,0.12)' },
-  violet: { primary: '#A78BFA', hover: '#C4B5FD', subtle: 'rgba(167,139,250,0.14)' },
-  gold: { primary: '#FBBF24', hover: '#FCD34D', subtle: 'rgba(251,191,36,0.14)' },
+/**
+ * The five accents OpenMasjidOS offers.
+ *
+ * **`onPrimary` is not optional and never was.** A filled button takes its ink from
+ * `--color-on-primary`, and the stylesheet picks that for the THEME — white on the light theme,
+ * because light's own primary is a deep blue. Swap in a bright accent without its ink and every
+ * filled button becomes white-on-bright: gold measured **1.67:1**, which is not a near miss, it
+ * is unreadable, and one of those buttons deletes things. `accentVars` below makes the pairing
+ * structural rather than remembered.
+ */
+export interface Accent {
+  primary: string;
+  hover: string;
+  subtle: string;
+  /** Ink chosen FOR this fill, not for the theme. Measured >= 4.5:1 by accents.test.ts. */
+  onPrimary: string;
+}
+
+export const ACCENTS: Record<string, Accent> = {
+  cyan: { primary: '#22D3EE', hover: '#67E8F9', subtle: 'rgba(34,211,238,0.12)', onPrimary: '#00131C' },
+  teal: { primary: '#2DD4BF', hover: '#5EEAD4', subtle: 'rgba(45,212,191,0.12)', onPrimary: '#00201B' },
+  sky: { primary: '#38BDF8', hover: '#7DD3FC', subtle: 'rgba(56,189,248,0.12)', onPrimary: '#001B2E' },
+  violet: { primary: '#A78BFA', hover: '#C4B5FD', subtle: 'rgba(167,139,250,0.14)', onPrimary: '#190B3D' },
+  gold: { primary: '#FBBF24', hover: '#FCD34D', subtle: 'rgba(251,191,36,0.14)', onPrimary: '#2B1B00' },
 };
+
+/** Every property an accent owns. The removal path walks THIS list, so a property can never
+ *  outlive the accent that set it — above all the ink outliving the fill it was chosen for. */
+export const ACCENT_PROPS = [
+  '--color-primary',
+  '--color-primary-hover',
+  '--color-primary-subtle',
+  '--color-btn',
+  '--color-btn-hover',
+  '--color-on-primary',
+] as const;
+
+/**
+ * What an accent sets, or null for "leave the stylesheet alone".
+ *
+ * Pure, so the pairing can be MEASURED without a browser. A contrast failure here is invisible
+ * to anyone not looking at that one accent in that one theme, which is why it survived this long.
+ *
+ * Cyan returns null deliberately: it IS the stylesheet default, and on the light theme the
+ * stylesheet pairs a deep blue (#0369A1) with white at 5.93:1. Overriding that with raw cyan
+ * would be a downgrade, not a no-op.
+ */
+export function accentVars(id: string): Record<string, string> | null {
+  const a = ACCENTS[id];
+  if (!a || id === 'cyan') return null;
+  return {
+    '--color-primary': a.primary,
+    '--color-primary-hover': a.hover,
+    '--color-primary-subtle': a.subtle,
+    '--color-btn': a.primary,
+    '--color-btn-hover': a.hover,
+    '--color-on-primary': a.onPrimary,
+  };
+}
 
 export function applyAccent(id: string): void {
   const el = document.documentElement;
-  const a = ACCENTS[id];
-  if (!a || id === 'cyan') {
-    for (const p of ['--color-primary', '--color-primary-hover', '--color-primary-subtle', '--color-btn', '--color-btn-hover']) {
-      el.style.removeProperty(p);
-    }
-    return;
-  }
-  el.style.setProperty('--color-primary', a.primary);
-  el.style.setProperty('--color-primary-hover', a.hover);
-  el.style.setProperty('--color-primary-subtle', a.subtle);
-  el.style.setProperty('--color-btn', a.primary);
-  el.style.setProperty('--color-btn-hover', a.hover);
+  const vars = accentVars(id);
+  // Cleared first, unconditionally. Switching between two accents must not leave a property
+  // behind from the previous one, and a half-applied accent IS the white-on-gold bug.
+  for (const p of ACCENT_PROPS) el.style.removeProperty(p);
+  if (!vars) return;
+  for (const [prop, value] of Object.entries(vars)) el.style.setProperty(prop, value);
 }
 
 /** The nine wallpapers OpenMasjidOS offers, so an inherited choice resolves to the same

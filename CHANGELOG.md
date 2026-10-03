@@ -12,6 +12,12 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- **Fixed: buttons could be unreadable when the masjid uses a light theme with a coloured accent.**
+  The button took its background from your chosen accent but its text colour from the theme, so a
+  gold or teal accent on the light theme produced white text on a bright button. Each accent now
+  carries its own text colour, and all five are checked against the accessibility standard's
+  contrast requirement every time the app is built.
+
 - **Dates are written out in full** — "Friday, September 11, 2026" — on the day you are looking
   at, on scheduled announcements and on the "last checked" lines. The one exception is the offline
   banner, which uses the short 09/11/2026 form to keep a sentence that is already saying something

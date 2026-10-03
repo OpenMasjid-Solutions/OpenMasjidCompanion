@@ -1670,3 +1670,60 @@ box should not be asked twice for nothing.
 **Not styled as an error.** Nothing is broken: the app is doing the thing it was built to do,
 which is to still show times in a basement. A red panel over a prayer timetable says "this
 masjid's app is faulty" when what is true is much narrower.
+
+## The accent that set a fill and forgot its ink
+
+Found on 2026-10-03 by auditing this app against `OpenMasjidAPPS/docs/DESIGN.md`, the platform's
+UI/UX spec for apps. The spec names this exact defect and says it cost the platform a real bug;
+we had it too.
+
+### What it was
+
+The admin picks one of five accents in OpenMasjidOS and this app follows it. A filled button draws
+`--color-on-primary` on `--color-btn`. `applyAccent` set the fill — inline on `<html>`, which beats
+every stylesheet rule — and **did not set the ink**, so the ink came from whichever theme block the
+cascade reached. On the light theme that is `#FFFFFF`, because light's own primary is a deep blue
+that white sits on properly.
+
+Measured, with every non-default accent on the light theme failing AA:
+
+| accent | was | now |
+| ------ | --- | --- |
+| gold | **1.67 : 1** | 9.99 : 1 |
+| cyan¹ | 1.81 : 1 | — |
+| teal | 1.86 : 1 | 9.23 : 1 |
+| sky | 2.14 : 1 | 8.19 : 1 |
+| violet | 2.72 : 1 | 6.67 : 1 |
+
+¹ Cyan never actually broke: it is the stylesheet default and `applyAccent` returned early for it,
+leaving `#0369A1` on white at 5.93 : 1. That early return is also why this survived — **the default
+accent was the one configuration that was fine**, so the bug was invisible to anyone who had not
+changed it, on a theme most people do not use.
+
+### Why it could happen at all
+
+The fill and the ink were two separate `setProperty` calls with nothing tying them together, so
+"set the fill, forget the ink" was a thing that could be written — and was. They now arrive as one
+object from `accentVars(id)`, and `applyAccent` clears every property in `ACCENT_PROPS` before
+applying, so an ink can never outlive the fill it was chosen for either. The list and the object
+are asserted to cover each other.
+
+**The pure function is the point.** `accentVars` takes no DOM, so the pairing is measured in
+`accents.test.ts` with a WCAG luminance harness — itself checked against the spec's worked
+examples, because measuring with a broken ruler reports pass. A contrast failure is invisible
+unless somebody picks that accent, in that theme, and squints at a Delete button; it now fails a
+build instead.
+
+### What the rest of the audit found
+
+Nothing, which is worth recording so it is not re-run from scratch. No physical CSS properties
+anywhere (`margin-left`, `inset`, `text-align: left`) — all logical. No `transform: translateX()`
+at all, so the RTL sign-flip trap the spec describes has nothing to flip. `:focus-visible` is a
+global rule identical to the spec's. `prefers-reduced-motion` is honoured in eleven media queries.
+The built bundle makes **zero external requests**: the only absolute URLs in it are XML namespaces,
+the AGPL source link, React's inert error-decoder string, and the two maps URLs a reader taps
+deliberately.
+
+One deliberate deviation: the spec suggests self-hosting Inter and Space Grotesk; this app uses a
+system font stack instead. The hard constraint is "no CDNs", which a system stack satisfies
+absolutely — and two variable fonts is weight on a phone opening this on one bar of signal (§12).
