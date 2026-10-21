@@ -146,17 +146,19 @@ export function secureForRequest(req: { protocol?: string; headers: Record<strin
 }
 
 /**
- * Cookie options. HttpOnly + SameSite=Lax + Path=/.
+ * Cookie options. HttpOnly + SameSite=Lax, at `path`.
  *
- * `Path: '/'` and not the base path, deliberately. Behind the tunnel the browser sees us under
- * `/companion`, on the LAN at the root, and the SAME browser may hit both — scoping the cookie
- * to a prefix would silently drop the session on whichever form it was not minted under.
+ * The caller passes our tunnel prefix when the request came with it, else `/`. Through the tunnel
+ * EVERY app shares one hostname, and `Path=/` there would hand this admin cookie to every other
+ * app's server on every request the admin's browser makes to it. The LAN and the tunnel are
+ * different hosts, so they never shared a cookie jar anyway — a cookie minted on one was never
+ * sent to the other, whatever its path.
  */
-export function cookieOptions(maxAgeMs = MAX_AGE_MS, secure = COOKIE_SECURE) {
+export function cookieOptions(maxAgeMs = MAX_AGE_MS, secure = COOKIE_SECURE, path = '/') {
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
-    path: '/',
+    path,
     secure,
     maxAge: Math.floor(maxAgeMs / 1000),
   };

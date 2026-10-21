@@ -156,6 +156,14 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // with a request header.
   const peerOf = (req: FastifyRequest): string => req.socket.remoteAddress ?? 'unknown';
 
+  /**
+   * Where our admin cookie lives: under our prefix when the request came with it (`rewriteUrl`
+   * stripped something), else `/`. Through the tunnel every app shares one hostname, and `Path=/`
+   * would send this cookie — a bearer token for a panel that can push a notice to every phone —
+   * to every other app's server. See `cookieOptions`.
+   */
+  const cookiePath = (req: FastifyRequest): string => (req.originalUrl !== req.url && getBasePath()) || '/';
+
   const loginLimiter = new LoginLimiter();
   // Unauthenticated AND makes an outbound call to the OpenMasjidOS core on every request. With
   // no cap, anyone who can reach this box can use it as an unmetered amplifier against the
@@ -220,7 +228,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       const probe = await probePlatform(req.headers.cookie);
       reachable = probe.reachable;
       if (probe.username) {
-        reply.setCookie(COOKIE, makeToken(store.secret, SSO_SESSION_MS, 'admin', probe.username), cookieOptions(SSO_SESSION_MS, secureForRequest(req)));
+        reply.setCookie(COOKIE, makeToken(store.secret, SSO_SESSION_MS, 'admin', probe.username), cookieOptions(SSO_SESSION_MS, secureForRequest(req), cookiePath(req)));
         authed = true;
         username = probe.username;
       }
@@ -271,7 +279,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     const parsed = SetupBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'Please choose a password of at least 8 characters.' });
     store.setAdmin(hashPassword(parsed.data.password));
-    reply.setCookie(COOKIE, makeToken(store.secret, MAX_AGE_MS), cookieOptions(MAX_AGE_MS, secureForRequest(req)));
+    reply.setCookie(COOKIE, makeToken(store.secret, MAX_AGE_MS), cookieOptions(MAX_AGE_MS, secureForRequest(req), cookiePath(req)));
     log.info('a local admin password was set (recovery route)');
     return { data: { ok: true } };
   });
@@ -288,18 +296,21 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     const parsed = LoginBody.safeParse(req.body);
     if (parsed.success && verifyPassword(parsed.data.password, admin)) {
       loginLimiter.succeed(peer);
-      reply.setCookie(COOKIE, makeToken(store.secret, MAX_AGE_MS), cookieOptions(MAX_AGE_MS, secureForRequest(req)));
+      reply.setCookie(COOKIE, makeToken(store.secret, MAX_AGE_MS), cookieOptions(MAX_AGE_MS, secureForRequest(req), cookiePath(req)));
       return { data: { ok: true } };
     }
     loginLimiter.fail(peer);
     return reply.code(401).send({ error: 'Incorrect password.' });
   });
 
-  app.post('/api/logout', async (_req, reply) => {
+  app.post('/api/logout', async (req, reply) => {
     // Drop the cached platform answer too, or the very next request silently signs the admin
     // back in from a 45-second-old "yes".
     clearSessionCache();
+    // Both paths: through the tunnel the cookie is under our prefix, but a browser may still
+    // hold one at '/' from a build that minted it there.
     reply.clearCookie(COOKIE, { path: '/' });
+    if (cookiePath(req) !== '/') reply.clearCookie(COOKIE, { path: cookiePath(req) });
     return { data: { ok: true } };
   });
 

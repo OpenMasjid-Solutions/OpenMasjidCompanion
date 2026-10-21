@@ -358,7 +358,9 @@ test('SSO auth works identically behind the tunnel prefix', async () => {
     assert.equal(res.statusCode, 200);
     assert.equal(res.json<{ data: { authed: boolean } }>().data.authed, true);
     const cookie = res.cookies.find((c) => c.name === COOKIE);
-    assert.equal(cookie!.path, '/', 'the cookie is scoped to the origin, not the prefix — the same browser may also reach us on the LAN');
+    // Scoped to the prefix: through the tunnel every app shares this hostname, and Path=/ would
+    // send our admin cookie to all of them. The LAN is a different host, so it never shared it.
+    assert.equal(cookie!.path, '/companion');
   } finally {
     await s.cleanup();
     await platform.close();

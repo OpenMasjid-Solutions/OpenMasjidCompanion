@@ -105,14 +105,13 @@ test('an SSO session is much shorter than a password session', () => {
   assert.equal(MAX_AGE_MS, 30 * 24 * 3600 * 1000);
 });
 
-test('the cookie is HttpOnly, SameSite=Lax and scoped to the whole origin', () => {
+test('the cookie is HttpOnly, SameSite=Lax, and at the path it is given', () => {
   const o = cookieOptions(MAX_AGE_MS, false);
   assert.equal(o.httpOnly, true, 'script must never be able to read the session');
   assert.equal(o.sameSite, 'lax');
-  // Path '/' and NOT the base path: behind the tunnel the browser sees us under /companion,
-  // on the LAN at the root, and the same browser may hit both. Scoping to a prefix would drop
-  // the session on whichever form it was not minted under.
+  // '/' on the LAN. Through the tunnel the server passes our prefix — see remote.test.ts.
   assert.equal(o.path, '/');
+  assert.equal(cookieOptions(MAX_AGE_MS, true, '/companion').path, '/companion');
   assert.equal(o.maxAge, MAX_AGE_MS / 1000);
 });
 

@@ -17,6 +17,9 @@ only what a masjid would actually notice. A released section is never rewritten.
   box restarted, or after you changed the app's address — and an app you haven't shared with the
   public had nothing to fall back on at all. The app now works out its address from that very
   first visit, and you land in the admin panel signed in, with no password, as you do inside.
+- When you sign in to Companion from outside the masjid, that sign-in is now kept to Companion's own
+  address. Every app on your OpenMasjidOS shares one web address there, and it was being sent to
+  all of them. Nothing to do; inside the masjid nothing changes.
 
 - **The "What's new" window now behaves like a window.** Using only a keyboard, Tab could walk
   out of it into the page behind, and closing it left you at the top of the admin page instead of

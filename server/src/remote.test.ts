@@ -147,6 +147,7 @@ test('signed in by SSO from outside with no password, and the whole panel works 
 
     const cookie = setCookie(s);
     assert.match(cookie, /^omc_session=/, 'our own cookie — never one named omos_session');
+    assert.match(cookie, /Path=\/companion(;|$)/, 'scoped to our prefix: every app shares this hostname');
     assert.match(cookie, /Secure/);
     assert.match(cookie, /HttpOnly/);
 
@@ -155,13 +156,16 @@ test('signed in by SSO from outside with no password, and the whole panel works 
       const r = await app.inject({ method: 'GET', url: BASE + url, headers: { ...TUNNEL, cookie: `omos_session=${TOKEN}; ${ours}` } });
       assert.equal(r.statusCode, 200, url);
     }
+
+    const out = await app.inject({ method: 'POST', url: `${BASE}/api/logout`, headers: { ...TUNNEL, cookie: ours } });
+    assert.match(setCookie(out), /omc_session=;[^\n]*Path=\/companion/, 'sign-out clears it where it lives');
   } finally {
     await cleanup();
     await platform.close();
   }
 });
 
-test('on the LAN nothing changes: no prefix, no redirect', async () => {
+test('on the LAN nothing changes: no prefix, no redirect, a cookie at /', async () => {
   const platform = await startPlatform();
   const { app, cleanup } = await coldServer(platform.url);
   try {
