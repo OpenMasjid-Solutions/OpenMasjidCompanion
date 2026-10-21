@@ -27,7 +27,7 @@ import { COOKIE, MAX_AGE_MS, SSO_SESSION_MS, cookieOptions, hashPassword, makeTo
 import { LoginLimiter, makeRateLimiter } from './rateLimit';
 import { type Appearance, type LogoImage, clearSessionCache, fetchAppearance, fetchLogo, probePlatform, raiseAlert } from './fabric';
 import { Cached, KEEP, loaded } from './cache';
-import { getSite, refreshSite } from './site';
+import { getSite, refreshSite, refreshSiteNow } from './site';
 import { TimetableService, type TimetableState } from './timetableService';
 import { Icons, type IconKind, THEME_HEX } from './icons';
 import { buildManifest, installName } from './webmanifest';
@@ -1061,7 +1061,19 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // that looks like a file still 404s rather than being handed the app shell, because a
   // stale /assets/x.js answered with HTML is a syntax error reported far from its cause;
   // unknown API routes answer JSON.
-  app.setNotFoundHandler((req, reply) => {
+  app.setNotFoundHandler(async (req, reply) => {
+    // Forwarded by the platform (it sets x-forwarded-proto on everything it proxies; Cloudflare
+    // adds cf-ray) and yet nothing was stripped. The platform routes by our prefix and never
+    // removes it, so our idea of the prefix is out of date — cold after a boot, or renamed. Learn
+    // it now and send the browser back to the same address, which will then route. Only when the
+    // new prefix matches this URL, so the redirected request is stripped and this cannot loop.
+    const original = req.originalUrl;
+    if (original === req.url && (req.headers['cf-ray'] || req.headers['x-forwarded-proto'])) {
+      await refreshSiteNow();
+      if (stripBasePath(original, getBasePath()) !== original && original.startsWith('/') && !original.startsWith('//')) {
+        return reply.header('cache-control', 'no-store').redirect(original, 307);
+      }
+    }
     const url = req.raw.url ?? '/';
     const pathname = url.split('?')[0];
     const looksLikeFile = path.extname(pathname) !== '';

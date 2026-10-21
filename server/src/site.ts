@@ -112,6 +112,33 @@ export async function refreshSite(fetcher: () => Promise<FabricSite | null> = fe
   return state;
 }
 
+/**
+ * Ask NOW, because a request has just proved our prefix is out of date.
+ *
+ * The boot-time guess above comes from `OPENMASJID_PUBLIC_URL`, which the platform leaves EMPTY
+ * for an app that is not shared — and a private app is still served through the tunnel, at its
+ * path, to the admin who opens it from the remote dashboard. So after a reboot in which the core
+ * came up after us, or after the admin renamed the path, we would strip nothing until the next
+ * poll, and every page the admin opened from outside would load its scripts from the dashboard:
+ * a white screen for up to five minutes.
+ *
+ * Shared while in flight and asked at most once per 10 s, because the request that triggers this
+ * can be anybody's.
+ */
+const NOW_EVERY_MS = 10_000;
+let nowInFlight: Promise<SiteState> | null = null;
+let nowAskedAt = -Infinity;
+
+export function refreshSiteNow(now = Date.now()): Promise<SiteState> {
+  if (nowInFlight) return nowInFlight;
+  if (now - nowAskedAt < NOW_EVERY_MS) return Promise.resolve(state);
+  nowAskedAt = now;
+  nowInFlight = refreshSite().finally(() => {
+    nowInFlight = null;
+  });
+  return nowInFlight;
+}
+
 /** Often enough that turning Remote access on in the dashboard is reflected without the admin
  *  wondering whether it worked; rarely enough to be nothing on a Pi. The admin panel can also
  *  ask for an immediate refresh, which is what a volunteer standing there will actually do. */

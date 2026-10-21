@@ -12,6 +12,12 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- **Opening the app from outside the masjid works straight away.** Pressing **Open** in
+  OpenMasjidOS from outside the building could show a blank page for up to five minutes after the
+  box restarted, or after you changed the app's address — and an app you haven't shared with the
+  public had nothing to fall back on at all. The app now works out its address from that very
+  first visit, and you land in the admin panel signed in, with no password, as you do inside.
+
 - **The "What's new" window now behaves like a window.** Using only a keyboard, Tab could walk
   out of it into the page behind, and closing it left you at the top of the admin page instead of
   back on the button you opened it from. Both fixed.
