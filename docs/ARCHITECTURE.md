@@ -1834,3 +1834,37 @@ show. Flagged rather than changed.
 §4 asks for self-hosted Inter and Space Grotesk; this app uses a system stack. The hard constraint
 is "no CDNs", which a system stack satisfies absolutely, and two variable fonts is weight on a
 phone opening this on one bar of signal.
+
+## Opened from outside, through the OpenMasjidOS remote dashboard (0.3.0-dev.7)
+
+OpenMasjidOS can serve its own dashboard over the tunnel, and its **Open** reaches this app —
+shared with the public or not — at `https://<apps' hostname>/<basePath>/`, with an access token
+for this app alone as `omos_session` (scoped to our path). Everything else on that hostname is the
+dashboard's. The app was built for its prefix from the start (relative Vite base, injected
+`<base href>`, `withBase` on every fetch, link and worker, the worker registered under the prefix,
+the manifest scoped to it), so SSO and the whole panel already worked there. Two things did not.
+
+**A request can prove our prefix is out of date, so it asks.** The prefix is learned from
+`GET /api/fabric/site`, with `OPENMASJID_PUBLIC_URL` as the boot-time guess — and the platform
+leaves that EMPTY for an app that is not shared, which it still serves to the admin from outside.
+So after a reboot in which the core came up after us, or after the admin renamed the path, nothing
+was stripped until the next 5-minute poll: the shell came back with `<base href="/">`, its scripts
+loaded from the dashboard's `/assets`, and the admin saw a white screen. The platform routes by our
+prefix and never removes it, so a request it forwarded (`x-forwarded-proto`, which its ingress sets
+on everything, or `cf-ray`) that reaches the not-found handler unstripped means exactly that. The
+handler asks again (`refreshSiteNow`: shared while in flight, at most once per 10 s, since anybody
+can send those headers on the LAN) and, if the new prefix matches the URL, answers 307 to the same
+address. The retried request is stripped, so it cannot loop; a `//` target is never redirected.
+
+**Our admin cookie lives under the prefix through the tunnel.** `omc_session` was `Path=/`, on the
+reasoning that one browser may reach us both on the LAN and through the tunnel. Those are different
+hosts with different cookie jars, so the path never helped that case — and through the tunnel every
+app shares one hostname, so `Path=/` sent this panel's bearer token (the one that can push a notice
+to every phone) to every other app's server. It is now `Path=<basePath>` when the request carried
+the prefix and `/` otherwise, so the LAN is unchanged; sign-out clears both.
+
+**Not changed, deliberately.** No route is refused over the tunnel and none needed to be: the admin
+signs in by SSO exactly as on the LAN. The password login was already reachable at a shared app's
+public address and stays as it was; `/api/setup` still refuses while the platform is reachable,
+which it always is for a request the platform just forwarded. The Remote access card no longer
+says the app "can only be opened inside your building" — the admin may be reading it from outside.

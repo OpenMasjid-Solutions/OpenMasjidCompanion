@@ -108,15 +108,15 @@ export function RemoteAccess({ status, onChanged }: { status: RemoteStatus; onCh
   return (
     <Card icon={<TriangleAlert size={18} aria-hidden="true" />} title="Turn on Remote access" badge={<span className="badge badge--warn">Needed</span>}>
       <p className="card-body">
-        Right now this app can only be opened inside your building. A QR code on the noticeboard would work
-        for nobody outside it, so nothing else here can be set up until this is on.
+        Right now a musalli&rsquo;s phone can&rsquo;t reach this app from outside your building. A QR code on the
+        noticeboard would work for nobody outside it, so nothing else here can be set up until this is on.
       </p>
       {/* Deliberately words, not a link. The dashboard's address is a LAN one that the browser
           reading this page may not be able to reach — sending someone to a link that times out
           is worse than telling them where to click. */}
       <ol className="steps">
         <li>
-          In OpenMasjidOS, open <b>Settings → Remote access</b> and turn it on.
+          In OpenMasjidOS, open <b>Settings → Remote access</b> and make sure it is on.
         </li>
         <li>
           Find <b>Companion</b> in your apps and tick <b>Share this app over the internet</b>.

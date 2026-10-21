@@ -20,6 +20,9 @@ only what a masjid would actually notice. A released section is never rewritten.
 - When you sign in to Companion from outside the masjid, that sign-in is now kept to Companion's own
   address. Every app on your OpenMasjidOS shares one web address there, and it was being sent to
   all of them. Nothing to do; inside the masjid nothing changes.
+- The Remote access step in the admin panel no longer says the app "can only be opened inside your
+  building" — you may well be reading it from outside. It now says what is actually missing: a
+  musalli's phone can't reach the app until it is shared.
 
 - **The "What's new" window now behaves like a window.** Using only a keyboard, Tab could walk
   out of it into the page behind, and closing it left you at the top of the admin page instead of
