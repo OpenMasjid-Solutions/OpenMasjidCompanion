@@ -1863,8 +1863,19 @@ app shares one hostname, so `Path=/` sent this panel's bearer token (the one tha
 to every phone) to every other app's server. It is now `Path=<basePath>` when the request carried
 the prefix and `/` otherwise, so the LAN is unchanged; sign-out clears both.
 
-**Not changed, deliberately.** No route is refused over the tunnel and none needed to be: the admin
-signs in by SSO exactly as on the LAN. The password login was already reachable at a shared app's
-public address and stays as it was; `/api/setup` still refuses while the platform is reachable,
-which it always is for a request the platform just forwarded. The Remote access card no longer
-says the app "can only be opened inside your building" — the admin may be reading it from outside.
+**From outside, the local password is refused — SSO or nobody.** The admin signs in from outside by
+SSO exactly as on the LAN, behind the platform's own second factor. The local password was reachable
+at a shared app's public address, so anyone holding the QR code could guess at it; and `/api/setup`
+opened to anyone whenever our check of the platform timed out — which can happen even for a request
+the platform has just forwarded. Under OpenMasjidOS, `/api/login` and `/api/setup` now answer 403
+("open Companion from your dashboard") to a request carrying `cf-ray` or `x-forwarded-proto: https`,
+before the rate limiter, so a stranger's guesses spend nobody's attempts. The check is inside the
+handlers, so every spelling the router resolves to them (`%61pi`, `x/../api`) is refused too.
+`/api/session` reports `passwordAllowed`, and the panel offers no password box from outside. There
+are no musalli accounts — a phone only ever holds an anonymous push subscription — so nothing that
+legitimately signs in from outside is affected. A standalone install has no platform to defer to and
+is left as it was; on the LAN nothing changes, including the platform's own front door
+(`x-forwarded-proto: http`).
+
+The Remote access card no longer says the app "can only be opened inside your building" — the admin
+may be reading it from outside.

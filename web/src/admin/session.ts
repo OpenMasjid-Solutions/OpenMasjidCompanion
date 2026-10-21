@@ -21,6 +21,9 @@ export interface Session {
   /** Standalone with no password yet — go straight to choosing one. */
   needsSetup: boolean;
   hasPassword: boolean;
+  /** False from outside the masjid under OpenMasjidOS: the server refuses the password there, so
+   *  no screen offers one. */
+  passwordAllowed: boolean;
   sso: { enabled: boolean; reachable: boolean };
 }
 

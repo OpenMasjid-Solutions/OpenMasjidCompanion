@@ -60,7 +60,10 @@ async function startPlatform(): Promise<{ url: string; siteAsks: () => number; s
 }
 
 /** The server as it is straight after a boot in which the site lookup has not answered yet. */
-async function coldServer(platformUrl: string): Promise<{ app: FastifyInstance; cleanup: () => Promise<void> }> {
+async function coldServer(
+  platformUrl: string,
+  publicUrl = '',
+): Promise<{ app: FastifyInstance; store: import('./store').Store; cleanup: () => Promise<void> }> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-remote-'));
   const publicDir = path.join(dir, 'public');
   fs.mkdirSync(path.join(publicDir, 'assets'), { recursive: true });
@@ -74,7 +77,7 @@ async function coldServer(platformUrl: string): Promise<{ app: FastifyInstance; 
   process.env.OPENMASJID_BASE_URL = platformUrl;
   process.env.OPENMASJID_APP_SECRET = 'test-secret';
   process.env.OPENMASJID_APP_ID = 'companion';
-  delete process.env.OPENMASJID_PUBLIC_URL; // a private app: the platform leaves it empty
+  process.env.OPENMASJID_PUBLIC_URL = publicUrl; // '' for a private app: the platform leaves it empty
   for (const m of MODULES) delete require.cache[require.resolve(m)];
   const { Store } = require('./store') as typeof import('./store');
   const { buildServer } = require('./server') as typeof import('./server');
@@ -83,6 +86,7 @@ async function coldServer(platformUrl: string): Promise<{ app: FastifyInstance; 
   await app.ready();
   return {
     app,
+    store,
     cleanup: async () => {
       await app.close();
       store.close();
@@ -193,5 +197,71 @@ test('a forwarded request the platform does not route here is never redirected, 
   } finally {
     await cleanup();
     await platform.close();
+  }
+});
+
+test('from outside, the app’s own password is refused — right or wrong, in any spelling — and inside it still works', async () => {
+  const platform = await startPlatform();
+  const { app, store, cleanup } = await coldServer(platform.url);
+  try {
+    const { hashPassword } = require('./auth') as typeof import('./auth');
+    store.setAdmin(hashPassword('the-right-password'));
+    await app.inject({ method: 'GET', url: `${BASE}/`, headers: TUNNEL }); // learns the prefix
+
+    const login = (url: string, password: string, headers: Record<string, string> = TUNNEL) =>
+      app.inject({ method: 'POST', url, headers: { ...headers, 'content-type': 'application/json' }, payload: { password } });
+
+    for (const password of ['the-right-password', 'a-guess']) {
+      const r = await login(`${BASE}/api/login`, password);
+      // 403 for both: a 401 for the wrong one would mean the password was checked, i.e. guessable.
+      assert.equal(r.statusCode, 403, password);
+      assert.match(r.json<{ error: string }>().error, /dashboard/);
+      assert.equal(r.headers['set-cookie'], undefined);
+    }
+    // Either Cloudflare's mark or the platform's is enough on its own.
+    assert.equal((await login(`${BASE}/api/login`, 'the-right-password', { 'cf-ray': 'x' })).statusCode, 403);
+    assert.equal((await login(`${BASE}/api/login`, 'the-right-password', { 'x-forwarded-proto': 'https' })).statusCode, 403);
+    // Whatever spelling the router resolves to the route, the refusal is inside it; one it does
+    // not resolve is a 404. Never a password check.
+    for (const url of [`${BASE}/%61pi/login`, `${BASE}/api/%6Cogin`, `${BASE}/x/../api/login`, `${BASE}/api/./login`, `${BASE}/API/login`]) {
+      const r = await login(url, 'the-right-password');
+      assert.ok([403, 404].includes(r.statusCode), `${url} → ${r.statusCode}`);
+      assert.equal(r.headers['set-cookie'], undefined, url);
+    }
+
+    const s = await app.inject({ method: 'GET', url: `${BASE}/api/session`, headers: { 'cf-ray': 'x', 'x-forwarded-proto': 'https' } });
+    assert.equal(s.json<{ data: { passwordAllowed: boolean } }>().data.passwordAllowed, false, 'the panel offers no box that would be refused');
+
+    // Inside the masjid: unchanged — directly, and through the platform's own LAN front door.
+    assert.equal((await login('/api/login', 'the-right-password', {})).statusCode, 200);
+    assert.equal((await login(`${BASE}/api/login`, 'the-right-password', { 'x-forwarded-proto': 'http' })).statusCode, 200);
+    assert.equal((await login('/api/login', 'a-guess', {})).statusCode, 401);
+    const lan = await app.inject({ method: 'GET', url: '/api/session' });
+    assert.equal(lan.json<{ data: { passwordAllowed: boolean } }>().data.passwordAllowed, true);
+  } finally {
+    await cleanup();
+    await platform.close();
+  }
+});
+
+test('nobody on the internet can claim the admin password, even while OpenMasjidOS is not answering', async () => {
+  // The recovery route opens when the platform does not answer. A request from outside proves
+  // the platform is up, but our own check of it can still time out — and that must not hand the
+  // admin account to a stranger. Port 1: nothing listens, so the platform "does not answer".
+  const { app, store, cleanup } = await coldServer('http://127.0.0.1:1', `https://omos.example.org${BASE}`);
+  try {
+    const setup = (url: string, headers: Record<string, string>) =>
+      app.inject({ method: 'POST', url, headers: { ...headers, 'content-type': 'application/json' }, payload: { password: 'a-long-password' } });
+
+    const outside = await setup(`${BASE}/api/setup`, TUNNEL);
+    assert.equal(outside.statusCode, 403);
+    assert.equal(store.hasAdmin(), false);
+
+    // Inside, the recovery route works exactly as before.
+    const inside = await setup('/api/setup', {});
+    assert.equal(inside.statusCode, 200);
+    assert.equal(store.hasAdmin(), true);
+  } finally {
+    await cleanup();
   }
 });

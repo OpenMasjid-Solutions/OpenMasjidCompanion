@@ -92,6 +92,7 @@ export function Auth({ state, onSignedIn }: { state: AuthState; onSignedIn: () =
             automatically.
           </p>
           {state.session.hasPassword &&
+            state.session.passwordAllowed &&
             (showPassword ? (
               <PasswordForm mode="login" onDone={onSignedIn} />
             ) : (
@@ -106,6 +107,21 @@ export function Auth({ state, onSignedIn }: { state: AuthState; onSignedIn: () =
      *  a restore onto a new box, the core stopped, a network change — so the dashboard cannot
      *  sign anyone in and saying "press Open" would be advice that cannot work. */
     case 'platform-down':
+      // From outside the masjid the password is refused, so offering it would be advice that
+      // cannot work. The dashboard is the only way in from there; it may just need a minute.
+      if (!state.session.passwordAllowed) {
+        return (
+          <Card icon={<PlugZap size={26} strokeWidth={1.75} aria-hidden="true" />} title="OpenMasjidOS isn&rsquo;t answering">
+            <p className="centre-lead">
+              This app can&rsquo;t check your OpenMasjidOS sign-in right now. From outside the masjid, it can only be
+              opened from your dashboard &mdash; please try again in a minute.
+            </p>
+            <button className="btn btn--primary btn--block" onClick={onSignedIn}>
+              Try again
+            </button>
+          </Card>
+        );
+      }
       return (
         <Card icon={<PlugZap size={26} strokeWidth={1.75} aria-hidden="true" />} title="OpenMasjidOS isn&rsquo;t answering">
           <p className="centre-lead">

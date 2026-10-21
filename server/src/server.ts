@@ -164,6 +164,26 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
    */
   const cookiePath = (req: FastifyRequest): string => (req.originalUrl !== req.url && getBasePath()) || '/';
 
+  /**
+   * May this request use the app's local password — to sign in, or to set one?
+   *
+   * Not from the internet, under OpenMasjidOS. From outside, the way in is the platform's own
+   * sign-in, which asks for its second factor there; a password a volunteer chose for a
+   * recovery route must not be guessable by anyone holding the public link. Cloudflare sets
+   * `cf-ray` at its edge and the platform marks tunnel traffic `x-forwarded-proto: https`, so a
+   * visitor from outside cannot remove both; someone on the LAN can type them, which only
+   * refuses themselves. Asked inside the handlers, so it holds for every spelling of the path
+   * the router resolves to them. A standalone install has no platform to defer to and is left
+   * as it was.
+   */
+  const passwordAllowed = (req: FastifyRequest): boolean => {
+    if (!ssoConfigured()) return true;
+    const xfp = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim().toLowerCase();
+    return !req.headers['cf-ray'] && xfp !== 'https';
+  };
+  const PASSWORD_FROM_OUTSIDE =
+    'From outside the masjid, open Companion from your OpenMasjidOS dashboard — it signs you in. This app’s own password only works inside the masjid.';
+
   const loginLimiter = new LoginLimiter();
   // Unauthenticated AND makes an outbound call to the OpenMasjidOS core on every request. With
   // no cap, anyone who can reach this box can use it as an unmetered amplifier against the
@@ -243,6 +263,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
          *  offers SSO first. */
         needsSetup: !store.hasAdmin() && !ssoConfigured(),
         hasPassword: store.hasAdmin(),
+        /** False from outside the masjid: the panel then offers no password box that would
+         *  only ever be refused. */
+        passwordAllowed: passwordAllowed(req),
         sso: { enabled: ssoConfigured(), reachable },
       },
     };
@@ -263,6 +286,9 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
    */
   const SetupBody = z.object({ password: z.string().min(8).max(200) });
   app.post('/api/setup', async (req, reply) => {
+    // First, before anything else: "the platform did not answer" must never let somebody on the
+    // internet claim the admin account.
+    if (!passwordAllowed(req)) return reply.code(403).send({ error: PASSWORD_FROM_OUTSIDE });
     if (store.hasAdmin()) return reply.code(409).send({ error: 'A password has already been set.' });
     // An outbound platform call from an UNAUTHENTICATED route, so it needs the same cap as the
     // others. Without it this is an unmetered amplifier: `hasAdmin()` is false for the whole
@@ -284,10 +310,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     return { data: { ok: true } };
   });
 
-  /** Password login. Rate-limited with exponential backoff — this is the real defence behind a
-   *  password a volunteer chose, on a box that is published to the internet. */
+  /** Password login. Rate-limited with exponential backoff, and refused from the internet under
+   *  OpenMasjidOS — see `passwordAllowed`. Before the limiter, so a stranger's guesses cannot
+   *  spend the attempts of everyone who shares their peer address (behind a proxy, everyone). */
   const LoginBody = z.object({ password: z.string().min(1).max(200) });
   app.post('/api/login', async (req, reply) => {
+    if (!passwordAllowed(req)) return reply.code(403).send({ error: PASSWORD_FROM_OUTSIDE });
     const peer = peerOf(req);
     const wait = loginLimiter.retryAfterMs(peer);
     if (wait > 0) return reply.code(429).send({ error: `Too many attempts. Try again in ${Math.ceil(wait / 1000)}s.` });

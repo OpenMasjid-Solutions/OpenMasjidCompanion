@@ -751,6 +751,12 @@ musalli half; it refines this section rather than replacing it.
 - **Unauthenticated writes are rate-limited and validated** (push subscribe/unsubscribe; the
   login endpoint gets attempt limiting like Donations). Everything external is parsed with
   **zod**; cross-app content (campaign JSON, timetable payloads) is sanitised before rendering.
+- **From the internet, the admin gets in by SSO or not at all.** Under OpenMasjidOS, `/api/login`
+  and `/api/setup` refuse (403) any request carrying `cf-ray` or `x-forwarded-proto: https`, checked
+  inside the handlers so every spelling of the path is covered. The local password is a recovery
+  route for the masjid's own network, never something a stranger with the QR code can guess at.
+  Through the tunnel the admin cookie is also scoped to the base path, because every app shares
+  that hostname (`server.ts` `cookiePath`).
 - **Uploads** (the icon) are type/size-validated and re-encoded server-side; nothing is served
   back byte-for-byte from an upload.
 - Behind the OS proxy, trust `X-Forwarded-*` **only** because the platform's ingress sanitises

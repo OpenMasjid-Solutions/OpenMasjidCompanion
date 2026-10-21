@@ -20,6 +20,11 @@ only what a masjid would actually notice. A released section is never rewritten.
 - When you sign in to Companion from outside the masjid, that sign-in is now kept to Companion's own
   address. Every app on your OpenMasjidOS shares one web address there, and it was being sent to
   all of them. Nothing to do; inside the masjid nothing changes.
+- **From outside the masjid, the admin panel opens only through your OpenMasjidOS dashboard.** This
+  app's own password can no longer be tried from the internet — so nobody holding the QR code can
+  guess at it — and a first password can no longer be set from outside, even for a moment when
+  OpenMasjidOS is slow to answer. From outside, press **Open** in your dashboard; it signs you in.
+  Inside the masjid the password works exactly as before.
 - The Remote access step in the admin panel no longer says the app "can only be opened inside your
   building" — you may well be reading it from outside. It now says what is actually missing: a
   musalli's phone can't reach the app until it is shared.
