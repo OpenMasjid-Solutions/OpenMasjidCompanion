@@ -28,6 +28,8 @@ only what a masjid would actually notice. A released section is never rewritten.
 - The Remote access step in the admin panel no longer says the app "can only be opened inside your
   building" — you may well be reading it from outside. It now says what is actually missing: a
   musalli's phone can't reach the app until it is shared.
+- Security updates to two of the tools the app is built with. Nothing to do, and nothing you can
+  see.
 
 - **The "What's new" window now behaves like a window.** Using only a keyboard, Tab could walk
   out of it into the page behind, and closing it left you at the top of the admin page instead of
