@@ -12,6 +12,8 @@ only what a masjid would actually notice. A released section is never rewritten.
 
 ## Unreleased
 
+- Security update: the app now runs on Node.js 22.23.4, which fixes ten security problems in
+  Node.js published on 21 October, one of them serious. Nothing to do, and nothing you can see.
 - **Opening the app from outside the masjid works straight away.** Pressing **Open** in
   OpenMasjidOS from outside the building could show a blank page for up to five minutes after the
   box restarted, or after you changed the app's address — and an app you haven't shared with the
