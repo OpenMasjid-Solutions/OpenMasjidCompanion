@@ -10,66 +10,32 @@ admin panel's account menu → **What's new** shows them with no internet needed
 plain language, as it lands. A release condenses it into a `## X.Y.Z` section carrying
 only what a masjid would actually notice. A released section is never rewritten.
 
-## Unreleased
+## 0.3.0
 
-- Security update: the app now runs on Node.js 22.23.4, which fixes ten security problems in
-  Node.js published on 21 October, one of them serious. Nothing to do, and nothing you can see.
-- **Opening the app from outside the masjid works straight away.** Pressing **Open** in
-  OpenMasjidOS from outside the building could show a blank page for up to five minutes after the
-  box restarted, or after you changed the app's address — and an app you haven't shared with the
-  public had nothing to fall back on at all. The app now works out its address from that very
-  first visit, and you land in the admin panel signed in, with no password, as you do inside.
-- When you sign in to Companion from outside the masjid, that sign-in is now kept to Companion's own
-  address. Every app on your OpenMasjidOS shares one web address there, and it was being sent to
-  all of them. Nothing to do; inside the masjid nothing changes.
-- **From outside the masjid, the admin panel opens only through your OpenMasjidOS dashboard.** This
-  app's own password can no longer be tried from the internet — so nobody holding the QR code can
-  guess at it — and a first password can no longer be set from outside, even for a moment when
-  OpenMasjidOS is slow to answer. From outside, press **Open** in your dashboard; it signs you in.
-  Inside the masjid the password works exactly as before.
-- The Remote access step in the admin panel no longer says the app "can only be opened inside your
-  building" — you may well be reading it from outside. It now says what is actually missing: a
-  musalli's phone can't reach the app until it is shared.
-- Security updates to two of the tools the app is built with. Nothing to do, and nothing you can
-  see.
+Updating is all you need to do.
 
-- **The "What's new" window now behaves like a window.** Using only a keyboard, Tab could walk
-  out of it into the page behind, and closing it left you at the top of the admin page instead of
-  back on the button you opened it from. Both fixed.
-- **A screen reader is now told when the prayer rolls over** — when Maghrib comes in, it says so.
-  The countdown underneath deliberately stays silent: it changes every minute, and announcing
-  that would interrupt someone 1,440 times a day.
-
-- Removed a styling library the app had stopped needing. Nothing on any screen changes; the
-  download is very slightly smaller, and it closes five security advisories that came with it.
-
-- Security update to the web server this app runs on. Nothing to do, and nothing you can see.
-
-- **Fixed: buttons could be unreadable when the masjid uses a light theme with a coloured accent.**
-  The button took its background from your chosen accent but its text colour from the theme, so a
-  gold or teal accent on the light theme produced white text on a bright button. Each accent now
-  carries its own text colour, and all five are checked against the accessibility standard's
-  contrast requirement every time the app is built.
-
+- **A security update.** The app now runs on Node.js 22.23.4, which fixes security problems in
+  Node.js published on 21 October, and the web server and the tools the app is built with have
+  had their own security updates. Nothing to do, and nothing you can see.
+- **Opening the app from outside the masjid works first time.** Pressing **Open** in
+  OpenMasjidOS from outside the building could show a blank page for a few minutes after the box
+  restarted, or after you changed the app's address. Now you land in the admin panel straight
+  away, signed in.
+- **From outside the masjid, the admin panel opens only through your OpenMasjidOS dashboard.**
+  This app's own password can no longer be tried from the internet, so nobody holding the QR code
+  can guess at it, and your sign-in is kept to Companion's own address. From outside, press
+  **Open** in your dashboard; inside the masjid the password works exactly as before.
+- **The times refresh the moment someone opens the app.** If their phone can't reach the masjid,
+  they still see the times saved on it, now with a line saying when they were saved — and the
+  offline notice appears every time it should.
 - **Dates are written out in full** — "Friday, September 11, 2026" — on the day you are looking
-  at, on scheduled announcements and on the "last checked" lines. The one exception is the offline
-  banner, which uses the short 09/11/2026 form to keep a sentence that is already saying something
-  from getting long.
-- **The offline notice now appears in every case it should.** It relied on the app’s background
-  helper being the one to answer, which it is not straight after an update, or on the masjid’s own
-  wifi. If the app cannot reach the masjid at all, it now says so over the times either way.
-- **The times now refresh the moment you open the app, and a saved copy says so.** If your phone
-  can reach the masjid, you always see the current times — before this, opening the app could
-  show you the previous ones while the new ones were still loading, so a changed Iqamah might not
-  appear until the next time you opened it. If your phone cannot reach the masjid, you still get
-  the times saved on it, but now with a line above them saying when they were saved and that a
-  time may have changed since. Nothing to turn on.
-- The README no longer tells you to switch to the Development channel. It was written when the
-  prayer-times connection was only on Display's development builds; Display 0.70.0 has since been
-  released, so installing both apps from the normal App Store is all that is needed.
-- Release notes are now published on the GitHub releases page for every version. OpenMasjidOS
-  shows them to you as "What's new" after it updates the app in the background, so an update no
-  longer arrives without an explanation of what changed.
+  at, on scheduled announcements and on the "last checked" lines.
+- **Fixed: buttons could be hard to read** on the light theme with a gold or teal accent.
+- **Easier with a keyboard or a screen reader.** The "What's new" window keeps you inside it and
+  puts you back where you were when it closes, and a screen reader is told when the prayer
+  changes.
+- The Remote access step in the admin panel now says what is actually missing, instead of telling
+  you the app can only be opened inside your building.
 
 ## 0.2.0
 
